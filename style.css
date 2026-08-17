@@ -233,8 +233,8 @@ h1, h2, h3, p {
 /* Dovoljno zraka na dnu da zadnja kartica ne visi uz ivicu ekrana,
    i da je auto-skrol može podići na sredinu. */
 main {
-  padding-bottom: 96px;
-  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  padding-bottom: 64px;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
 
 .section {
