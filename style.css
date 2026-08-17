@@ -706,7 +706,7 @@ main {
    10. Podsjetnici — jedina nova kontrola, na dnu
    -------------------------------------------------------------------------- */
 .notify {
-  margin-top: 44px;
+  margin-top: 0px;
   padding-bottom: 8px;
   text-align: center;
 }
