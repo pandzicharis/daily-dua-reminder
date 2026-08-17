@@ -42,16 +42,16 @@ var NOTIFICATION_TASKS = [
   {
     id: "dan",
     exceptSections: ["navecer"],
-    title: "Moj Zikr",
-    message: "Dnevni zikr te čeka.",
+    title: "Dnevni zikr",
+    message: "Vrijeme je za dnevni zikr.",
     startTime: "07:00",
     endTime: "21:00"
   },
   {
     id: "navecer",
     sections: ["navecer"],
-    title: "Navečer 🌙",
-    message: "Vrijeme je za večernji zikr.",
+    title: "Vecernji Zikr - za navecer",
+    message: "Vrijeme je za vecernji zikr.",
     startTime: "19:00",
     endTime: "23:00"
   }
