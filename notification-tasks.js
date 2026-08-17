@@ -44,7 +44,7 @@ var NOTIFICATION_TASKS = [
     exceptSections: ["navecer"],
     title: "Dnevni zikr ☀️",
     message: "Vrijeme je za dnevni zikr.",
-    startTime: "07:00",
+    startTime: "08:00",
     endTime: "21:00"
   },
   {
