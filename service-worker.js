@@ -84,7 +84,7 @@ self.addEventListener("push", function (event) {
     data = { body: event.data ? event.data.text() : "" };
   }
 
-  var title = data.title || "Moj Zikr";
+  var title = data.title || "Zikr";
   var options = {
     body: data.body || "",
     /* Isti tag = nova obavijest zamjenjuje staru istog podsjetnika, pa se ne

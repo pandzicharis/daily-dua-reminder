@@ -50,7 +50,7 @@ var NOTIFICATION_TASKS = [
   {
     id: "navecer",
     sections: ["navecer"],
-    title: "Vecernji Zikr - za navecer",
+    title: "Vecernji Zikr 🌙",
     message: "Vrijeme je za vecernji zikr.",
     startTime: "19:00",
     endTime: "23:00"
