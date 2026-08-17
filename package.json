@@ -1,0 +1,18 @@
+{
+  "name": "moj-zikr",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Moj Zikr — statična PWA + Vercel serverless funkcije za dnevne push podsjetnike.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node dev-server.js",
+    "test-push": "node scripts/send-test-push.js"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.3",
+    "web-push": "^3.6.7"
+  }
+}

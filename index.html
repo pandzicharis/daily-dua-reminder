@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="bs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FAF7F0">
+  <title>Moj Zikr</title>
+  <meta name="description" content="Dnevni zikr, dove i stranica Kur'ana — na jednom mjestu.">
+
+  <!-- PWA: bez ovoga "Dodaj na početni ekran" ne daje pravu aplikaciju -->
+  <link rel="manifest" href="/manifest.webmanifest">
+
+  <!-- iOS ne čita manifest za sve; ovo su njegove vlastite oznake -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Moj Zikr">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+
+  <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
+  <link rel="stylesheet" href="font.css?v=9">
+  <link rel="stylesheet" href="style.css?v=12">
+</head>
+<body>
+
+  <!-- Header je sticky i poluprovidan (blur) — ostaje na vrhu dok se skrola. -->
+  <header class="app-header">
+    <div class="wrap header-bar">
+
+      <div class="header-left">
+        <!-- Rub el-hizb (۞): dva ukrštena kvadrata, klasičan kur'anski znak.
+             Tekst naslova ostaje za čitače ekrana, vizuelno je sakriven. -->
+        <h1 class="app-title">
+          <svg class="app-mark" viewBox="0 0 48 48" fill="none"
+               stroke="currentColor" stroke-width="1.6"
+               stroke-linejoin="round" aria-hidden="true">
+            <rect x="11" y="11" width="26" height="26" rx="1.5"/>
+            <rect x="11" y="11" width="26" height="26" rx="1.5"
+                  transform="rotate(45 24 24)"/>
+            <circle cx="24" cy="24" r="4.6"/>
+          </svg>
+          <span class="visually-hidden">Moj Zikr</span>
+        </h1>
+
+        <p class="date-row">
+          <span class="app-date" id="todayDate"></span>
+          <span class="app-date-hijri" id="todayHijri"></span>
+        </p>
+      </div>
+
+      <!-- Prstenasti graf napretka -->
+      <div class="ring-wrap"
+           id="progress"
+           role="progressbar"
+           aria-valuemin="0"
+           aria-valuemax="100"
+           aria-valuenow="0"
+           aria-label="Dnevni napredak">
+        <svg class="ring" viewBox="0 0 44 44" aria-hidden="true">
+          <circle class="ring-track" cx="22" cy="22" r="18"/>
+          <circle class="ring-fill" id="ringFill" cx="22" cy="22" r="18"/>
+        </svg>
+        <span class="ring-label" id="ringLabel">0%</span>
+      </div>
+
+    </div>
+  </header>
+
+  <main class="wrap" id="sectionsRoot"></main>
+
+  <!-- Podsjetnici — jedina nova kontrola u sučelju -->
+  <section class="wrap notify">
+    <button type="button" class="notify-btn" id="notifyBtn">Uključi podsjetnike</button>
+    <p class="notify-status" id="notifyStatus"></p>
+  </section>
+
+  <script src="quran-pages.js"></script>
+  <script src="data.js"></script>
+  <script src="notification-tasks.js"></script>
+  <script src="script.js"></script>
+  <script src="notifications.js"></script>
+</body>
+</html>

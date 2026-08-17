@@ -1,0 +1,26 @@
+# Šta NE ide na Vercel. Radi kao .gitignore, samo za deploy.
+# (.env* Vercel CLI ionako izuzima sam, ali stoji ovdje da bude očito.)
+
+.env
+.env.local
+.env*.local
+
+# Lokalna "baza" — na Vercelu se koristi Upstash, a ovaj fajl bi samo
+# iznio push endpointe uređaja u deploy.
+.dev-store.json
+
+# Lokalni razvojni server; na Vercelu statične fajlove servira platforma,
+# a svaki fajl iz api/ postaje serverless funkcija.
+dev-server.js
+
+# Ručne skripte — pokreću se sa računara, ne sa servera.
+scripts/
+
+# IZVORI generisanih fajlova, ne koriste se u runtime-u:
+#   quran_by_pages.json  ->  quran-pages.js   (generisano)
+#   Hafs.ttf             ->  font.css         (ugrađen kao base64)
+# Skupa ~2.3 MB koje nema svrhe uploadovati.
+quran_by_pages.json
+Hafs.ttf
+
+.DS_Store

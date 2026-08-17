@@ -1,0 +1,837 @@
+/* ==========================================================================
+   Moj Zikr — style.css
+   Mobile-first. Čisti CSS, bez frameworka.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Font — arapski
+   @font-face za "Hafs" je u font.css (ugrađen kao base64 data URI, da radi
+   i sa file:// i sa bilo kojeg hostinga). Učitava se prije ovog fajla.
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   2. Varijable
+   -------------------------------------------------------------------------- */
+:root {
+  --background: #faf7f0;
+  --background-alt: #f3efe4;
+  --surface: #fffdf8;
+  --primary: #1e4438;
+  --primary-soft: #37624f;
+  --accent: #b8925a;
+  --accent-soft: #e3d3b6;
+  --text: #1c1c19;
+  --muted: #7a746a;
+  --line: #e7e0d2;
+  --line-strong: #cfc6b3;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(30, 68, 56, 0.04),
+            0 8px 24px -16px rgba(30, 68, 56, 0.22);
+
+  /* Sve što nije arapsko koristi IBM Plex Sans.
+     Fajl fonta još nije u projektu — dok ga ne bude, pada na sistemski
+     stack. Kad dodaš IBMPlexSans.ttf, ugradiće se kao i arapski font. */
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+             Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ar: "Hafs", "Geeza Pro", "Noto Naskh Arabic", serif;
+
+  --wrap: 720px;
+  --gutter: 20px;
+}
+
+/* --------------------------------------------------------------------------
+   3. Reset / osnove
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p {
+  margin: 0;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+/* --------------------------------------------------------------------------
+   4. Header
+   -------------------------------------------------------------------------- */
+/* Sticky "staklo": ostaje na vrhu dok se skrola, sadržaj se nazire kroz blur.
+   Boja pozadine je --background sa providnošću, da blur ima šta miješati. */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 12px 0;
+  padding-top: max(12px, env(safe-area-inset-top));
+  background: rgba(250, 247, 240, 0.72);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-bottom: 1px solid rgba(231, 224, 210, 0.9);
+}
+
+/* Ako browser nema backdrop-filter, pozadina mora biti puna —
+   inače bi se tekst ispod providno miješao sa headerom. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .app-header {
+    background: var(--background);
+  }
+}
+
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Naslov je sada znak, ne tekst. */
+.app-title {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.app-mark {
+  width: 42px;
+  height: 42px;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+
+/* Dostupno čitačima ekrana, nevidljivo na ekranu. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Na telefonu hidžretski datum ide u red ispod — u jednom redu ne bi stao
+   pored prstena. Od 640px naviše oba idu u isti red, odvojena tačkom. */
+.date-row {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.app-date {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-date-hijri {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   5. Progress — prstenasti graf desno u headeru
+   -------------------------------------------------------------------------- */
+.progress-label {
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ring-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* -90deg da se prsten puni od vrha, a ne od desne strane. */
+.ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring-track,
+.ring-fill {
+  fill: none;
+  stroke-width: 3.5;
+}
+
+.ring-track {
+  stroke: var(--background-alt);
+}
+
+.ring-fill {
+  stroke: var(--primary);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;
+}
+
+.ring-label {
+  position: absolute;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--primary-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress.is-complete .ring-fill {
+  stroke: var(--accent);
+}
+
+.progress.is-complete .ring-label {
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   6. Sekcije
+   -------------------------------------------------------------------------- */
+/* Dovoljno zraka na dnu da zadnja kartica ne visi uz ivicu ekrana,
+   i da je auto-skrol može podići na sredinu. */
+main {
+  padding-bottom: 96px;
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+.section {
+  margin-top: 40px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 0 4px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+}
+
+/* Ikonica podnaslova — sitna, lijevo od teksta. Nasljeđuje boju naslova. */
+.section-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  /* letter-spacing naslova ne smije gurati ikonicu */
+  margin-right: -2px;
+}
+
+.section-count {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   7. Stavka
+   -------------------------------------------------------------------------- */
+/* Cijela kartica je klikabilna — i za čekiranje i za odčekiranje. */
+.item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+/* Header kartice ide lijevo, a sadržaj ispod ostaje centriran. */
+.item-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  min-height: 60px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.item-title {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+  transition: color 0.2s ease;
+}
+
+.reps {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--background-alt);
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Izvor dove (Kur'an / hadis) — desni ćošak headera, u istom redu sa
+   naslovom. Sitno i verzalom, kao ostale oznake u aplikaciji. */
+.item-source {
+  flex-shrink: 1;
+  max-width: 46%;
+  text-align: right;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Checkbox — pravi input, custom izgled */
+.check {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border: 2px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--background);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+/* Kvačica je "L" od desne i donje ivice kutije, pa joj težište nije u
+   sredini te kutije: nakon rotacije od 45° padne ~1.95px niže i ~0.3px
+   lijevo. Zato se kutija prvo centrira (translate -50%), pa pomjeri za
+   tu razliku — tako kvačica sjedne tačno na sredinu zelenog kvadrata. */
+.check::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 12px;
+  border: solid #fffdf8;
+  border-width: 0 2.5px 2.5px 0;
+  transform: translate(calc(-50% + 0.3px), calc(-50% - 1.95px))
+             rotate(45deg) scale(0.4);
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.check:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.check:checked::after {
+  opacity: 1;
+  transform: translate(calc(-50% + 0.3px), calc(-50% - 1.95px))
+             rotate(45deg) scale(1);
+}
+
+.check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Tijelo stavke — sve centrirano */
+.item-body {
+  padding: 18px 18px 20px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.arabic {
+  font-family: var(--font-ar);
+  font-size: clamp(1.45rem, 5.4vw, 1.9rem);
+  line-height: 2.1;
+  color: var(--primary);
+  text-align: center;
+  direction: rtl;
+  /* jedan neprekidan tok — bez prisilnih prelomâ, sam se centrira */
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.translation {
+  margin-top: 16px;
+  font-size: 0.9375rem;
+  color: var(--muted);
+  line-height: 1.7;
+  text-align: center;
+}
+
+/* Označena stavka — sadržaj ostaje čitljiv */
+.item.is-done {
+  background: var(--background-alt);
+  border-color: var(--accent-soft);
+}
+
+.item.is-done .item-title {
+  color: var(--muted);
+}
+
+.item.is-done .item-body {
+  opacity: 0.62;
+}
+
+/* --------------------------------------------------------------------------
+   8. Kur'an kartica
+   -------------------------------------------------------------------------- */
+/* Cijela kartica je <label> — klik bilo gdje prebacuje checkbox. */
+.quran-card {
+  display: block;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+/* Header Kur'an kartice: checkbox + broj stranice lijevo, dugme desno. */
+.quran-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  text-align: left;
+}
+
+.quran-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Dugme "Vidi stranicu" — desni ugao headera. */
+.view-page-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--primary);
+  background: var(--background-alt);
+  border: 1px solid var(--accent-soft);
+  border-radius: 99px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.view-page-btn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--surface);
+}
+
+.view-page-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+}
+
+/* Sadržaj ispod headera je centriran, sa ujednačenim ritmom razmaka:
+   meta -> (22px) -> arapski -> (18px) -> broj ajeta. */
+.quran-top {
+  padding: 18px 20px 22px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.quran-page {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--primary);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.quran-meta {
+  margin-bottom: 22px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+/* Ime sure je arapsko — crta se arapskim fontom, malo veće da se poravna. */
+.sura-name {
+  font-family: var(--font-ar);
+  font-size: 1.5em;
+  line-height: 1;
+  vertical-align: -0.12em;
+  color: var(--primary-soft);
+}
+
+.quran-ayah {
+  margin-top: 18px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Bez vlastite linije i margine — .quran-top već nosi razdvojnu liniju. */
+.quran-arabic {
+  font-family: var(--font-ar);
+  font-size: clamp(1.6rem, 6.4vw, 2.15rem);
+  line-height: 2.05;
+  color: var(--primary);
+  text-align: center;
+  direction: rtl;
+}
+
+.quran-card.is-done {
+  background: var(--background-alt);
+  border-color: var(--accent-soft);
+}
+
+.quran-card.is-done .quran-page,
+.quran-card.is-done .quran-arabic {
+  opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   9. "Vidi stranicu" — drawer sa cijelom stranicom mushafa
+   -------------------------------------------------------------------------- */
+.no-scroll {
+  overflow: hidden;
+}
+
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(28, 28, 25, 0.45);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.drawer[hidden] {
+  display: none;
+}
+
+.drawer-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  max-height: 92vh;
+  background: var(--background);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -8px 40px rgba(28, 28, 25, 0.25);
+  overflow: hidden;
+}
+
+.drawer-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.drawer-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.drawer-sub {
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.drawer-close {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--muted);
+  background: var(--background-alt);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.drawer-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 20px 28px;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+
+/* Ime sure — ostaje zalijepljeno na vrh dok se čita njen tekst. */
+.drawer-sura {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -20px;
+  padding: 14px 20px;
+  font-family: var(--font-ar);
+  font-size: 1.5rem;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--accent);
+  background: var(--background);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Tekst stranice teče kao u mushafu: obostrano poravnat blok, bez preloma
+   po ajetima. `justify` sa arapskim fontom daje ravne ivice s obje strane. */
+.drawer-text {
+  margin-top: 20px;
+  font-family: var(--font-ar);
+  font-size: clamp(1.45rem, 5.6vw, 1.85rem);
+  line-height: 2.3;
+  color: var(--primary);
+  direction: rtl;
+  text-align: justify;
+  text-align-last: center;
+  overflow-wrap: break-word;
+}
+
+/* Broj ajeta u krugu, na kraju svakog ajeta. */
+.ayah-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55em;
+  height: 1.55em;
+  margin: 0 0.15em;
+  font-family: var(--font-ui);
+  font-size: 0.42em;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--accent-soft);
+  border-radius: 50%;
+  vertical-align: 0.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   10. Podsjetnici — jedina nova kontrola, na dnu
+   -------------------------------------------------------------------------- */
+.notify {
+  margin-top: 44px;
+  padding-bottom: 8px;
+  text-align: center;
+}
+
+.notify-btn {
+  padding: 12px 22px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--primary);
+  background: var(--surface);
+  border: 1px solid var(--accent-soft);
+  border-radius: 99px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.notify-btn:hover {
+  background: var(--background-alt);
+}
+
+.notify-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.notify-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Uključeno — dugme je "ispunjeno" da se stanje vidi bez čitanja teksta. */
+.notify-btn.is-on {
+  color: var(--surface);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.notify-status {
+  margin-top: 10px;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.notify-status.is-ok {
+  color: var(--primary-soft);
+}
+
+.notify-status.is-warn {
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   11. Responsive
+   -------------------------------------------------------------------------- */
+@media (min-width: 640px) {
+  :root {
+    --gutter: 32px;
+  }
+
+  .app-header {
+    padding: 16px 0;
+  }
+
+  /* Na širem ekranu oba datuma stanu u isti red. */
+  .date-row {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .app-date-hijri::before {
+    content: "·";
+    margin-right: 8px;
+    color: var(--line-strong);
+  }
+
+  .section {
+    margin-top: 52px;
+  }
+
+  .item-head {
+    padding: 18px 24px;
+  }
+
+  .item-body {
+    padding: 20px 24px 24px;
+  }
+
+  .quran-top {
+    padding: 20px 28px 26px;
+  }
+
+  /* Drawer postaje centriran prozor umjesto lista sa dna. */
+  .drawer {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .drawer-sheet {
+    border-radius: 20px;
+    max-height: 88vh;
+  }
+}
+
+@media (max-width: 380px) {
+  .item-head {
+    gap: 12px;
+    padding: 14px 14px;
+  }
+
+  .item-body {
+    padding: 16px 14px 18px;
+  }
+
+  .item-title {
+    font-size: 0.9375rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
