@@ -76,19 +76,30 @@ self.addEventListener("fetch", function (event) {
 /* ------------------------------------------------------------------------
    Push — server je odlučio da treba podsjetnik, ovdje se samo prikazuje
 
-   Osim kad je aplikacija otvorena i na ekranu: tada spisak već stoji pred
-   korisnikom i obavijest o istoj toj stvari je samo smetnja. Nema izuzetka
-   od `userVisibleOnly` — pravilo traži vidljiv odgovor na push, a otvorena
-   aplikacija to jeste, pa browser ne prikazuje svoju zamjensku obavijest.
-   Prozor u pozadini ili druga kartica se NE računa (visibilityState nije
-   "visible") — tamo obavijest svejedno stiže.
+   Osim kad je sesija U TOKU: tada spisak već stoji pred korisnikom i
+   obavijest o istoj toj stvari je samo smetnja.
+
+   "Sesija u toku" znači oba uslova zajedno:
+
+     visibilityState === "visible"   prozor nije minimiziran, nije druga
+                                     kartica, nije pozadina na telefonu
+     focused === true                prozor je onaj u kojem korisnik radi
+
+   Samo `visible` nije dovoljno: na laptopu prozor iza drugog programa i
+   dalje prijavljuje "visible", a to nije aktivna sesija — tamo obavijest
+   treba da stigne. Sve što nije aktivna sesija se računa kao zatvoreno.
+
+   Nema izuzetka od `userVisibleOnly` — pravilo traži vidljiv odgovor na
+   push, a aktivna aplikacija to jeste, pa browser ne prikazuje svoju
+   zamjensku obavijest.
    ------------------------------------------------------------------------ */
 
-function appIsOnScreen() {
+function sessionInProgress() {
   return self.clients.matchAll({ type: "window", includeUncontrolled: true })
     .then(function (list) {
       return list.some(function (client) {
         return client.visibilityState === "visible" &&
+               client.focused === true &&
                new URL(client.url).origin === self.location.origin;
       });
     })
@@ -125,8 +136,8 @@ self.addEventListener("push", function (event) {
   };
 
   event.waitUntil(
-    appIsOnScreen().then(function (open) {
-      if (open) { return; }
+    sessionInProgress().then(function (aktivna) {
+      if (aktivna) { return; }
       return self.registration.showNotification(title, options);
     })
   );

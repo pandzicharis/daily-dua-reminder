@@ -15,7 +15,8 @@ iPhone PWA  ←→  localStorage (offline keš)
                      ↓ ako sekcija nije cijela gotova i sljedeći sat je stigao
               Web Push (VAPID) → service worker → obavijest na iPhoneu
                                        ↓
-                            (osim ako je aplikacija na ekranu)
+                          (osim ako je sesija u toku:
+                           prozor vidljiv I fokusiran)
 ```
 
 ---
@@ -76,12 +77,22 @@ interneta, pa se nikad ne servira zastarjeli sadržaj.
    Taj `id` je jedini identitet uređaja — **nema logina, naloga ni lozinki**.
 5. `api/cron.js` šalje push kroz `web-push` potpisan privatnim VAPID ključem.
 6. Service worker uhvati `push` event i prikaže obavijest — **osim ako je
-   aplikacija u tom trenutku otvorena i na ekranu**. Tada spisak već stoji
-   pred korisnikom, pa je obavijest samo smetnja. Prozor u pozadini ili
-   druga kartica se ne računa; tamo obavijest svejedno stiže.
+   sesija u tom trenutku u toku**. Tada spisak već stoji pred korisnikom,
+   pa je obavijest samo smetnja.
+
+   "Sesija u toku" traži oba uslova zajedno:
+
+   | Uslov | Znači |
+   |---|---|
+   | `visibilityState === "visible"` | nije minimizirano, nije druga kartica, nije pozadina telefona |
+   | `focused === true` | to je prozor u kojem korisnik trenutno radi |
+
+   Samo `visible` nije dovoljno: na laptopu prozor iza drugog programa i
+   dalje prijavljuje `visible`, a to nije aktivna sesija. **Sve što nije
+   aktivna sesija računa se kao zatvoreno** i obavijest stiže normalno.
 
    Ovo ne krši `userVisibleOnly`: pravilo traži vidljiv odgovor na push, a
-   otvorena aplikacija to jeste, pa browser ne prikazuje svoju zamjensku
+   aktivna aplikacija to jeste, pa browser ne prikazuje svoju zamjensku
    obavijest ("site updated in background").
 
 Privatni ključ postoji samo kao env varijabla na serveru i ne pojavljuje se
@@ -325,8 +336,9 @@ Provjera redom:
 6. Čekiraj sve iz *Navečer* → ćuti i on.
 7. Dijeljenje: otvori aplikaciju u drugom browseru (ili incognito prozoru),
    čekiraj nešto tamo i vrati se u prvi — checkmark je i tu.
-8. Otvorena aplikacija: dok je prozor na ekranu, ručno okidanje crona ne
-   smije dati obavijest; prebaci se na drugi prozor i okini opet — stiže.
+8. Aktivna sesija: dok radiš u prozoru aplikacije, ručno okidanje crona ne
+   smije dati obavijest. Klikni na drugi program (prozor ostaje vidljiv,
+   ali više nije fokusiran) pa okini opet — obavijest stiže.
 
 Na kraju vrati `REMINDER_INTERVAL_MINUTES=60` i obriši `REMINDER_START_TIME`.
 

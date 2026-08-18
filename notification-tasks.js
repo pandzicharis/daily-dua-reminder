@@ -7,8 +7,8 @@
 
    Dva podsjetnika, ni jedan više:
 
-     dan      — sve sekcije OSIM navečer (Kur'an, zikr, dove)
-     navecer  — samo sekcija "Navečer"
+     dan      — sve sekcije OSIM Navečer, dakle Kur'an, Zikr i Dove
+     navecer  — sve što je u sekciji "Navečer"
 
    Razdvojeni su baš zato da dnevni dio može biti završen a navečer još ne —
    i da podsjetnik za navečer u tom slučaju svejedno stigne.
