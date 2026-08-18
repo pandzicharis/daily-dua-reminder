@@ -168,8 +168,14 @@ propustiti jedan podsjetnik nego poslati duplikat.
 Ključevi u bazi nose datum po Sarajevu (`sent:<id>:<task>:<datum>`), pa se
 ciklus resetuje sam od sebe u ponoć. Sve ističe nakon 3 dana (TTL).
 
-`endTime` (default 22:00) zaustavlja podsjetnike navečer da telefon ne
-zvoni usred noći.
+`endTime` zaustavlja podsjetnike navečer da telefon ne zvoni usred noći.
+Vrijednost `"00:00"` znači ponoć na **kraju** dana, pa je uz interval od
+sat vremena zadnji podsjetnik u 23:00; poslije ponoći je novi datum i
+ciklus svakako kreće od nule. Bez `endTime` default je 22:00.
+
+Oba podsjetnika idu do ponoći (`"00:00"`). Dnevni namjerno ne staje u 21:00:
+dok nije završen, večernji je zaklonjen, pa bi poslije 21:00 nastupila tišina
+baš kad je najviše ostalo neurađeno.
 
 ## 6. Kako server zna dokle je zadatak stigao
 
@@ -187,15 +193,29 @@ Tri ishoda po podsjetniku:
 | sve | `done` | ništa do sutra |
 
 Dnevni i večernji se broje odvojeno, pa završen dan **ne** utišava večernji
-podsjetnik:
+podsjetnik. Ali prozori im se poslije 19:00 preklapaju, a **dvije obavijesti
+u isto vrijeme nikad ne stižu** — zato `navecer` ima `requires: ["dan"]`:
+šalje se samo kad je dnevni u cijelosti završen. Dok nije, stiže samo
+dnevni, a od 19:00 sa tekstom (`messageLate`) koji pokriva oboje:
 
-| Stanje danas | Dnevni `dan` (08–21) | Večernji `navecer` (19–23) |
+| Stanje danas | do 19:00 | od 19:00 |
 |---|---|---|
-| ništa čekirano | "Vrijeme je za dnevni zikr." | "Vrijeme je za vecernji zikr." |
-| jedna dova iz *Dove* | "Nastavi sa zikrom." | "Vrijeme je za vecernji zikr." |
-| sve osim *Navečer* | — | "Vrijeme je za vecernji zikr." |
-| sve osim *Navečer* + jedna navečer | — | "Nastavi sa zikrom." |
+| ništa čekirano | `dan` — "Vrijeme je za dnevni zikr." | `dan` — "Nemoj zaboraviti proučiti zikr." |
+| jedna dova iz *Dove* | `dan` — "Nastavi sa zikrom." | `dan` — "Nastavi sa zikrom." |
+| samo jedna navečer | `dan` — "Vrijeme je za dnevni zikr." | `dan` — "Nemoj zaboraviti proučiti zikr." |
+| sve osim *Navečer* | — | `navecer` — "Vrijeme je za vecernji zikr." |
+| sve osim *Navečer* + jedna navečer | — | `navecer` — "Nastavi sa zikrom." |
 | sve | — | — |
+
+"Nastavi" ima prednost nad `messageLate` — kad je zikr već započet, to je
+korisnija napomena od "nemoj zaboraviti".
+
+Zaklonjenom podsjetniku se slot **ne** zapisuje, pa stigne prvim ciklusom
+nakon što se zaklon skine: završi dnevni u 22:30 i večernji dolazi odmah, ne
+sutra. U izvještaju `/api/cron` to stoji u polju `blocked`.
+
+Oba prozora idu do ponoći, dakle zadnja obavijest u danu je u 23:00 — bez
+obzira koja od njih je na redu.
 
 Ako je stavka odčekirana, podsjetnici se nastavljaju — `hdel` je vrati u
 "nije urađeno".
@@ -321,8 +341,10 @@ Odgovor je izvještaj o tome šta se desilo:
 
 ```json
 { "date": "2026-08-17", "minutes": 754, "interval": 1,
-  "devices": 1, "sent": [{ "device": "a1b2c3d4", "task": "dan", "slot": 12 },
-                         { "device": "a1b2c3d4", "task": "navecer", "slot": 12 }],
+  "devices": 1, "status": { "dan": "none", "navecer": "none" },
+  "sent": [{ "device": "a1b2c3d4", "task": "dan", "slot": 12,
+             "status": "none", "late": false }],
+  "blocked": ["navecer ← dan"],
   "removed": [], "errors": [] }
 ```
 
@@ -331,8 +353,10 @@ Provjera redom:
 1. Pozovi endpoint dvaput zaredom → drugi put je `sent` prazan (nema duplikata).
 2. Sačekaj minutu i pozovi opet → stižu nove obavijesti (novi slot).
 3. Čekiraj **jednu** stavku sekcije *Zikr* u aplikaciji.
-4. Pozovi opet → `dan` sad dolazi sa tekstom "Nastavi sa zikrom.".
-5. Čekiraj **sve** iz *Kur'an*, *Zikr* i *Dove* → `dan` ćuti, `navecer` stiže.
+4. Pozovi opet → `dan` sad dolazi sa tekstom "Nastavi sa zikrom.", a
+   `navecer` je u `blocked` — obavijest je i dalje samo jedna.
+5. Čekiraj **sve** iz *Kur'an*, *Zikr* i *Dove* → `dan` ćuti, `navecer`
+   prestaje biti `blocked` i stiže istim pozivom.
 6. Čekiraj sve iz *Navečer* → ćuti i on.
 7. Dijeljenje: otvori aplikaciju u drugom browseru (ili incognito prozoru),
    čekiraj nešto tamo i vrati se u prvi — checkmark je i tu.
@@ -408,6 +432,12 @@ Podsjetnik ćuti tek kad je **sve** iz njegovih sekcija čekirano; dok je
 započet, mijenja mu se samo tekst (`messagePartial`). `messagePartial` je
 opciono — bez njega se i u tom slučaju šalje `message`. Ništa drugo se ne
 dira — ni API, ni scheduler, ni frontend.
+
+Ako se prozor novog podsjetnika preklapa sa nekim postojećim, dodaj mu
+`requires: ["id-tog-drugog"]` — tada ćuti dok onaj drugi nije završen, pa
+telefon ne zvoni dvaput za isto. A onom drugom, koji ga zaklanja, možeš dati
+`messageLate` i `titleLate` — tekst koji od `startTime`-a zaklonjenog pokriva
+oboje, kao što `dan` od 19:00 nosi "Nemoj zaboraviti proučiti zikr.".
 
 `/api/state` prihvata **samo** id-eve stavki koje postoje u `data.js`; sve
 ostalo vraća u polju `ignored`.

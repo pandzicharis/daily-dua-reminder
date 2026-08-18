@@ -109,6 +109,34 @@ function taskStatus(task, checked) {
   return done >= total ? "done" : "partial";
 }
 
+/* Podsjetnik koji ovaj zaklanja: dok svi id-evi iz `requires` nisu "done",
+   ovaj se NE šalje. Postoji zato što se prozori dnevnog (08–21) i večernjeg
+   (19–23) preklapaju — bez ovoga bi poslije 19:00 stizale dvije obavijesti
+   jedna do druge. Vraća id-a koji zaklanja, ili null ako je put slobodan. */
+function blockedBy(task, status) {
+  const need = task.requires || [];
+  for (const id of need) {
+    if ((status || {})[id] !== "done") { return id; }
+  }
+  return null;
+}
+
+/* Od kada tekst `messageLate` zamjenjuje uobičajeni: od trenutka kad se
+   otvori prozor prvog podsjetnika koji ovaj zaklanja. Vrijeme se izvodi iz
+   njegovog `startTime`, pa ne postoji na dva mjesta koja se mogu raziće.
+   Vraća minute od ponoći, ili null ako ovaj podsjetnik nikog ne zaklanja. */
+function lateFrom(task) {
+  let earliest = null;
+  TASKS.forEach(function (other) {
+    if (other.enabled === false) { return; }
+    if (!other.requires || other.requires.indexOf(task.id) === -1) { return; }
+    const start = parseTime(other.startTime);
+    if (start === null) { return; }
+    if (earliest === null || start < earliest) { earliest = start; }
+  });
+  return earliest;
+}
+
 /* ------------------------------------------------------------------------
    Vrijeme — sve po Europe/Sarajevo, nikad po UTC satu.
    Intl sam vodi računa o ljetnom/zimskom vremenu.
@@ -221,19 +249,30 @@ const DEFAULT_END_TIME = "22:00";
    `url` je ono što service worker otvori na klik: podsjetnik koji pokriva
    jednu sekciju vodi pravo na nju, a dnevni pokriva više njih pa vodi na
    vrh aplikacije. */
-function pushPayload(task, status) {
+function pushPayload(task, status, late) {
   const one = (task.sections && task.sections.length === 1)
     ? task.sections[0]
     : null;
 
   /* Započeto pa stalo -> "nastavi", inače uobičajena napomena. Kad je sve
-     gotovo, ovamo se uopšte ne dolazi — dueSlot() prije toga vrati null. */
-  const body = (status === "partial" && task.messagePartial)
-    ? task.messagePartial
-    : task.message;
+     gotovo, ovamo se uopšte ne dolazi — dueSlot() prije toga vrati null.
+
+     `late` znači da je nastupilo vrijeme podsjetnika koji ovaj zaklanja
+     (večernji), a ovdje još ništa nije čekirano. Tada je ovo jedina
+     obavijest, pa i naslov i tekst pokrivaju oboje. "Nastavi" ima
+     prednost — ako je nešto već započeto, to je korisnija napomena. */
+  let title = task.title;
+  let body = task.message;
+
+  if (status === "partial" && task.messagePartial) {
+    body = task.messagePartial;
+  } else if (late && task.messageLate) {
+    title = task.titleLate || title;
+    body = task.messageLate;
+  }
 
   return JSON.stringify({
-    title: task.title,
+    title: title,
     body: body,
     tag: task.id,
     taskId: task.id,
@@ -263,7 +302,11 @@ function dueSlot(opts) {
   const start = parseTime(opts.startTime);
   if (start === null) { return null; }
 
-  const end = parseTime(opts.endTime || DEFAULT_END_TIME);
+  /* "00:00" znači ponoć na KRAJU dana, ne na početku — inače bi zadatak
+     ćutao cijeli dan. Dalje se ne ide: u ponoć je novi datum, nov ključ u
+     bazi i ciklus svakako kreće od nule. */
+  let end = parseTime(opts.endTime || DEFAULT_END_TIME);
+  if (end === 0) { end = 24 * 60; }
 
   /* Prije jutarnjeg vremena i poslije večernjeg — ništa. */
   if (opts.minutes < start) { return null; }
@@ -306,7 +349,7 @@ function cronAuthorized(req) {
 module.exports = {
   TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
-  findTask, sectionsFor, taskStatus, validItemId,
+  findTask, sectionsFor, taskStatus, blockedBy, lateFrom, validItemId,
   sarajevoNow, parseTime, subId, dueSlot, pushPayload,
   readJson, validSubscription, validDate,
   removeSubscription, intervalMinutes, cronAuthorized

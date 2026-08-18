@@ -4,6 +4,9 @@
      npm run test-push            -> prvi zadatak sa spiska
      npm run test-push zikr       -> baš taj zadatak
      npm run test-push sve        -> sve zadatke redom
+     npm run test-push dan late   -> varijanta `messageLate` (tekst koji
+                                     dnevni nosi od 19:00, kad zaklanja
+                                     večernji, pa pokriva oboje)
 
    Zaobilazi raspored (slot, startTime, "gotovo je") jer služi samo da se
    vidi kako obavijest izgleda na uređaju. Prava pravila su u api/cron.js
@@ -39,6 +42,10 @@ const {
 } = require(path.join(ROOT, "api", "_lib.js"));
 
 const arg = (process.argv[2] || "").toLowerCase();
+
+/* Drugi argument "late" pokazuje kako izgleda obavijest koja pokriva oboje.
+   Sve ostalo o rasporedu i ovdje se preskače — vidi zaglavlje. */
+const late = (process.argv[3] || "").toLowerCase() === "late";
 
 function pickTasks() {
   if (!arg) { return [TASKS[0]]; }
@@ -81,17 +88,20 @@ function pickTasks() {
     if (!sub || !sub.endpoint) { continue; }
 
     for (const task of tasks) {
+      const payload = pushPayload(task, "none", late);
+      const shown = JSON.parse(payload);
+
       try {
         /* TTL 1h: ako browser/PWA trenutno ne radi, push servis čuva
            poruku i isporuči je čim se aplikacija vrati. Sa kratkim TTL-om
            bi tiho nestala i izgledalo bi kao da ništa nije poslano. */
         const out = await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: sub.keys },
-          pushPayload(task),
+          payload,
           { TTL: 3600, urgency: "high" }
         );
         console.log("  poslano → " + id.slice(0, 8) + "   HTTP " +
-          (out && out.statusCode) + "   " + task.title + " — " + task.message);
+          (out && out.statusCode) + "   " + shown.title + " — " + shown.body);
       } catch (err) {
         const code = err && err.statusCode;
         if (code === 404 || code === 410) {

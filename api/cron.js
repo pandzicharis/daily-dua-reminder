@@ -21,13 +21,19 @@
      ništa    -> "Vrijeme je za ..."   (task.message)
      nešto    -> "Nastavi sa zikrom."  (task.messagePartial)
      sve      -> ne šalje se ništa do sutra
+
+   Uz to: NIKAD dvije obavijesti u istom ciklusu. Podsjetnik sa `requires`
+   (večernji) ćuti dok podsjetnik koji ga zaklanja (dnevni) nije "done" —
+   inače bi se poslije 19:00, kad se prozori preklapaju, telefon dvaput
+   javio za isto. Dok zaklanja, dnevni od 19:00 nosi `messageLate` tekst
+   koji pokriva oboje.
    ========================================================================== */
 
 const webpush = require("web-push");
 const {
   redis, KEYS, TASKS, DAY_TTL,
   sarajevoNow, dueSlot, pushPayload, removeSubscription,
-  intervalMinutes, cronAuthorized, taskStatus
+  intervalMinutes, cronAuthorized, taskStatus, blockedBy, lateFrom
 } = require("./_lib.js");
 
 function setupVapid() {
@@ -60,6 +66,7 @@ module.exports = async function handler(req, res) {
     devices: 0,
     status: {},
     sent: [],
+    blocked: [],
     removed: [],
     errors: []
   };
@@ -73,6 +80,20 @@ module.exports = async function handler(req, res) {
       status[task.id] = taskStatus(task, checked);
     });
     report.status = status;
+
+    /* Koji podsjetnici danas ćute jer ih drugi zaklanja, i koji su "late" —
+       prozor zaklonjenog je otvoren, pa dnevni nosi tekst za oboje. Ne
+       zavisi od uređaja, pa se računa jednom po ciklusu. */
+    const blocked = {};
+    const late = {};
+    TASKS.forEach(function (task) {
+      blocked[task.id] = blockedBy(task, status);
+      const from = lateFrom(task);
+      late[task.id] = from !== null && now.minutes >= from;
+    });
+    report.blocked = TASKS
+      .filter(function (task) { return blocked[task.id]; })
+      .map(function (task) { return task.id + " ← " + blocked[task.id]; });
 
     const ids = await redis.smembers(KEYS.all);
     report.devices = ids.length;
@@ -89,6 +110,10 @@ module.exports = async function handler(req, res) {
 
       for (const task of TASKS) {
         if (task.enabled === false) { continue; }
+
+        /* Zaklonjen drugim podsjetnikom — ćuti, i slot se NE zapisuje, pa
+           stigne prvim ciklusom nakon što se zaklon skine. */
+        if (blocked[task.id]) { continue; }
 
         const sentKey = KEYS.sent(id, task.id, now.date);
         const last = await redis.get(sentKey);
@@ -114,12 +139,12 @@ module.exports = async function handler(req, res) {
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: sub.keys },
-            pushPayload(task, status[task.id]),
+            pushPayload(task, status[task.id], late[task.id]),
             { TTL: 60 * 55, urgency: "normal" }
           );
           report.sent.push({
             device: id.slice(0, 8), task: task.id, slot: slot,
-            status: status[task.id]
+            status: status[task.id], late: !!late[task.id]
           });
         } catch (err) {
           const code = err && err.statusCode;
