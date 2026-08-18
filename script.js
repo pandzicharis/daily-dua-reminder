@@ -173,17 +173,70 @@
     return day;
   }
 
+  /* Samo localStorage. Server se ne dira — za to postoji `pushChange()`,
+     jer se stanje sa servera upisuje ovom istom funkcijom i ne smije se
+     odmah vraćati nazad gore. */
   function saveDayState() {
     var store = readStore();
     store[dateKey] = state;
     writeStore(store);
+  }
 
-    /* Javi serveru koje su sekcije danas gotove, da prestane slati
-       podsjetnike. Stanje ostaje ovdje — gore ide samo "gotovo/nije".
-       Ako notifications.js nije učitan, ovo se preskače. */
-    if (typeof window.mojZikrSyncNotifications === "function") {
-      window.mojZikrSyncNotifications();
-    }
+  /* ------------------------------------------------------------------------
+     Dijeljenje kroz uređaje (sync.js)
+
+     Server je izvor istine, localStorage je keš. Gore se šalje samo ono što
+     je korisnik upravo dirnuo, a dolje se prima cijelo stanje.
+     Ako sync.js nije učitan, aplikacija radi kao i prije — samo lokalno.
+     ------------------------------------------------------------------------ */
+
+  /* Sve što je danas čekirano, u obliku u kojem to server pamti. Kur'an
+     nije stavka liste nego zaseban boolean, pa se dopisuje kao polje
+     "quran" — bez ovoga bi se pri prvom uparivanju izgubio. */
+  function checkedMap() {
+    var map = {};
+    Object.keys(state.items).forEach(function (id) {
+      if (state.items[id]) { map[id] = true; }
+    });
+    if (state.quran) { map.quran = true; }
+    return map;
+  }
+
+  function pushChange(itemId, checked) {
+    if (!window.mojZikrSync) { return; }
+    var changes = {};
+    changes[itemId] = checked;
+    window.mojZikrSync.change(dateKey, changes);
+  }
+
+  function sameChecked(a, b) {
+    var ka = Object.keys(a).filter(function (k) { return a[k]; });
+    var kb = Object.keys(b).filter(function (k) { return b[k]; });
+    if (ka.length !== kb.length) { return false; }
+    return ka.every(function (k) { return b[k] === true; });
+  }
+
+  /* Stanje sa servera. Kur'an dolazi kao obično polje "quran", pa se vadi
+     posebno — u aplikaciji nije stavka liste. */
+  function applyRemoteState(remoteDate, items) {
+    /* Ponoć je prešla dok je zahtjev bio u letu — odgovor je za jučer. */
+    if (remoteDate !== dateKey) { return; }
+
+    var next = {};
+    Object.keys(items || {}).forEach(function (id) {
+      if (id !== "quran" && items[id]) { next[id] = true; }
+    });
+    var quran = !!(items && items.quran);
+
+    /* Bez promjene se ništa ne iscrtava — povlačenje se dešava pri svakom
+       povratku u aplikaciju, a ponovno crtanje bi resetovalo skrol. */
+    if (quran === state.quran && sameChecked(state.items, next)) { return; }
+
+    state.items = next;
+    state.quran = quran;
+    saveDayState();
+    renderSections();
+    updateProgress();
   }
 
   /* ------------------------------------------------------------------------
@@ -343,6 +396,7 @@
     input.addEventListener("change", function () {
       state.items[item.id] = input.checked;
       saveDayState();
+      pushChange(item.id, input.checked);
       article.classList.toggle("is-done", input.checked);
       updateProgress();
       if (input.checked) { focusNext(article); }
@@ -522,6 +576,7 @@
 
     input.addEventListener("change", function () {
       state.quran = input.checked;
+      pushChange("quran", input.checked);
       saveDayState();
       card.classList.toggle("is-done", input.checked);
       updateProgress();
@@ -739,13 +794,34 @@
 
   render();
 
+  /* Uparivanje sa zajedničkim stanjem: ono što je čekirano na drugom
+     uređaju stiže ovamo, a ono što je ovdje čekirano ide gore. */
+  if (window.mojZikrSync) {
+    window.mojZikrSync.onState(applyRemoteState);
+    window.mojZikrSync.start(dateKey, checkedMap());
+  }
+
+  function refreshShared() {
+    if (window.mojZikrSync) { window.mojZikrSync.start(dateKey, checkedMap()); }
+  }
+
   /* Ako je kartica ostala otvorena preko ponoći, na povratku se sam
      otvara novi dan sa čistim spiskom. */
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden && getLocalDateKey() !== dateKey) {
+    if (document.hidden) { return; }
+
+    if (getLocalDateKey() !== dateKey) {
       render();
       window.scrollTo(0, 0);
     }
+
+    /* Povratak u aplikaciju je jedini trenutak kad se stanje sa drugog
+       uređaja može vidjeti — tu se povlači. Ako je nešto ostalo neposlano
+       (bio offline), prvo ode gore. */
+    refreshShared();
   });
+
+  /* Mreža se vratila — pošalji što je čekalo i pokupi tuđe promjene. */
+  window.addEventListener("online", refreshShared);
 
 })();

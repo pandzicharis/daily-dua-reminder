@@ -5,15 +5,17 @@ Dodani su samo PWA sloj i najmanji mogući backend na Vercelu koji šalje
 podsjetnike dok zadatak nije završen.
 
 ```
-iPhone PWA  →  localStorage (postojeće stanje)
-                     ↓ promjena checkboxa
-              POST /api/state   { id, date, tasks }
-                     ↓
-              Upstash Redis (samo "gotovo/nije" + zadnji poslani slot)
+iPhone PWA  ←→  localStorage (offline keš)
+                     ↓ promjena checkboxa          ↑ povlačenje pri otvaranju
+              POST /api/state  { date, items }   GET /api/state?date=
+                     ↓                             ↑
+              Upstash Redis — ZAJEDNIČKI spisak čekiranog za sve uređaje
                      ↓ svakih 15 min
               Vercel Cron → /api/cron
-                     ↓ ako nije gotovo i sljedeći sat je stigao
+                     ↓ ako sekcija nije cijela gotova i sljedeći sat je stigao
               Web Push (VAPID) → service worker → obavijest na iPhoneu
+                                       ↓
+                            (osim ako je aplikacija na ekranu)
 ```
 
 ---
@@ -26,14 +28,15 @@ iPhone PWA  →  localStorage (postojeće stanje)
 |---|---|
 | `manifest.webmanifest` | ime, boje, ikonice, `display: standalone` |
 | `service-worker.js` | prima push, prikazuje obavijest, obrađuje klik, offline keš |
-| `notifications.js` | dozvola, pretplata, uključi/isključi, slanje stanja serveru |
+| `notifications.js` | dozvola, pretplata, uključi/isključi |
+| `sync.js` | zajedničko stanje kroz uređaje: slanje promjena, povlačenje, offline red |
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
 | `icons/*.png` | 96, 192, 512, maskable 192/512, apple-touch 180, favicon 32 |
 | `api/config.js` | `GET` → javni VAPID ključ |
 | `api/subscribe.js` | `POST` upiši pretplatu, `DELETE` obriši |
-| `api/state.js` | `POST` — koji su zadaci danas gotovi |
+| `api/state.js` | `GET` pročitaj / `POST` promijeni zajednički spisak čekiranog |
 | `api/cron.js` | scheduler; jedino mjesto koje odlučuje šalje li se push |
-| `api/_lib.js` | Redis, vrijeme po Sarajevu, validacija, `dueSlot()` |
+| `api/_lib.js` | Redis, vrijeme po Sarajevu, validacija, `dueSlot()`, `taskStatus()` |
 | `api/_dev-store.js` | fajl-baza za lokalni rad kad KV varijable fale (na Vercelu puca namjerno) |
 | `dev-server.js` | lokalni server: statični fajlovi + `/api/*` na portu 3000 |
 | `vercel.json` | cron svakih 15 min + headeri |
@@ -43,11 +46,13 @@ iPhone PWA  →  localStorage (postojeće stanje)
 **Izmijenjeni fajlovi**
 
 - `index.html` — manifest, apple meta oznake, ikonice, dugme za podsjetnike,
-  dva nova `<script>` taga. Postojeći raspored nije diran.
-- `script.js` — dvije male dopune: poziv `mojZikrSyncNotifications()` u
-  `saveDayState()` i prikaz `item.source` u desnom ćošku headera.
+  tri nova `<script>` taga (`sync.js` **prije** `script.js`). Postojeći
+  raspored nije diran.
+- `script.js` — slanje promjene checkboxa (`pushChange`), primanje stanja
+  sa servera (`applyRemoteState`) i prikaz `item.source` u ćošku headera.
 - `style.css` — `.item-source` i `.notify*` stilovi.
-- `data.js` — `source` polja (izvor dove/sure).
+- `data.js` — `source` polja (izvor dove/sure) i `module.exports` na kraju,
+  da server može računati koliko je od sekcije urađeno iz istog spiska.
 
 ---
 
@@ -70,43 +75,60 @@ interneta, pa se nikad ne servira zastarjeli sadržaj.
 4. Server je upiše u Redis i vrati `id` (sha256 endpointa, 32 hex znaka).
    Taj `id` je jedini identitet uređaja — **nema logina, naloga ni lozinki**.
 5. `api/cron.js` šalje push kroz `web-push` potpisan privatnim VAPID ključem.
-6. Service worker uhvati `push` event i prikaže obavijest.
+6. Service worker uhvati `push` event i prikaže obavijest — **osim ako je
+   aplikacija u tom trenutku otvorena i na ekranu**. Tada spisak već stoji
+   pred korisnikom, pa je obavijest samo smetnja. Prozor u pozadini ili
+   druga kartica se ne računa; tamo obavijest svejedno stiže.
+
+   Ovo ne krši `userVisibleOnly`: pravilo traži vidljiv odgovor na push, a
+   otvorena aplikacija to jeste, pa browser ne prikazuje svoju zamjensku
+   obavijest ("site updated in background").
 
 Privatni ključ postoji samo kao env varijabla na serveru i ne pojavljuje se
 ni u jednom fajlu koji ide u browser.
 
-## 4. Kako se sinhronizuje postojeće stanje
+## 4. Kako se stanje dijeli kroz uređaje
 
-Aplikacija i dalje koristi svoj `localStorage` ključ `moj-zikr-state`
-(`{ "2026-08-17": { items: {...}, quran: true } }`). Ništa nije premješteno
-na server.
+Telefon i računar rade nad **istim** spiskom čekiranog. Server je izvor
+istine, a `localStorage` (`moj-zikr-state`) ostaje offline keš — aplikacija
+radi i bez interneta, samo se tada ne vidi šta je urađeno na drugom uređaju.
 
-`saveDayState()` nakon upisa pozove `window.mojZikrSyncNotifications()`.
-Ta funkcija iz **postojećeg** stanja izračuna samo jedno po podsjetniku —
-je li gotov — i pošalje:
+Nema logina. Svi uređaji dijele jedan prostor, `ZIKR_SPACE` (default
+`zajedno`). Ključ u bazi je `items:<prostor>:<datum>`, Redis HASH oblika
+`itemId -> "1"`. Odčekirano se **briše** iz hash-a, pa "nema polja" i "nije
+urađeno" znače isto. Kur'an nije stavka liste nego zaseban boolean u
+aplikaciji, a gore se pamti kao obično polje `quran`.
+
+**Šalju se samo promjene, nikad cijelo stanje:**
 
 ```json
 POST /api/state
-{ "id": "a1b2…", "date": "2026-08-17",
-  "tasks": { "dan": true, "navecer": false } }
+{ "date": "2026-08-18", "items": { "zikr-salavat-50": true } }
 ```
 
-Podsjetnika su dva i gotov je čim je u **bilo kojoj** njegovoj sekciji
-čekirana **bilo koja** stavka (za Kur'an: kad je stranica proučena):
+To je ono što čuva dva uređaja od međusobnog gaženja. Da se šalje cijelo
+stanje, uređaj koji je bio offline vratio bi nazad sve što je drugi u
+međuvremenu odčekirao. Ovako pošalje samo ono što je on sam dirnuo.
+Odgovor je stanje **poslije** upisa, pa uređaj odmah pokupi i tuđe promjene.
 
-| Stanje danas | Jutarnji `dan` (07–21) | Večernji `navecer` (19–23) |
-|---|---|---|
-| ništa čekirano | stiže | stiže |
-| jedna dova ili Kur'an | — | stiže |
-| sve osim *Navečer* | — | stiže |
-| samo *Navečer* | stiže | — |
-| sve | — | — |
+Povlačenje ide na svako otvaranje aplikacije i svaki povratak u nju
+(`visibilitychange`), te kad se mreža vrati (`online`).
 
-Razdvojeni su baš zato da završen dan **ne** utiša večernji podsjetnik.
-Server ne zna ni jednu dovu ni jedan ajet — samo dva boolean-a po danu.
+**Kad nema mreže** promjena ide u red u `localStorage`
+(`moj-zikr-pending`) i šalje se pri prvom sljedećem otvaranju ili povratku
+mreže. Iz reda se skida samo ono što je zaista poslano i što se u
+međuvremenu nije opet promijenilo, pa klik tokom slanja ne može ispasti.
 
-Sinhronizacija ide i pri svakom otvaranju aplikacije, da server stigne
-saznati za promjene napravljene offline.
+**Prvo otvaranje u danu** na nekom uređaju prvo *pošalje* ono što je već
+čekirano lokalno, pa tek onda povuče stanje. Bez toga bi prvo povlačenje
+obrisalo checkmarke napravljene prije nego je dijeljenje uopšte postojalo.
+Šalju se samo čekirane stavke — ništa se ne skida, pa se ne može pregaziti
+ono što je drugi uređaj odčekirao.
+
+> Prostor je zajednički za sve koji otvore aplikaciju — to je namjerno, jer
+> je aplikacija lična i tako telefon i računar odmah vide isto stanje, bez
+> uparivanja. Ako ikad zatreba odvojiti dvije osobe, svakoj treba svoj
+> `ZIKR_SPACE` (i svoj deploy).
 
 ## 5. Kako radi satna logika
 
@@ -138,13 +160,34 @@ ciklus resetuje sam od sebe u ponoć. Sve ističe nakon 3 dana (TTL).
 `endTime` (default 22:00) zaustavlja podsjetnike navečer da telefon ne
 zvoni usred noći.
 
-## 6. Kako server zna da je zadatak završen
+## 6. Kako server zna dokle je zadatak stigao
 
-Isključivo iz `POST /api/state`. Server ne može čitati localStorage dok je
-PWA zatvorena, zato frontend javlja promjenu čim se checkbox pomjeri.
-Ako je telefon bio offline, stanje se pošalje pri sljedećem otvaranju.
-Ako je zadatak odčekiran, `hdel` ga vraća u "nije gotovo" i podsjetnici se
-nastavljaju.
+Server sam prebroji, iz zajedničkog spiska čekiranog i iz sekcija u
+`data.js` (isti fajl koji vidi i aplikacija — `taskStatus()` u `_lib.js`).
+Nema slanja "gotovo/nije" sa uređaja, pa ne može doći do razilaženja između
+onoga što je uređaj stigao javiti i onoga što stvarno stoji u bazi.
+
+Tri ishoda po podsjetniku:
+
+| Koliko je čekirano | Status | Šta stiže |
+|---|---|---|
+| ništa | `none` | `message` — *"Vrijeme je za dnevni zikr."* |
+| nešto, ali ne sve | `partial` | `messagePartial` — *"Nastavi sa zikrom."* |
+| sve | `done` | ništa do sutra |
+
+Dnevni i večernji se broje odvojeno, pa završen dan **ne** utišava večernji
+podsjetnik:
+
+| Stanje danas | Dnevni `dan` (08–21) | Večernji `navecer` (19–23) |
+|---|---|---|
+| ništa čekirano | "Vrijeme je za dnevni zikr." | "Vrijeme je za vecernji zikr." |
+| jedna dova iz *Dove* | "Nastavi sa zikrom." | "Vrijeme je za vecernji zikr." |
+| sve osim *Navečer* | — | "Vrijeme je za vecernji zikr." |
+| sve osim *Navečer* + jedna navečer | — | "Nastavi sa zikrom." |
+| sve | — | — |
+
+Ako je stavka odčekirana, podsjetnici se nastavljaju — `hdel` je vrati u
+"nije urađeno".
 
 ## 7. Kako Vercel Cron pokreće scheduler
 
@@ -193,6 +236,7 @@ podsjetnike.
 | `CRON_SECRET` | da | `openssl rand -hex 32`; bez njega cron vraća 401 |
 | `REMINDER_INTERVAL_MINUTES` | ne | **60** u produkciji, `1` za testiranje |
 | `REMINDER_START_TIME` | ne | samo za test: pomjera startTime svih zadataka |
+| `ZIKR_SPACE` | ne | ime zajedničkog prostora u bazi (default `zajedno`) |
 
 Prihvataju se i `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
 
@@ -276,8 +320,13 @@ Provjera redom:
 1. Pozovi endpoint dvaput zaredom → drugi put je `sent` prazan (nema duplikata).
 2. Sačekaj minutu i pozovi opet → stižu nove obavijesti (novi slot).
 3. Čekiraj **jednu** stavku sekcije *Zikr* u aplikaciji.
-4. Pozovi opet → `dan` više ne dolazi, `navecer` i dalje stiže.
-5. Čekiraj jednu stavku sekcije *Navečer* → sad ćuti i on.
+4. Pozovi opet → `dan` sad dolazi sa tekstom "Nastavi sa zikrom.".
+5. Čekiraj **sve** iz *Kur'an*, *Zikr* i *Dove* → `dan` ćuti, `navecer` stiže.
+6. Čekiraj sve iz *Navečer* → ćuti i on.
+7. Dijeljenje: otvori aplikaciju u drugom browseru (ili incognito prozoru),
+   čekiraj nešto tamo i vrati se u prvi — checkmark je i tu.
+8. Otvorena aplikacija: dok je prozor na ekranu, ručno okidanje crona ne
+   smije dati obavijest; prebaci se na drugi prozor i okini opet — stiže.
 
 Na kraju vrati `REMINDER_INTERVAL_MINUTES=60` i obriši `REMINDER_START_TIME`.
 
@@ -317,7 +366,8 @@ namjerno čista da se može testirati bez ijednog vanjskog poziva.
 - iOS nema `periodicSync` ni pozadinske poslove — zato scheduler mora biti
   na serveru, a ne na telefonu.
 - localStorage u PWA na iOS-u može biti obrisan nakon dužeg nekorištenja —
-  zato je "gotovo/nije" i na serveru, pa podsjetnici rade i tada.
+  zato je pravo stanje na serveru, pa se pri sljedećem otvaranju samo vrati
+  nazad i podsjetnici rade ispravno i tada.
 
 ---
 
@@ -330,7 +380,8 @@ U `notification-tasks.js` dodaj objekat:
   id: "sabah-namaz",         // stabilan; ne mijenjaj naknadno
   sections: ["zikr"],        // id-evi sekcija iz data.js koje pokriva
   title: "Sabah 🌅",
-  message: "Vrijeme je za sabah.",
+  message: "Vrijeme je za sabah.",          // kad nije ništa čekirano
+  messagePartial: "Nastavi sa zikrom.",     // kad je nešto, ali ne sve
   startTime: "05:00",
   endTime: "07:00"
 }
@@ -341,7 +392,10 @@ podsjetnik pokriva **sve** sekcije osim navedenih, pa nova sekcija u
 `data.js` sama ulazi u njega i ne može se zaboraviti dopisati. Tako je
 napisan jutarnji podsjetnik.
 
-Podsjetnik ćuti čim je u bilo kojoj svojoj sekciji čekirana bilo koja
-stavka. Ništa drugo se ne dira — ni API, ni scheduler, ni frontend.
-Server prihvata **samo** id-eve sa ovog spiska; sve ostalo vraća u polju
-`ignored` odgovora `/api/state`.
+Podsjetnik ćuti tek kad je **sve** iz njegovih sekcija čekirano; dok je
+započet, mijenja mu se samo tekst (`messagePartial`). `messagePartial` je
+opciono — bez njega se i u tom slučaju šalje `message`. Ništa drugo se ne
+dira — ni API, ni scheduler, ni frontend.
+
+`/api/state` prihvata **samo** id-eve stavki koje postoje u `data.js`; sve
+ostalo vraća u polju `ignored`.

@@ -10,7 +10,7 @@
    worker ne radi — zakazivanje je isključivo na serveru (Vercel Cron).
    ========================================================================== */
 
-var CACHE = "moj-zikr-v1";
+var CACHE = "moj-zikr-v2";
 
 /* Ikonice obavijesti se keširaju već pri instalaciji. Push može doći kad
    uređaj nema mreže, a obavijest bez ikonice ne izgleda kao da je iz
@@ -75,7 +75,28 @@ self.addEventListener("fetch", function (event) {
 
 /* ------------------------------------------------------------------------
    Push — server je odlučio da treba podsjetnik, ovdje se samo prikazuje
+
+   Osim kad je aplikacija otvorena i na ekranu: tada spisak već stoji pred
+   korisnikom i obavijest o istoj toj stvari je samo smetnja. Nema izuzetka
+   od `userVisibleOnly` — pravilo traži vidljiv odgovor na push, a otvorena
+   aplikacija to jeste, pa browser ne prikazuje svoju zamjensku obavijest.
+   Prozor u pozadini ili druga kartica se NE računa (visibilityState nije
+   "visible") — tamo obavijest svejedno stiže.
    ------------------------------------------------------------------------ */
+
+function appIsOnScreen() {
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true })
+    .then(function (list) {
+      return list.some(function (client) {
+        return client.visibilityState === "visible" &&
+               new URL(client.url).origin === self.location.origin;
+      });
+    })
+    /* Ako se spisak prozora ne može dobiti, radije prikaži obavijest nego
+       da je korisnik nikad ne dobije. */
+    .catch(function () { return false; });
+}
+
 self.addEventListener("push", function (event) {
   var data = {};
   try {
@@ -103,7 +124,12 @@ self.addEventListener("push", function (event) {
     data: { url: data.url || "/", taskId: data.taskId || null }
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    appIsOnScreen().then(function (open) {
+      if (open) { return; }
+      return self.registration.showNotification(title, options);
+    })
+  );
 });
 
 /* ------------------------------------------------------------------------

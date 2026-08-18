@@ -79,6 +79,9 @@
   <script src="quran-pages.js"></script>
   <script src="data.js"></script>
   <script src="notification-tasks.js"></script>
+  <!-- sync.js prije script.js: script.js se pri učitavanju odmah uparuje
+       sa zajedničkim stanjem, pa mu API mora već postojati. -->
+  <script src="sync.js"></script>
   <script src="script.js"></script>
   <script src="notifications.js"></script>
 </body>

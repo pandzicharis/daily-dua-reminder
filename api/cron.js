@@ -14,13 +14,20 @@
    Zato je svejedno koliko puta se cron pokrene između dva sata — korisnik
    dobije tačno jednu obavijest po slotu. Zapis "zadnji poslani slot" veže
    se za dan po Sarajevu, pa novi dan sam kreće od nule.
+
+   Šalje li se uopšte i sa kojim tekstom, zavisi od toga koliko je danas
+   čekirano (zajedničko za sve uređaje, iz /api/state):
+
+     ništa    -> "Vrijeme je za ..."   (task.message)
+     nešto    -> "Nastavi sa zikrom."  (task.messagePartial)
+     sve      -> ne šalje se ništa do sutra
    ========================================================================== */
 
 const webpush = require("web-push");
 const {
   redis, KEYS, TASKS, DAY_TTL,
   sarajevoNow, dueSlot, pushPayload, removeSubscription,
-  intervalMinutes, cronAuthorized
+  intervalMinutes, cronAuthorized, taskStatus
 } = require("./_lib.js");
 
 function setupVapid() {
@@ -51,12 +58,22 @@ module.exports = async function handler(req, res) {
     minutes: now.minutes,
     interval: interval,
     devices: 0,
+    status: {},
     sent: [],
     removed: [],
     errors: []
   };
 
   try {
+    /* Čekirano je zajedničko za sve uređaje, pa se čita JEDNOM po ciklusu i
+       jednom se izračuna dokle je koji podsjetnik došao. */
+    const checked = (await redis.hgetall(KEYS.items(now.date))) || {};
+    const status = {};
+    TASKS.forEach(function (task) {
+      status[task.id] = taskStatus(task, checked);
+    });
+    report.status = status;
+
     const ids = await redis.smembers(KEYS.all);
     report.devices = ids.length;
 
@@ -69,9 +86,6 @@ module.exports = async function handler(req, res) {
         report.removed.push(id.slice(0, 8));
         continue;
       }
-
-      /* Šta je danas već završeno na ovom uređaju (stiglo sa /api/state). */
-      const done = (await redis.hgetall(KEYS.done(id, now.date))) || {};
 
       for (const task of TASKS) {
         if (task.enabled === false) { continue; }
@@ -86,8 +100,8 @@ module.exports = async function handler(req, res) {
           endTime: task.endTime,
           interval: interval,
           lastSlot: last,
-          /* stiglo sa /api/state — jedini izvor "gotovo je" */
-          done: !!done[task.id]
+          /* "none" | "partial" | "done" — iz dijeljenog stanja */
+          status: status[task.id]
         });
 
         if (slot === null) { continue; }
@@ -100,10 +114,13 @@ module.exports = async function handler(req, res) {
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: sub.keys },
-            pushPayload(task),
+            pushPayload(task, status[task.id]),
             { TTL: 60 * 55, urgency: "normal" }
           );
-          report.sent.push({ device: id.slice(0, 8), task: task.id, slot: slot });
+          report.sent.push({
+            device: id.slice(0, 8), task: task.id, slot: slot,
+            status: status[task.id]
+          });
         } catch (err) {
           const code = err && err.statusCode;
           /* 404/410 = pretplata više ne postoji (obrisana aplikacija,

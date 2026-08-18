@@ -433,7 +433,10 @@
       title: "Salavat",
       type: "count",
       repetitions: 30
-    }
+    },
+    /* Samo checkbox i naslov — bez teksta i bez broja ponavljanja.
+       "count" bez `repetitions` ne iscrtava oznaku "Nx". */
+    { id: "navecer-sehadet", title: "Šehadet", type: "count" }
   ];
   
   /* --------------------------------------------------------------------------
@@ -457,3 +460,15 @@
   const QURAN_START_PAGE = 86;
   const QURAN_START_DATE = "2026-08-17"; // YYYY-MM-DD (lokalni datum)
   const QURAN_TOTAL_PAGES = 604;
+
+/* --------------------------------------------------------------------------
+   Node (Vercel funkcije) — u browseru `module` ne postoji, pa se preskače.
+
+   Server računa "koliko je od podsjetnika urađeno" iz istog ovog spiska,
+   da se sadržaj ne bi vodio na dva mjesta koja se mogu razići. Iznad ove
+   linije nema ni jedne zavisnosti od browsera niti od quran-pages.js, pa
+   se fajl smije `require`-ovati.
+   -------------------------------------------------------------------------- */
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { sections: sections };
+}

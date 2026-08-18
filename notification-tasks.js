@@ -7,17 +7,19 @@
 
    Dva podsjetnika, ni jedan više:
 
-     dan      — sve sekcije OSIM navečer (Kur'an, zikr, dove). Stiže dok
-                danas nije čekirano ništa odatle; čim je jedna stavka
-                čekirana, šuti do sutra.
-     navecer  — samo sekcija "Navečer", po istom pravilu.
+     dan      — sve sekcije OSIM navečer (Kur'an, zikr, dove)
+     navecer  — samo sekcija "Navečer"
 
    Razdvojeni su baš zato da dnevni dio može biti završen a navečer još ne —
    i da podsjetnik za navečer u tom slučaju svejedno stigne.
 
    Svaki se ponavlja svakih REMINDER_INTERVAL_MINUTES (60 u produkciji =
-   jedan na sat, 1 lokalno za testiranje) od startTime do endTime, sve dok
-   se ne čekira nešto iz njegovih sekcija.
+   jedan na sat, 1 lokalno za testiranje) od startTime do endTime, a tekst
+   zavisi od toga koliko je urađeno:
+
+     ništa čekirano   -> `message`         (podsjeti da se počne)
+     nešto čekirano   -> `messagePartial`  (podsjeti da se nastavi)
+     sve čekirano     -> ne šalje se ništa do sutra
 
    POLJA:
      id              stabilan ključ; ide u API i u bazu. Server prihvata
@@ -27,15 +29,17 @@
                      Tako nova sekcija u data.js sama ulazi u dnevni
                      podsjetnik i ne može se zaboraviti dopisati.
      title           naslov notifikacije
-     message         tekst notifikacije
+     message         tekst kad danas NIJE čekirano ništa iz njegovih sekcija
+     messagePartial  tekst kad je nešto čekirano ali nije sve. Opciono; bez
+                     njega se i u tom slučaju šalje `message`.
      startTime       "HH:MM" po Europe/Sarajevo — prije toga se ne šalje
      endTime         "HH:MM" — poslije toga se šuti, da telefon ne zvoni
                      usred noći. Opciono; ako se izostavi, default je 22:00.
      enabled         opciono; false privremeno gasi taj podsjetnik
 
-   Pravilo "gotovo je" računa `computeTasks()` u notifications.js. Server ne
-   zna ni jednu dovu — pamti samo boolean po podsjetniku, onaj koji dobije
-   na /api/state.
+   Koliko je urađeno računa server (`taskStatus()` u api/_lib.js), iz istog
+   spiska sekcija iz data.js koji vidi i aplikacija. Tako je odluka o slanju
+   na jednom mjestu i ne zavisi od toga šta je koji uređaj stigao javiti.
    ========================================================================== */
 
 var NOTIFICATION_TASKS = [
@@ -44,6 +48,7 @@ var NOTIFICATION_TASKS = [
     exceptSections: ["navecer"],
     title: "Dnevni zikr ☀️",
     message: "Vrijeme je za dnevni zikr.",
+    messagePartial: "Nastavi sa zikrom.",
     startTime: "08:00",
     endTime: "21:00"
   },
@@ -52,6 +57,7 @@ var NOTIFICATION_TASKS = [
     sections: ["navecer"],
     title: "Vecernji Zikr 🌙",
     message: "Vrijeme je za vecernji zikr.",
+    messagePartial: "Nastavi sa zikrom.",
     startTime: "19:00",
     endTime: "23:00"
   }

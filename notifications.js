@@ -8,16 +8,16 @@
    Ovaj fajl radi samo:
      1. registruje service worker
      2. traži dozvolu i pravi push pretplatu
-     3. javlja serveru koji su zadaci danas gotovi
+     3. crta dugme za uključivanje/isključivanje
 
-   Stanje se NE duplira: čita se postojeći `moj-zikr-state` iz localStorage-a,
-   isti koji koristi script.js.
+   Šta je danas čekirano ne ide odavde — to je posao sync.js, jer je stanje
+   zajedničko za sve uređaje i vrijedi i kad podsjetnici uopšte nisu
+   uključeni. Server sam računa dokle je koji podsjetnik došao.
    ========================================================================== */
 
 (function () {
   "use strict";
 
-  var STORAGE_KEY = "moj-zikr-state";   /* isti ključ kao u script.js */
   var SUB_ID_KEY = "moj-zikr-sub-id";   /* id pretplate koji vrati server */
 
   var el = {
@@ -33,13 +33,6 @@
   /* ------------------------------------------------------------------------
      Pomoćno
      ------------------------------------------------------------------------ */
-
-  function getLocalDateKey() {
-    var d = new Date();
-    return d.getFullYear() + "-" +
-           String(d.getMonth() + 1).padStart(2, "0") + "-" +
-           String(d.getDate()).padStart(2, "0");
-  }
 
   /* VAPID javni ključ dolazi kao base64url string, a pushManager traži
      Uint8Array — otuda ova konverzija. */
@@ -62,97 +55,6 @@
   function isStandalone() {
     return window.navigator.standalone === true ||
            window.matchMedia("(display-mode: standalone)").matches;
-  }
-
-  /* ------------------------------------------------------------------------
-     Stanje zadataka — čita se iz POSTOJEĆEG localStorage stanja
-     ------------------------------------------------------------------------ */
-
-  /* Sekcije koje podsjetnik pokriva: ili one nabrojane u `sections`, ili sve
-     osim onih u `exceptSections`. Drugi oblik postoji da nova sekcija u
-     data.js sama uđe u dnevni podsjetnik. */
-  function sectionsFor(task) {
-    if (task.sections) {
-      return sections.filter(function (section) {
-        return task.sections.indexOf(section.id) !== -1;
-      });
-    }
-
-    var except = task.exceptSections || [];
-    return sections.filter(function (section) {
-      return except.indexOf(section.id) === -1;
-    });
-  }
-
-  /* Podsjetnik je "gotov" čim je u BILO KOJOJ njegovoj sekciji čekirana bilo
-     koja stavka. Ako je korisnik počeo, nema potrebe da ga telefon dalje
-     zove; šta je od liste ostalo vidi u aplikaciji.
-
-     Dnevni i večernji se računaju odvojeno — zato završen dan ne utišava
-     podsjetnik za navečer.
-
-     Kur'an je poseban jer se pamti kao `quran: true`, ne kao stavka liste. */
-  function computeTasks() {
-    var day;
-
-    try {
-      var store = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-      day = store[getLocalDateKey()] || {};
-    } catch (e) {
-      day = {};
-    }
-
-    var items = (day && day.items) || {};
-    var out = {};
-
-    NOTIFICATION_TASKS.forEach(function (task) {
-      out[task.id] = sectionsFor(task).some(function (section) {
-        if (section.kind === "quran") { return day.quran === true; }
-
-        return (section.items || []).some(function (item) {
-          return items[item.id] === true;
-        });
-      });
-    });
-
-    return out;
-  }
-
-  /* ------------------------------------------------------------------------
-     Sinhronizacija sa serverom
-     ------------------------------------------------------------------------ */
-
-  var syncPending = false;
-
-  /* Zove se iz script.js pri svakoj promjeni checkboxa. Ako uređaj nije
-     pretplaćen, ne šalje se ništa — aplikacija radi i bez notifikacija. */
-  function syncState() {
-    var id = localStorage.getItem(SUB_ID_KEY);
-    if (!id) { return; }
-
-    /* Više checkboxa zaredom = jedan zahtjev. Ovo je samo grupisanje
-       poziva u istom trenutku, ne raspored slanja notifikacija. */
-    if (syncPending) { return; }
-    syncPending = true;
-
-    Promise.resolve().then(function () {
-      syncPending = false;
-      return fetch("/api/state", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: id,
-          date: getLocalDateKey(),
-          completed: computeTasks()
-        })
-      });
-    }).then(function (res) {
-      /* Server ne zna za ovu pretplatu (baza očišćena, drugi deploy...) —
-         zaboravi id da se pri sljedećem uključivanju napravi nova. */
-      if (res && res.status === 404) { localStorage.removeItem(SUB_ID_KEY); }
-    }).catch(function () {
-      /* Offline — sinhronizovaće se pri sljedećoj promjeni ili otvaranju. */
-    });
   }
 
   /* ------------------------------------------------------------------------
@@ -231,9 +133,6 @@
       .then(function (data) {
         if (!data || !data.id) { throw new Error("server nije vratio id"); }
         localStorage.setItem(SUB_ID_KEY, data.id);
-        /* Odmah javi šta je danas već urađeno, da ne stigne suvišan
-           podsjetnik za zadatak koji je gotov. */
-        syncState();
         render();
       })
       .catch(function (err) {
@@ -324,7 +223,6 @@
         localStorage.removeItem(SUB_ID_KEY);
       }
       render();
-      syncState();      /* uskladi stanje pri svakom otvaranju */
     }).catch(function () { render(); });
 
     /* Klik na notifikaciju kad je aplikacija već otvorena. */
@@ -339,8 +237,5 @@
   } else {
     render();
   }
-
-  /* script.js ovo zove nakon svake promjene checkboxa. */
-  window.mojZikrSyncNotifications = syncState;
 
 })();

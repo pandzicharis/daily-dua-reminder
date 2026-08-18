@@ -1,21 +1,30 @@
 /* ==========================================================================
-   POST /api/state
-   { id, date, completed: { "zikr": true, "kuran": false } }
-   ili kraći oblik za jedan zadatak:
-   { id, date, taskId: "zikr", completed: true }
+   /api/state — zajednički spisak čekiranog, isti za sve uređaje.
 
-   Server ne čuva aplikaciju — čuva SAMO odgovor na pitanje "je li ovaj
-   zadatak danas gotov". To je sve što scheduleru treba da zna treba li
-   slati podsjetnik. Cijeli ostatak stanja ostaje u localStorage.
+     GET  /api/state?date=2026-08-18
+          -> { date, items: { "zikr-salavat-50": true, "quran": true } }
+
+     POST /api/state
+          { date, items: { "zikr-salavat-50": true, "quran": false } }
+          -> { date, items: <cijelo stanje poslije upisa>, ignored: [] }
+
+   POST prima SAMO promjene ("delta"), nikad cijelo stanje. To je namjerno:
+   ako telefon nešto odčekira dok je računar offline, računar poslije pošalje
+   samo ono što je on promijenio i ne vraća nazad tuđe odčekirano. Zato se
+   dva uređaja ne gaze međusobno iako nema ni logina ni verzija.
+
+   Odčekirano se BRIŠE iz hash-a (HDEL) — "nema polja" i "nije urađeno"
+   znače isto, pa ne treba čuvati nule.
+
+   Server i dalje ne zna nijednu dovu napamet: prihvata samo id-eve koji
+   postoje u data.js, i to za današnji datum (± jedan dan zbog ponoći).
    ========================================================================== */
 
+const url = require("url");
 const {
   redis, KEYS, DAY_TTL,
-  findTask, readJson, validDate, sarajevoNow
+  validItemId, readJson, validDate, sarajevoNow
 } = require("./_lib.js");
-
-/* subId() vraća 32 hex znaka — sve drugo je smeće i ne dira bazu. */
-const ID_RE = /^[a-f0-9]{32}$/;
 
 /* Prihvata se samo današnji datum po Sarajevu, plus dan lijevo-desno zbog
    ponoći i telefona sa pomjerenim satom. Historija se ne prepisuje. */
@@ -27,68 +36,78 @@ function dateAllowed(date) {
   return Math.abs(d - t) <= day;
 }
 
+/* HGETALL vrati { id: "1" } ili null -> { id: true }, oblik koji očekuje
+   aplikacija. */
+async function readItems(date) {
+  const raw = (await redis.hgetall(KEYS.items(date))) || {};
+  const out = {};
+  Object.keys(raw).forEach(function (id) {
+    if (raw[id]) { out[id] = true; }
+  });
+  return out;
+}
+
 module.exports = async function handler(req, res) {
   try {
-    if (req.method !== "POST") {
-      res.setHeader("Allow", "POST");
+    const isGet = req.method === "GET";
+    const isPost = req.method === "POST";
+
+    if (!isGet && !isPost) {
+      res.setHeader("Allow", "GET, POST");
       return res.status(405).json({ error: "metoda nije dozvoljena" });
     }
 
-    const body = readJson(req) || {};
-    const id = body.id;
-    const date = body.date;
+    const body = isPost ? (readJson(req) || {}) : {};
+    /* GET nosi datum u query stringu, POST u body-ju. */
+    /* Vercel popuni req.query sam; lokalni dev-server ne, pa se URL parsira. */
+    const date = isGet
+      ? String((req.query && req.query.date) ||
+               (url.parse(req.url, true).query || {}).date || "")
+      : body.date;
 
-    if (typeof id !== "string" || !ID_RE.test(id)) {
-      return res.status(400).json({ error: "neispravan id" });
-    }
     if (!validDate(date) || !dateAllowed(date)) {
       return res.status(400).json({ error: "neispravan datum" });
     }
 
-    /* Uređaj mora biti pretplaćen — inače se stanje ne prima. */
-    const known = await redis.exists(KEYS.sub(id));
-    if (!known) {
-      return res.status(404).json({ error: "pretplata ne postoji" });
+    /* Odgovor se nikad ne kešira — dvije sekunde stare liste su gore nego
+       nikakve, jer bi vratile checkmarke koje je drugi uređaj upravo skinuo. */
+    res.setHeader("Cache-Control", "no-store");
+
+    if (isGet) {
+      return res.status(200).json({ date: date, items: await readItems(date) });
     }
 
-    /* Svi oblici zahtjeva se svedu na isti objekat { taskId: bool }:
-       frontend šalje "tasks", a prihvata se i "completed" te kraći oblik
-       za jedan zadatak { taskId, completed }. */
-    let completed = body.tasks || body.completed;
-    if (typeof body.taskId === "string") {
-      completed = {};
-      completed[body.taskId] = body.completed === true;
-    }
-    if (!completed || typeof completed !== "object" || Array.isArray(completed)) {
-      return res.status(400).json({ error: "nedostaje completed" });
+    const items = body.items;
+    if (!items || typeof items !== "object" || Array.isArray(items)) {
+      return res.status(400).json({ error: "nedostaje items" });
     }
 
-    const key = KEYS.done(id, date);
-    const doneNow = {};
+    const set = {};
     const clear = [];
     const ignored = [];
 
-    Object.keys(completed).slice(0, 50).forEach(function (taskId) {
-      /* Nepoznat id se tiho preskače — spisak zadataka je jedini izvor. */
-      if (!findTask(taskId)) { ignored.push(taskId); return; }
-      if (completed[taskId] === true) {
-        doneNow[taskId] = 1;
-      } else {
-        /* Odčekirano = ponovo nezavršeno, podsjetnici se nastavljaju. */
-        clear.push(taskId);
-      }
+    /* Gornja granica je iznad ukupnog broja stavki u data.js — dovoljno da
+       prođe i "čekiraj sve odjednom", a da zahtjev ne može biti proizvoljno
+       velik. */
+    Object.keys(items).slice(0, 200).forEach(function (id) {
+      /* Nepoznat id se tiho preskače — data.js je jedini izvor. */
+      if (!validItemId(id)) { ignored.push(id); return; }
+      if (items[id] === true) { set[id] = "1"; } else { clear.push(id); }
     });
 
-    if (Object.keys(doneNow).length) {
-      await redis.hset(key, doneNow);
-    }
-    if (clear.length) {
-      await redis.hdel(key, ...clear);
-    }
-    /* Zapis živi samo par dana i sam ističe — novi dan kreće čist. */
+    const key = KEYS.items(date);
+    if (Object.keys(set).length) { await redis.hset(key, set); }
+    if (clear.length) { await redis.hdel(key, ...clear); }
+    /* Zapis živi par dana i sam ističe — novi dan kreće čist. */
     await redis.expire(key, DAY_TTL);
 
-    return res.status(200).json({ ok: true, ignored: ignored });
+    /* Vraća se stanje POSLIJE upisa, da uređaj odmah pokupi i ono što je
+       drugi uređaj u međuvremenu promijenio. */
+    return res.status(200).json({
+      date: date,
+      items: await readItems(date),
+      ignored: ignored
+    });
 
   } catch (e) {
     return res.status(500).json({ error: "greška servera" });

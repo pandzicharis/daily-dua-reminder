@@ -6,8 +6,19 @@
 const crypto = require("crypto");
 const { Redis } = require("@upstash/redis");
 const TASKS = require("../notification-tasks.js");
+const SECTIONS = require("../data.js").sections;
 
 const TZ = "Europe/Sarajevo";
+
+/* ------------------------------------------------------------------------
+   Prostor = jedan zajednički spisak čekiranog, isti za sve uređaje.
+
+   Aplikacija nema login; ovo je lična aplikacija i namjerno je tako da
+   telefon i računar odmah vide isto stanje, bez uparivanja. Ako ikad
+   zatreba odvojiti dvije osobe, dovoljno je svakoj dati svoj ZIKR_SPACE
+   (i svoj deploy) — ostatak koda ne zna ni za šta drugo.
+   ------------------------------------------------------------------------ */
+const SPACE = (process.env.ZIKR_SPACE || "zajedno").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "zajedno";
 
 /* Koliko dana čuvamo dnevne zapise. Treba nam samo današnji, ali par dana
    viška pokriva prelazak ponoći i zone. Sve ističe samo od sebe. */
@@ -35,6 +46,67 @@ const redis = (KV_URL && KV_TOKEN)
 /* Server nikad ne vjeruje id-u iz zahtjeva — mora biti sa spiska. */
 function findTask(id) {
   return TASKS.find(function (t) { return t.id === id; }) || null;
+}
+
+/* Sekcije koje podsjetnik pokriva: ili one nabrojane u `sections`, ili sve
+   osim onih u `exceptSections`. Drugi oblik postoji da nova sekcija u
+   data.js sama uđe u dnevni podsjetnik i ne može se zaboraviti dopisati. */
+function sectionsFor(task) {
+  if (task.sections) {
+    return SECTIONS.filter(function (section) {
+      return task.sections.indexOf(section.id) !== -1;
+    });
+  }
+  const except = task.exceptSections || [];
+  return SECTIONS.filter(function (section) {
+    return except.indexOf(section.id) === -1;
+  });
+}
+
+/* Sve što se može čekirati. Kur'an nije stavka liste — pamti se kao jedno
+   polje "quran" — pa ulazi u spisak ručno. Sve van ovog skupa je smeće i
+   ne ulazi u bazu. */
+const ITEM_IDS = (function () {
+  const set = new Set();
+  SECTIONS.forEach(function (section) {
+    if (section.kind === "quran") { set.add("quran"); return; }
+    (section.items || []).forEach(function (item) { set.add(item.id); });
+  });
+  return set;
+})();
+
+function validItemId(id) {
+  return typeof id === "string" && ITEM_IDS.has(id);
+}
+
+/* Koliko je od jednog podsjetnika urađeno — jedina osnova za odluku o
+   slanju i o tekstu obavijesti.
+
+     "none"     ništa čekirano   -> podsjeti da se počne
+     "partial"  nešto čekirano   -> podsjeti da se nastavi
+     "done"     sve čekirano     -> do sutra ništa
+
+   `checked` je ono što vrati HGETALL nad KEYS.items(date). */
+function taskStatus(task, checked) {
+  const map = checked || {};
+  let total = 0;
+  let done = 0;
+
+  sectionsFor(task).forEach(function (section) {
+    const ids = (section.kind === "quran")
+      ? ["quran"]
+      : (section.items || []).map(function (item) { return item.id; });
+
+    ids.forEach(function (id) {
+      total += 1;
+      if (map[id]) { done += 1; }
+    });
+  });
+
+  /* Prazan podsjetnik nema šta da podsjeti — tretira se kao gotov. */
+  if (total === 0) { return "done"; }
+  if (done === 0) { return "none"; }
+  return done >= total ? "done" : "partial";
 }
 
 /* ------------------------------------------------------------------------
@@ -73,10 +145,15 @@ function parseTime(hhmm) {
 const KEYS = {
   all: "subs",                                        /* SET svih id-eva */
   sub: function (id) { return "sub:" + id; },         /* pretplata (JSON) */
-  done: function (id, date) {                         /* HASH taskId -> 1 */
-    return "done:" + id + ":" + date;
-  },
-  sent: function (id, taskId, date) {                 /* zadnji poslani slot */
+
+  /* Čekirano za jedan dan — HASH itemId -> "1", zajednički za sve uređaje.
+     Kur'an je isti takav zapis, pod poljem "quran". Odčekirano se BRIŠE iz
+     hash-a (HDEL), pa "nema polja" i "nije urađeno" znače isto. */
+  items: function (date) { return "items:" + SPACE + ":" + date; },
+
+  /* Zadnji poslani slot ostaje PO UREĐAJU — stanje se dijeli, ali svaki
+     uređaj svoju obavijest dobija sam za sebe. */
+  sent: function (id, taskId, date) {
     return "sent:" + id + ":" + taskId + ":" + date;
   }
 };
@@ -144,14 +221,20 @@ const DEFAULT_END_TIME = "22:00";
    `url` je ono što service worker otvori na klik: podsjetnik koji pokriva
    jednu sekciju vodi pravo na nju, a dnevni pokriva više njih pa vodi na
    vrh aplikacije. */
-function pushPayload(task) {
+function pushPayload(task, status) {
   const one = (task.sections && task.sections.length === 1)
     ? task.sections[0]
     : null;
 
+  /* Započeto pa stalo -> "nastavi", inače uobičajena napomena. Kad je sve
+     gotovo, ovamo se uopšte ne dolazi — dueSlot() prije toga vrati null. */
+  const body = (status === "partial" && task.messagePartial)
+    ? task.messagePartial
+    : task.message;
+
   return JSON.stringify({
     title: task.title,
-    body: task.message,
+    body: body,
     tag: task.id,
     taskId: task.id,
     url: one ? "/#sec-" + one : "/"
@@ -170,11 +253,12 @@ function pushPayload(task) {
    padaju u isti slot, a slot se šalje samo jednom. Odatle idempotentnost:
    ni deset pokretanja u istom satu ne mogu dati dvije obavijesti.
 
-   opts = { minutes, startTime, endTime, interval, lastSlot, done }
+   opts = { minutes, startTime, endTime, interval, lastSlot, status }
    ------------------------------------------------------------------------ */
 function dueSlot(opts) {
-  /* Zadatak je danas završen — do sutra ništa. */
-  if (opts.done) { return null; }
+  /* Zadatak je danas u cijelosti završen — do sutra ništa. Djelimično
+     urađen NE utišava podsjetnik; mijenja mu samo tekst (pushPayload). */
+  if (opts.status === "done") { return null; }
 
   const start = parseTime(opts.startTime);
   if (start === null) { return null; }
@@ -220,9 +304,10 @@ function cronAuthorized(req) {
 }
 
 module.exports = {
-  TZ, DAY_TTL, TASKS, DEFAULT_END_TIME,
+  TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
-  findTask, sarajevoNow, parseTime, subId, dueSlot, pushPayload,
+  findTask, sectionsFor, taskStatus, validItemId,
+  sarajevoNow, parseTime, subId, dueSlot, pushPayload,
   readJson, validSubscription, validDate,
   removeSubscription, intervalMinutes, cronAuthorized
 };
