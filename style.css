@@ -76,6 +76,7 @@ h1, h2, h3, p {
   margin: 0 auto;
   padding-left: var(--gutter);
   padding-right: var(--gutter);
+  padding-bottom: 16px;
 }
 
 /* --------------------------------------------------------------------------
@@ -233,8 +234,8 @@ h1, h2, h3, p {
 /* Dovoljno zraka na dnu da zadnja kartica ne visi uz ivicu ekrana,
    i da je auto-skrol može podići na sredinu. */
 main {
-  padding-bottom: 64px;
-  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  padding-bottom: 72px;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
 .section {

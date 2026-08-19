@@ -923,6 +923,8 @@
     if (!celebration || celebration.hidden) { return; }
     celebration.hidden = true;
     document.body.classList.remove("no-scroll");
+    /* Vrati se na početak stranice — korisnik vidi popis ispočetka. */
+    window.scrollTo(0, 0);
     /* Fokus se vraća na dugme kojim se ekran ponovo otvara — tastatura ne
        ostaje "nigdje" nakon zatvaranja. */
     if (fab && !fab.hidden) { fab.focus(); }
