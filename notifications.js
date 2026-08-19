@@ -180,23 +180,27 @@
 
     if (!supported) {
       el.btn.hidden = true;
-      setStatus("Ovaj browser ne podržava podsjetnike.");
+      setStatus("Ovaj browser ne podržava podsjetnike.", "warn");
       return;
     }
 
     var on = !!localStorage.getItem(SUB_ID_KEY) &&
              Notification.permission === "granted";
 
+    /* Dugme je samo ikonica — naziv ide u aria-label i title, nikad u
+       textContent, jer bi tekst obrisao ugrađeni SVG. */
+    var label = on ? "Isključi podsjetnike" : "Uključi podsjetnike";
     el.btn.disabled = false;
-    el.btn.textContent = on ? "Isključi podsjetnike" : "Uključi podsjetnike";
+    el.btn.setAttribute("aria-label", label);
+    el.btn.title = label;
     el.btn.classList.toggle("is-on", on);
 
-    if (on) {
-      setStatus("Podsjetnici su uključeni.", "ok");
-    } else if (Notification.permission === "denied") {
+    /* Uključeno/isključeno se vidi na samoj ikonici — ispisuje se samo ono
+       što korisnik treba popraviti. */
+    if (!on && Notification.permission === "denied") {
       setStatus("Obavijesti su blokirane u postavkama telefona.", "warn");
     } else {
-      setStatus("Podsjetnik dok dnevni zikr ne bude završen.");
+      setStatus("");
     }
   }
 

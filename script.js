@@ -683,8 +683,11 @@
     document.body.classList.remove("no-scroll");
   }
 
+  /* Escape zatvara ono što je gore: prvo završni ekran, pa drawer. */
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && drawer && !drawer.hidden) { closePageView(); }
+    if (e.key !== "Escape") { return; }
+    if (celebration && !celebration.hidden) { closeCelebration(); return; }
+    if (drawer && !drawer.hidden) { closePageView(); }
   });
 
   /* ------------------------------------------------------------------------
@@ -776,10 +779,180 @@
     el.ringFill.style.strokeDashoffset = RING_LENGTH * (1 - percent / 100);
     el.ringLabel.textContent = percent + "%";
     el.progress.setAttribute("aria-valuenow", String(percent));
+
+    /* Dan je završen — "Elhamdulillah" preko cijelog ekrana. Ako dan više
+       nije završen (odčekirano, ili je prešla ponoć), ekran se sam skloni. */
+    var complete = done === total;
+    if (complete && !wasComplete) {
+      openCelebration();
+    } else if (!complete) {
+      closeCelebration();
+    }
+    /* Dugme za povratak na završni ekran stoji dok je dan završen. */
+    showFab(complete);
+    wasComplete = complete;
   }
 
   /* ------------------------------------------------------------------------
-     12. Start
+     12. "Elhamdulillah" — završni ekran
+
+     Pali se kad dan postane završen: i u trenutku kad zadnja stavka bude
+     označena, i pri otvaranju aplikacije na već završen dan (refresh).
+     `wasComplete` pamti prethodno stanje da se ekran ne bi vraćao sam
+     nakon što ga korisnik zatvori — dok je dan završen, na listi ostaje
+     dugme kojim se vraća namjerno.
+     ------------------------------------------------------------------------ */
+
+  var celebration = null;
+  var wasComplete = false;
+
+  /* Znak rub el-hizb — isti kao u headeru, samo veći. */
+  function makeMark(className) {
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", className);
+    svg.setAttribute("viewBox", "0 0 48 48");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.4");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+
+    /* dva ukrštena kvadrata: drugi je prvi zarotiran za 45° */
+    ["", "rotate(45 24 24)"].forEach(function (transform) {
+      var rect = document.createElementNS(NS, "rect");
+      rect.setAttribute("x", "11");
+      rect.setAttribute("y", "11");
+      rect.setAttribute("width", "26");
+      rect.setAttribute("height", "26");
+      rect.setAttribute("rx", "1.5");
+      if (transform) { rect.setAttribute("transform", transform); }
+      svg.appendChild(rect);
+    });
+
+    var circle = document.createElementNS(NS, "circle");
+    circle.setAttribute("cx", "24");
+    circle.setAttribute("cy", "24");
+    circle.setAttribute("r", "4.6");
+    svg.appendChild(circle);
+
+    return svg;
+  }
+
+  /* Tačkasti prsten oko znaka — vrti se u suprotnom smjeru od njega. */
+  function makeHaloRing() {
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "halo-ring");
+    svg.setAttribute("viewBox", "0 0 48 48");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+
+    var circle = document.createElementNS(NS, "circle");
+    circle.setAttribute("cx", "24");
+    circle.setAttribute("cy", "24");
+    circle.setAttribute("r", "22.5");
+    circle.setAttribute("stroke", "currentColor");
+    circle.setAttribute("stroke-width", "1");
+    circle.setAttribute("stroke-linecap", "round");
+    circle.setAttribute("stroke-dasharray", "0.6 4");
+    svg.appendChild(circle);
+
+    return svg;
+  }
+
+  function buildCelebration() {
+    celebration = document.createElement("div");
+    celebration.className = "celebrate";
+    celebration.setAttribute("role", "dialog");
+    celebration.setAttribute("aria-modal", "true");
+    celebration.setAttribute("aria-label", "Dnevni zikr je završen");
+    celebration.hidden = true;
+
+    /* Pozadina: zlatni sjaj koji diše i tri talasa koji se šire bez kraja. */
+    var glow = document.createElement("div");
+    glow.className = "celebrate-glow";
+    celebration.appendChild(glow);
+
+    var rings = document.createElement("div");
+    rings.className = "celebrate-rings";
+    rings.setAttribute("aria-hidden", "true");
+    for (var i = 0; i < 3; i++) {
+      var ripple = document.createElement("span");
+      ripple.className = "ripple";
+      rings.appendChild(ripple);
+    }
+    celebration.appendChild(rings);
+
+    var inner = document.createElement("div");
+    inner.className = "celebrate-inner";
+
+    var halo = document.createElement("div");
+    halo.className = "celebrate-halo";
+    halo.appendChild(makeHaloRing());
+    halo.appendChild(makeMark("celebrate-mark"));
+    inner.appendChild(halo);
+
+    inner.appendChild(makeArabic("الْحَمْدُ لِلَّهِ", "celebrate-arabic"));
+    inner.appendChild(makeParagraph("celebrate-word", "Elhamdulillah"));
+    inner.appendChild(makeParagraph(
+      "celebrate-note", "Cijeli dnevni zikr je završen."
+    ));
+
+    var back = document.createElement("button");
+    back.type = "button";
+    back.className = "celebrate-btn";
+    back.textContent = "Nazad na dove";
+    back.addEventListener("click", closeCelebration);
+    inner.appendChild(back);
+
+    celebration.appendChild(inner);
+    document.body.appendChild(celebration);
+  }
+
+  function openCelebration() {
+    if (!celebration) { buildCelebration(); }
+    /* display:none prekida CSS animacije, pa se vraćanjem na ekran svaka
+       sama pokrene ispočetka — i drugi put istog dana. */
+    celebration.hidden = false;
+    document.body.classList.add("no-scroll");
+    celebration.querySelector(".celebrate-btn").focus();
+  }
+
+  function closeCelebration() {
+    if (!celebration || celebration.hidden) { return; }
+    celebration.hidden = true;
+    document.body.classList.remove("no-scroll");
+    /* Fokus se vraća na dugme kojim se ekran ponovo otvara — tastatura ne
+       ostaje "nigdje" nakon zatvaranja. */
+    if (fab && !fab.hidden) { fab.focus(); }
+  }
+
+  /* Dugme na dnu liste kojim se vraća na završni ekran. Postoji samo dok je
+     dan završen — prije toga se nema gdje vratiti. */
+  var fab = null;
+
+  function buildFab() {
+    fab = document.createElement("button");
+    fab.type = "button";
+    fab.className = "celebrate-fab";
+    fab.appendChild(makeMark("fab-mark"));
+    fab.appendChild(document.createTextNode("Elhamdulillah"));
+    fab.addEventListener("click", function () { openCelebration(); });
+    document.body.appendChild(fab);
+  }
+
+  function showFab(on) {
+    if (on && !fab) { buildFab(); }
+    if (!fab) { return; }
+    fab.hidden = !on;
+    /* Dodatni prostor na dnu strane da dugme ne stoji preko zadnje kartice
+       ni preko dugmeta za podsjetnike. */
+    document.body.classList.toggle("has-fab", on);
+  }
+
+  /* ------------------------------------------------------------------------
+     13. Start
      ------------------------------------------------------------------------ */
 
   function render() {

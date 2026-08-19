@@ -21,7 +21,7 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 
@@ -70,9 +70,22 @@
 
   <main class="wrap" id="sectionsRoot"></main>
 
-  <!-- Podsjetnici — jedina nova kontrola u sučelju -->
+  <!-- Podsjetnici — jedina nova kontrola u sučelju.
+       Bez teksta: stanje se vidi po ispuni dugmeta, a precrtano zvono znači
+       da su podsjetnici isključeni. Naziv za čitače ekrana postavlja
+       notifications.js (aria-label i title). -->
   <section class="wrap notify">
-    <button type="button" class="notify-btn" id="notifyBtn">Uključi podsjetnike</button>
+    <button type="button" class="notify-btn" id="notifyBtn"
+            aria-label="Uključi podsjetnike" title="Uključi podsjetnike">
+      <svg class="notify-icon" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        <!-- crta se samo dok su podsjetnici isključeni (CSS) -->
+        <path class="bell-slash" d="M4 4l16 16"/>
+      </svg>
+    </button>
     <p class="notify-status" id="notifyStatus"></p>
   </section>
 
