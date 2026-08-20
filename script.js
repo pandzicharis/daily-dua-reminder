@@ -301,6 +301,7 @@
     progress: document.getElementById("progress"),
     ringFill: document.getElementById("ringFill"),
     ringLabel: document.getElementById("ringLabel"),
+    groups: document.getElementById("progressGroups"),
     root: document.getElementById("sectionsRoot")
   };
 
@@ -796,7 +797,170 @@
   }
 
   /* ------------------------------------------------------------------------
-     11. Progress
+     11. Progress — trake po dobu dana
+
+     Prsten u headeru broji cijeli dan zajedno, pa na 60% ne piše je li
+     dnevni zikr gotov ili je stao na pola. Ove trake su ta razlika.
+
+     Podjela se NE piše ovdje — čita se iz notification-tasks.js, iz istog
+     spiska po kojem stižu obavijesti. Tako "Dan" na ekranu pokriva tačno
+     ono što pokriva i dnevni podsjetnik, i nova sekcija u data.js sama
+     upadne u pravu traku umjesto da se podjela vodi na dva mjesta.
+     ------------------------------------------------------------------------ */
+
+  /* Naslovi iz notification-tasks.js nose emoji i riječ "zikr" ("Dnevni
+     zikr ☀️") — u traci širine jednog stupca treba samo doba dana. */
+  var GROUP_LABELS = {
+    dan: "Dan",
+    navecer: "Navečer",
+    petak: "Petak"
+  };
+
+  /* Trake za dan koji je na ekranu. Podsjetnik bez svog dana (petak subotom)
+     otpada, isto kao i sekcija na koju se odnosi. */
+  function progressGroups() {
+    if (typeof NOTIFICATION_TASKS === "undefined") { return []; }
+
+    var wd = weekdayFromKey(dateKey);
+
+    var groups = NOTIFICATION_TASKS.filter(function (task) {
+      if (task.enabled === false) { return false; }
+      return !task.days || task.days.indexOf(wd) !== -1;
+    }).map(function (task) {
+      /* `sections` je izričit spisak; `exceptSections` znači "sve ostalo",
+         pa se rješava iz sekcija koje TOG dana postoje. */
+      var ids = task.sections || visible.filter(function (section) {
+        return (task.exceptSections || []).indexOf(section.id) === -1;
+      }).map(function (section) { return section.id; });
+
+      return {
+        id: task.id,
+        label: GROUP_LABELS[task.id] || task.title,
+        sections: ids
+      };
+    });
+
+    /* Redoslijed traka prati redoslijed sekcija na ekranu, a ne redoslijed
+       u notification-tasks.js — petačka sekcija je gore, pa je i traka prva.
+       Grupa bez ijedne vidljive sekcije ide na kraj i ionako otpada ispod. */
+    function firstSectionIndex(group) {
+      var best = visible.length;
+      visible.forEach(function (section, index) {
+        if (group.sections.indexOf(section.id) !== -1 && index < best) {
+          best = index;
+        }
+      });
+      return best;
+    }
+
+    return groups.sort(function (a, b) {
+      return firstSectionIndex(a) - firstSectionIndex(b);
+    });
+  }
+
+  /* Urađeno/ukupno za date sekcije. Kur'anska sekcija nema `items` — ona je
+     jedna stavka i pamti se u `state.quran`, isto kao u ukupnom računu. */
+  function countGroup(sectionIds) {
+    var done = 0;
+    var total = 0;
+
+    visible.forEach(function (section) {
+      if (sectionIds.indexOf(section.id) === -1) { return; }
+
+      if (section.kind === "quran") {
+        total += 1;
+        if (state.quran) { done += 1; }
+        return;
+      }
+
+      (section.items || []).forEach(function (item) {
+        total += 1;
+        if (state.items[item.id]) { done += 1; }
+      });
+    });
+
+    return { done: done, total: total };
+  }
+
+  /* Iscrtane trake i potpis sastava po kojem su iscrtane — dok se sastav ne
+     promijeni (drugi dan, druge sekcije), mijenja se samo ispuna. */
+  var groupNodes = [];
+  var groupSignature = null;
+
+  function buildGroupBars(groups) {
+    el.groups.textContent = "";
+
+    groupNodes = groups.map(function (group) {
+      var wrapper = document.createElement("div");
+      wrapper.className = "pgroup";
+      wrapper.setAttribute("role", "progressbar");
+      wrapper.setAttribute("aria-valuemin", "0");
+      wrapper.setAttribute("aria-valuemax", "100");
+
+      var head = document.createElement("div");
+      head.className = "pgroup-head";
+
+      var label = document.createElement("span");
+      label.className = "pgroup-label";
+      label.textContent = group.label;
+
+      var count = document.createElement("span");
+      count.className = "pgroup-count";
+
+      head.appendChild(label);
+      head.appendChild(count);
+
+      var track = document.createElement("div");
+      track.className = "pgroup-track";
+
+      var fill = document.createElement("div");
+      fill.className = "pgroup-fill";
+      track.appendChild(fill);
+
+      wrapper.appendChild(head);
+      wrapper.appendChild(track);
+      el.groups.appendChild(wrapper);
+
+      return { group: group, node: wrapper, count: count, fill: fill };
+    });
+  }
+
+  function updateGroupBars() {
+    /* Grupa bez ijedne stavke se ne crta — prazna traka ne govori ništa. */
+    var groups = progressGroups().filter(function (group) {
+      return countGroup(group.sections).total > 0;
+    });
+
+    var signature = groups.map(function (group) {
+      return group.id + ":" + group.sections.join(",");
+    }).join("|");
+
+    if (signature !== groupSignature) {
+      buildGroupBars(groups);
+      groupSignature = signature;
+    }
+
+    groupNodes.forEach(function (entry) {
+      var tally = countGroup(entry.group.sections);
+      var percent = Math.round((tally.done / tally.total) * 100);
+      var complete = tally.done === tally.total;
+
+      entry.node.classList.toggle("is-done", complete);
+      entry.fill.style.transform = "scaleX(" + (percent / 100) + ")";
+      /* Brojka stoji uvijek, i kad je gotovo — završeno se vidi po boji
+         (zlatna traka i brojka), ne po tome što je brojka nestala. */
+      entry.count.textContent = tally.done + "/" + tally.total;
+
+      entry.node.setAttribute("aria-valuenow", String(percent));
+      entry.node.setAttribute(
+        "aria-label",
+        entry.group.label + ": " + tally.done + " od " + tally.total
+      );
+    });
+  }
+
+  /* ------------------------------------------------------------------------
+     11b. Progress — ukupno (prsten u headeru i brojke po sekcijama)
      ------------------------------------------------------------------------ */
 
   function updateProgress() {
@@ -828,6 +992,8 @@
     el.ringFill.style.strokeDashoffset = RING_LENGTH * (1 - percent / 100);
     el.ringLabel.textContent = percent + "%";
     el.progress.setAttribute("aria-valuenow", String(percent));
+
+    updateGroupBars();
 
     /* Dan je završen — "Elhamdulillah" preko cijelog ekrana. Ako dan više
        nije završen (odčekirano, ili je prešla ponoć), ekran se sam skloni. */

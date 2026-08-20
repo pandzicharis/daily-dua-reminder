@@ -109,6 +109,9 @@ h1, h2, h3, p {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  /* Donji razmak iz .wrap ovdje smeta — ispod naslovnog reda stoje trake,
+     pa razmak određuje njihov `margin-top`, a ne padding reda iznad. */
+  padding-bottom: 0;
 }
 
 .header-left {
@@ -226,6 +229,96 @@ h1, h2, h3, p {
 
 .progress.is-complete .ring-label {
   color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   5b. Trake po dobu dana — ispod naslovnog reda
+
+   Prsten iznad broji CIJELI dan, pa iz njega ne piše je li stao dnevni ili
+   večernji dio. Trake su ta razlika: po jedna za svaki podsjetnik koji tog
+   dana postoji ("Dan", "Navečer", petkom i "Petak"), pa se na prvi pogled
+   vidi da je dnevni zikr završen a da se večernji tek čeka.
+
+   Namjerno tanko i bez okvira — traka je crta, ne kartica.
+   -------------------------------------------------------------------------- */
+.header-progress {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  /* .wrap daje donji padding; ovdje ga pravi sam header. */
+  padding-bottom: 0;
+}
+
+/* Prazan dok JS ne iscrta trake — bez ovoga bi margina pravila prazan red. */
+.header-progress:empty {
+  display: none;
+}
+
+.pgroup {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.pgroup-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.pgroup-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  /* Uska tri stupca petkom — naslov se skraćuje, traka ostaje čitava. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pgroup-count {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pgroup-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--background-alt);
+  overflow: hidden;
+}
+
+/* Puni se skaliranjem po X — jeftinije od animiranja širine i ne izaziva
+   ponovni raspored strane pri svakoj kvačici. */
+.pgroup-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.4s ease, background 0.3s ease;
+}
+
+/* Završeno — zlatno, isto kao prsten na 100%. Brojka ostaje (11/11). */
+.pgroup.is-done .pgroup-fill {
+  background: var(--accent);
+}
+
+.pgroup.is-done .pgroup-label,
+.pgroup.is-done .pgroup-count {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pgroup-fill {
+    transition: none;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -1460,6 +1553,7 @@ body.has-devp-ribbon {
 
 /* Prsten se odnosi na prikazani dan, ne na današnji — prigušen je da se to
    ne pomiješa. */
-body.is-preview .ring-wrap {
+body.is-preview .ring-wrap,
+body.is-preview .header-progress {
   opacity: 0.55;
 }
