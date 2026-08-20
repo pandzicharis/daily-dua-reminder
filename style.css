@@ -254,9 +254,44 @@ h1, h2, h3, p {
   display: none;
 }
 
+/* Traka je i kontrola: klik vodi na prvu neobavljenu stavku te grupe. Zato je
+   <button>, a ne <div> — svodi se na svoj sadržaj da izgled ostane isti. */
 .pgroup {
   flex: 1 1 0;
   min-width: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pgroup:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Kratko prigušenje na dodir — jedini znak da je klik primljen; poslije toga
+   ionako sve odlazi na drugo mjesto ekrana. */
+.pgroup:active {
+  opacity: 0.6;
+}
+
+/* Miš preko trake pojača naslov i brojku. Završena grupa ostaje zlatna —
+   `:not(.is-done)` je tu da hover ne pregazi tu boju. */
+@media (hover: hover) {
+  .pgroup:not(.is-done):hover .pgroup-label,
+  .pgroup:not(.is-done):hover .pgroup-count {
+    color: var(--text);
+  }
 }
 
 .pgroup-head {

@@ -270,6 +270,11 @@
     saveDayState();
     renderSections();
     updateProgress();
+
+    /* Ovo je prvo uparivanje nakon otvaranja: localStorage je bio zastario
+       (čekirano je na drugom uređaju), pa je i skok pri otvaranju pao na
+       pogrešno mjesto. Ponovi ga sa stanjem koje je sada tačno. */
+    openAtFirstUnfinished();
   }
 
   /* ------------------------------------------------------------------------
@@ -444,6 +449,7 @@
     });
 
     input.addEventListener("change", function () {
+      openScrollPending = false;
       state.items[item.id] = input.checked;
       saveDayState();
       pushChange(item.id, input.checked);
@@ -464,6 +470,32 @@
      auto-skrol znao potpuno izostati. Ovako se ponaša svugdje isto. */
   var scrollAnim = null;
 
+  /* Skok "gdje si stao" vrijedi SAMO pri otvaranju. Prva kvačica znači da
+     dalje skrol vodi čovjek (focusNext), pa mu se strana više ne premješta
+     sama — ni kad stanje stigne sa drugog uređaja. */
+  var openScrollPending = true;
+
+  /* Trajanje animacije po udaljenosti: pomjeraj za pola ekrana mora biti
+     brz, a desetak ekrana (otvaranje na "Navečer") ne smije proći kao mrlja.
+     Gornja granica je da se ni najduži pomjeraj ne čeka. */
+  function scrollDuration(distance) {
+    return Math.min(900, Math.max(420, Math.round(distance / 8)));
+  }
+
+  /* Čovjek je uzeo skrol u svoje ruke: animacija u toku odustaje (dvije ruke
+     na istom skrolu se otimaju i strana poskakuje), a skok pri otvaranju se
+     otkazuje — ako je krenuo sam, ne premještaj ga.
+
+     Sluša se `wheel`/`touchstart`, a NE `scroll`: `scroll` opali i na naš
+     vlastiti skrol, pa bi animacija otkazala samu sebe u prvom frejmu. */
+  ["wheel", "touchstart", "keydown"].forEach(function (name) {
+    window.addEventListener(name, function () {
+      openScrollPending = false;
+      if (scrollAnim) { cancelAnimationFrame(scrollAnim); scrollAnim = null; }
+    }, { passive: true });
+  });
+
+  /* `duration` je opciono: bez njega se računa iz udaljenosti. */
   function smoothScrollTo(targetY, duration) {
     var maxY = Math.max(
       0,
@@ -475,6 +507,10 @@
 
     if (scrollAnim) { cancelAnimationFrame(scrollAnim); scrollAnim = null; }
     if (Math.abs(delta) < 2) { return; }
+
+    if (duration === undefined) { duration = scrollDuration(Math.abs(delta)); }
+    /* Trajanje 0 znači bez animacije — skoči odmah. */
+    if (!duration) { window.scrollTo(0, endY); return; }
 
     /* Ako korisnik traži manje animacija — skoči odmah. */
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -513,19 +549,69 @@
     }, 120);
   }
 
-  function scrollCardIntoView(card) {
+  function scrollCardIntoView(card, duration) {
     var rect = card.getBoundingClientRect();
     /* Kartica viša od ekrana se ne može centrirati — poravnaj joj vrh. */
     var offset = rect.height >= window.innerHeight - 40
       ? 16
       : (window.innerHeight - rect.height) / 2;
-    smoothScrollTo(window.pageYOffset + rect.top - offset, 420);
+    smoothScrollTo(window.pageYOffset + rect.top - offset, duration);
+  }
+
+  /* Sekcija se podiže tako da joj naslov stane ISPOD sticky headera — bez
+     ovoga header prekrije baš onaj naslov zbog kojeg se skrolalo. Granica se
+     mjeri, ne prepisuje: header je viši na širem ekranu, a testna traka ga
+     dodatno spusti. */
+  function scrollSectionIntoView(section, duration) {
+    var header = document.querySelector(".app-header");
+    var edge = header ? header.getBoundingClientRect().bottom : 0;
+    var top = section.getBoundingClientRect().top + window.pageYOffset;
+    smoothScrollTo(top - edge - 12, duration);
+  }
+
+  /* Kartice u redoslijedu u kojem stoje na ekranu. Sa spiskom id-eva sekcija
+     samo iz njih — redoslijed prati `visible` (ekran), a ne spisak. */
+  function cardsIn(sectionIds) {
+    var roots = [];
+
+    if (sectionIds) {
+      visible.forEach(function (section) {
+        if (sectionIds.indexOf(section.id) === -1) { return; }
+        var node = document.getElementById("sec-" + section.id);
+        if (node) { roots.push(node); }
+      });
+    } else {
+      roots.push(el.root);
+    }
+
+    return roots.reduce(function (acc, root) {
+      return acc.concat(Array.prototype.slice.call(
+        root.querySelectorAll(".item, .quran-card")
+      ));
+    }, []);
+  }
+
+  function firstUnfinished(cards) {
+    for (var i = 0; i < cards.length; i++) {
+      if (!cards[i].classList.contains("is-done")) { return cards[i]; }
+    }
+    return null;
+  }
+
+  /* Prva kartica svoje sekcije se ne centrira nego se podigne cijela sekcija:
+     tako se vidi i naslov iznad, pa je jasno gdje si. Sama kartica na vrhu
+     ekrana izgleda kao da je spisak počeo od sredine. */
+  function scrollToCard(card, duration) {
+    var section = card.closest ? card.closest(".section") : null;
+    if (section && section.querySelector(".item, .quran-card") === card) {
+      scrollSectionIntoView(section, duration);
+      return;
+    }
+    scrollCardIntoView(card, duration);
   }
 
   function focusNext(currentCard) {
-    var cards = Array.prototype.slice.call(
-      el.root.querySelectorAll(".item, .quran-card")
-    );
+    var cards = cardsIn(null);
     var start = cards.indexOf(currentCard);
     for (var i = start + 1; i < cards.length; i++) {
       if (!cards[i].classList.contains("is-done")) {
@@ -625,6 +711,7 @@
     });
 
     input.addEventListener("change", function () {
+      openScrollPending = false;
       state.quran = input.checked;
       pushChange("quran", input.checked);
       saveDayState();
@@ -887,15 +974,27 @@
   var groupNodes = [];
   var groupSignature = null;
 
+  /* Klik na traku vodi na prvu neobavljenu stavku TE grupe — isto pravilo po
+     kojem se aplikacija i otvara. Kad je grupa završena, vodi na njen početak:
+     traka i tada nekud vodi, a ne "nikud". */
+  function goToGroup(group) {
+    var cards = cardsIn(group.sections);
+    var target = firstUnfinished(cards) || cards[0];
+    if (target) { scrollToCard(target); }
+  }
+
   function buildGroupBars(groups) {
     el.groups.textContent = "";
 
     groupNodes = groups.map(function (group) {
-      var wrapper = document.createElement("div");
+      /* Dugme, ne <div>: traka je kontrola (vodi na svoj dio spiska), pa mora
+         doći na tastaturu i pod čitač ekrana kao kontrola. Mjerač napretka
+         (role="progressbar") seli na samu traku ispod naslova — dugme kojem
+         se prepiše ta rola prestane biti dugme za čitača ekrana. */
+      var wrapper = document.createElement("button");
+      wrapper.type = "button";
       wrapper.className = "pgroup";
-      wrapper.setAttribute("role", "progressbar");
-      wrapper.setAttribute("aria-valuemin", "0");
-      wrapper.setAttribute("aria-valuemax", "100");
+      wrapper.addEventListener("click", function () { goToGroup(group); });
 
       var head = document.createElement("div");
       head.className = "pgroup-head";
@@ -912,6 +1011,9 @@
 
       var track = document.createElement("div");
       track.className = "pgroup-track";
+      track.setAttribute("role", "progressbar");
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
 
       var fill = document.createElement("div");
       fill.className = "pgroup-fill";
@@ -921,7 +1023,13 @@
       wrapper.appendChild(track);
       el.groups.appendChild(wrapper);
 
-      return { group: group, node: wrapper, count: count, fill: fill };
+      return {
+        group: group,
+        node: wrapper,
+        track: track,
+        count: count,
+        fill: fill
+      };
     });
   }
 
@@ -951,10 +1059,16 @@
          (zlatna traka i brojka), ne po tome što je brojka nestala. */
       entry.count.textContent = tally.done + "/" + tally.total;
 
-      entry.node.setAttribute("aria-valuenow", String(percent));
-      entry.node.setAttribute(
+      entry.track.setAttribute("aria-valuenow", String(percent));
+      entry.track.setAttribute(
         "aria-label",
         entry.group.label + ": " + tally.done + " od " + tally.total
+      );
+      /* Naziv dugmeta kaže i stanje i šta se klikom dobije. */
+      entry.node.setAttribute(
+        "aria-label",
+        entry.group.label + ": " + tally.done + " od " + tally.total + " — " +
+        (complete ? "idi na početak" : "idi na prvu neobavljenu stavku")
       );
     });
   }
@@ -1212,7 +1326,52 @@
     refreshShared();
   }
 
+  /* Otvaranje na mjestu gdje se stalo. Ako je dio dana već obavljen, spisak
+     se otvara na prvoj NEOBAVLJENOJ stavci — bez ovoga se, kad je dnevni zikr
+     gotov, do "Navečer" mora skrolati kroz cijeli spisak. Ako danas nije
+     čekirano ništa, ostaje se na vrhu: nema se šta preskočiti. */
+  function anyChecked() {
+    if (state.quran) { return true; }
+    return allItems().some(function (item) { return !!state.items[item.id]; });
+  }
+
+  function openAtFirstUnfinished() {
+    if (!openScrollPending || !anyChecked()) { return; }
+
+    /* Sve je završeno — gore je "Elhamdulillah", nema se gdje ići. */
+    var target = firstUnfinished(cardsIn(null));
+    if (!target) { return; }
+
+    /* Animirano, a ne skokom: vidi se da je strana otišla nadole do prve
+       neobavljene stavke, pa je jasno šta se dogodilo i šta je iznad.
+       Trajanje se računa iz udaljenosti (vidi `scrollDuration`). */
+    scrollToCard(target);
+  }
+
   render();
+
+  /* Skok se mjeri kad su fontovi tu: arapski Hafs je krupan, pa dok se ne
+     učita, kartice imaju druge visine i skok padne na pogrešno mjesto.
+
+     Uz to i vremenska granica — ako `document.fonts.ready` ne stigne (stariji
+     webview, kartica koja se ne iscrtava), bolje skočiti na neizmjerenom
+     rasporedu nego ne skočiti nikako. Šta prvo stigne, to vrijedi. */
+  var opened = false;
+
+  function openOnce() {
+    if (opened) { return; }
+    opened = true;
+    openAtFirstUnfinished();
+  }
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      requestAnimationFrame(openOnce);
+    });
+    setTimeout(openOnce, 500);
+  } else {
+    requestAnimationFrame(openOnce);
+  }
 
   /* ------------------------------------------------------------------------
      Ono što testni panel (dev-panel.js) smije dirati.
