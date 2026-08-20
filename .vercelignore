@@ -16,6 +16,10 @@ dev-server.js
 # Ručne skripte — pokreću se sa računara, ne sa servera.
 scripts/
 
+# Testni panel — alat za lokalni rad. script.js ga učitava samo kad je
+# hostname localhost, pa u produkciji ne postoji ni zahtjev za njim.
+dev-panel.js
+
 # IZVORI generisanih fajlova, ne koriste se u runtime-u:
 #   quran_by_pages.json  ->  quran-pages.js   (generisano)
 #   Hafs.ttf             ->  font.css         (ugrađen kao base64)

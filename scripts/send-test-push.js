@@ -1,12 +1,15 @@
 /* ==========================================================================
    scripts/send-test-push.js — pošalji obavijest ODMAH, za probu izgleda.
 
-     npm run test-push            -> prvi zadatak sa spiska
-     npm run test-push zikr       -> baš taj zadatak
-     npm run test-push sve        -> sve zadatke redom
-     npm run test-push dan late   -> varijanta `messageLate` (tekst koji
-                                     dnevni nosi od 19:00, kad zaklanja
-                                     večernji, pa pokriva oboje)
+     npm run test-push               -> prvi zadatak sa spiska
+     npm run test-push petak         -> baš taj zadatak
+     npm run test-push sve           -> sve zadatke redom
+     npm run test-push petak dio     -> varijanta `messagePartial` ("Nastavi
+                                        sa zikrom.") — kako izgleda kad je
+                                        nešto već čekirano
+     npm run test-push dan late      -> varijanta `messageLate` (tekst koji
+                                        dnevni nosi od 19:00, kad zaklanja
+                                        večernji, pa pokriva oboje)
 
    Zaobilazi raspored (slot, startTime, "gotovo je") jer služi samo da se
    vidi kako obavijest izgleda na uređaju. Prava pravila su u api/cron.js
@@ -43,9 +46,14 @@ const {
 
 const arg = (process.argv[2] || "").toLowerCase();
 
-/* Drugi argument "late" pokazuje kako izgleda obavijest koja pokriva oboje.
+/* Drugi argument bira varijantu teksta:
+     "late"        -> `messageLate` (obavijest koja pokriva oboje)
+     "dio"/"partial" -> `messagePartial` ("Nastavi sa zikrom.")
+   Bez njega ide `message`, tekst za "danas još ništa nije čekirano".
    Sve ostalo o rasporedu i ovdje se preskače — vidi zaglavlje. */
-const late = (process.argv[3] || "").toLowerCase() === "late";
+const variant = (process.argv[3] || "").toLowerCase();
+const late = variant === "late";
+const status = (variant === "dio" || variant === "partial") ? "partial" : "none";
 
 function pickTasks() {
   if (!arg) { return [TASKS[0]]; }
@@ -88,7 +96,7 @@ function pickTasks() {
     if (!sub || !sub.endpoint) { continue; }
 
     for (const task of tasks) {
-      const payload = pushPayload(task, "none", late);
+      const payload = pushPayload(task, status, late);
       const shown = JSON.parse(payload);
 
       try {

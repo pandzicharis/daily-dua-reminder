@@ -40,6 +40,8 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `api/_lib.js` | Redis, vrijeme po Sarajevu, validacija, `dueSlot()`, `taskStatus()` |
 | `api/_dev-store.js` | fajl-baza za lokalni rad kad KV varijable fale (na Vercelu puca namjerno) |
 | `dev-server.js` | lokalni server: statični fajlovi + `/api/*` na portu 3000 |
+| `dev-panel.js` | **testni panel — samo localhost:** glumi dan i vrijeme, okida podsjetnik |
+| `scripts/check-schedule.js` | cijeli dan podsjetnika na papiru + provjera pravila (`npm run raspored`) |
 | `vercel.json` | cron svakih 15 min + headeri |
 | `package.json` | `web-push`, `@upstash/redis` |
 | `.env.example` | spisak varijabli |
@@ -54,6 +56,9 @@ iPhone PWA  ←→  localStorage (offline keš)
 - `style.css` — `.item-source` i `.notify*` stilovi.
 - `data.js` — `source` polja (izvor dove/sure) i `module.exports` na kraju,
   da server može računati koliko je od sekcije urađeno iz istog spiska.
+  Uz to sekcija **Petak** (`days: [5]`) i dvije čiste funkcije koje su jedini
+  izvor istine o tome koje sekcije postoje kojeg dana: `weekdayFromKey()` i
+  `sectionsForDate()`.
 
 ---
 
@@ -177,10 +182,69 @@ Oba podsjetnika idu do ponoći (`"00:00"`). Dnevni namjerno ne staje u 21:00:
 dok nije završen, večernji je zaklonjen, pa bi poslije 21:00 nastupila tišina
 baš kad je najviše ostalo neurađeno.
 
+### Petak
+
+Petkom do podneva stiže **samo** petački podsjetnik — dnevni tog dana ćuti dok
+petački traje, pa telefon nikad ne javi dvaput za isto.
+
+**Kad se petačke stavke ne urade do podneva** (`petak` je `none` ili
+`partial`):
+
+| Vrijeme | Šta stiže |
+|---|---|
+| 08:00 | `petak` slot 0 — *„Petak je! Nemoj zaboraviti zikr."* |
+| 09:00 – 11:00 | `petak` slot 1, 2, 3 — djelimično urađen: *„Petak je! Nastavi sa zikrom."* |
+| 12:00 | `petak` slot 4 — **zadnji petački** |
+| 12:01–12:59 | tišina |
+| 13:00 | `dan` slot 5 — *„Vrijeme je za dnevni zikr."* |
+| 14:00 … 23:00 | `dan` slot 6 … 15, pa `navecer` po starim pravilima |
+
+**Kad se petačke stavke završe prije 12:00**, zaklon pada **odmah** i dnevni
+nastavlja kao svaki drugi dan — dakle satni ritam od 08:00, pa `navecer` po
+starom. Djelimično urađen petak zaklon **ne** skida.
+
+Dva polja u konfiguraciji drže to na mjestu:
+
+- **`petak` ima `endTime: "12:59"`, ne `"12:00"`.** Uz interval od sat vremena
+  je 12:00–12:59 **jedan slot** (4), pa se može poslati samo jednom i najranije
+  u 12:00 — „zadnja u 12:00" i dalje vrijedi. Da tu stoji `"12:00"`, cron koji
+  se pokrene u 12:03 vidio bi `minutes > end` i zadnja petačka obavijest bi se
+  **tiho izgubila** (isto pravilo po kojem podsjetnik za 07:00 stiže u 07:32
+  kad cron zakasni).
+- **`dan` ima `quietFor: ["petak"]`.** Ćuti dok petački ima otvoren prozor
+  **i** dok nije završen. Granica nije prepisana nigdje — čita se iz
+  `endTime`-a petačkog, pa „12:59" postoji na jednom mjestu.
+
+Zato dvije obavijesti ne mogu stići jedna do druge: dnevni šalje samo kad
+petački ćuti (završen je) ili kad mu je prozor prošao, a u oba slučaja
+petački ne šalje ništa.
+
+`quietFor` i `requires` su namjerno **dva** pojma:
+
+| | Uslov | Kad pada |
+|---|---|---|
+| `requires` (večernji ← dnevni) | samo sadržaj | kad onaj drugi bude završen, pa makar u 23:00 |
+| `quietFor` (dnevni ← petak) | sadržaj **i** sat | kad onaj drugi bude završen **ili** kad mu prozor prođe |
+
+> Zašto dnevnom ne stoji samo `requires: ["petak"]`: `blockedBy()` nema
+> vremensku komponentu, pa bi djelimično urađen petak ugasio dnevni **cijeli
+> dan**.
+>
+> A zašto ni „petkom pomjeri `startTime` na 13:00": start se ne smije mijenjati
+> unutar dana. Slot se računa od njega (`floor((sada − start) / interval)`), pa
+> kad bi start zavisio od toga je li petak završen, odčekiravanje jedne stavke
+> u 11:30 dalo bi manji slot od već zapisanog, `last >= slot` bi se poklopio i
+> dnevni bi zanijemio **do sutra**. `quietFor` taj problem ne može imati jer
+> start ostaje 08:00 cijeli dan.
+
 ## 6. Kako server zna dokle je zadatak stigao
 
 Server sam prebroji, iz zajedničkog spiska čekiranog i iz sekcija u
 `data.js` (isti fajl koji vidi i aplikacija — `taskStatus()` u `_lib.js`).
+Broje se **sekcije koje tog dana postoje** (`sectionsForDate(datum)`), pa
+petačke stavke ulaze u račun samo petkom. Validacija upisa je namjerno
+**dan-neovisna** (`validItemId` zna sve id-eve iz `data.js`): kvačica
+napravljena u petak u 23:58 a poslana u subotu u 00:03 mora proći.
 Nema slanja "gotovo/nije" sa uređaja, pa ne može doći do razilaženja između
 onoga što je uređaj stigao javiti i onoga što stvarno stoji u bazi.
 
@@ -191,6 +255,32 @@ Tri ishoda po podsjetniku:
 | ništa | `none` | `message` — *"Vrijeme je za dnevni zikr."* |
 | nešto, ali ne sve | `partial` | `messagePartial` — *"Nastavi sa zikrom."* |
 | sve | `done` | ništa do sutra |
+
+Petački podsjetnik ima ista tri ishoda:
+
+| Koliko je od sekcije *Petak* čekirano | Šta stiže |
+|---|---|
+| ništa | *„Petak je! Nemoj zaboraviti zikr."* |
+| nešto, ali ne sve | *„Petak je! Nastavi sa zikrom."* |
+| sve | ništa do sutra |
+
+Sekcija *Petak* **ne ulazi** u dnevni podsjetnik: `dan` ima
+`exceptSections: ["navecer", "petak"]`, jer obje te sekcije imaju svoj
+podsjetnik. Da se petačke stavke broje i u dnevnom, pet čekiranih petačkih
+stavki i ni jedna dnevna dale bi status `partial` i tekst *„Nastavi sa
+zikrom."* — a dnevni zikr tada nije ni započet. Ovako *počni/nastavi* prati
+samo dnevni dio:
+
+| Petak | Dnevni zikr | `dan` šalje |
+|---|---|---|
+| sve urađeno | ništa | *„Vrijeme je za dnevni zikr."* |
+| sve urađeno | započet | *„Nastavi sa zikrom."* |
+| ništa urađeno | sve urađeno | ćuti — i `navecer` više nije zaklonjen |
+
+Cijena je svjesna: neurađene petačke stavke poslije 12:59 nemaju podsjetnika.
+To je i bila namjera — petački podsjetnik staje u 12:00. Prsten i završni ekran
+i dalje broje **sve** što je tog dana na ekranu (petkom 55 stavki), pa dan nije
+100% dok i petačke stavke nisu urađene.
 
 Dnevni i večernji se broje odvojeno, pa završen dan **ne** utišava večernji
 podsjetnik. Ali prozori im se poslije 19:00 preklapaju, a **dvije obavijesti
@@ -308,25 +398,105 @@ samo instaliranoj PWA.
 
 ## 13. Testiranje cijelog toka
 
-**Lokalno, bez ijednog naloga (najbrži put):**
+### Testni panel u aplikaciji (najlakši put)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Otvori `http://localhost:3000`. `dev-server.js` servira i statične fajlove i
+Otvori `http://localhost:3000` — dolje lijevo stoji dugme **PROBA**. Panel je
+jedino mjesto sa kojeg se provjerava ono što se inače ne može bez čekanja:
+
+| Kontrola | Šta radi |
+|---|---|
+| **Dan** `‹ ›`, *danas*, *prvi petak* | mijenja dan koji **aplikacija prikazuje** — tako se petačka sekcija vidi bez čekanja petka |
+| **Vrijeme** (08:00 … 23:00 ili ručno) | vrijeme koje se **glumi serveru** pri okidanju |
+| **Interval** 60 / 1 min | 60 = kao u produkciji, 1 = svaka minuta je nov slot |
+| **resetuj „poslano"** | uključeno: svaki okidač je nezavisan (pokazuje *prozor*). isključeno: pravi niz kroz dan (12:00 pošalje, 12:15 ćuti jer je slot 4 već poslan) |
+| **Okini — pošalji** | zove pravi `/api/cron` — obavijest stvarno stigne |
+| **samo pokaži** | isto, ali bez slanja i bez upisa (`dry=1`) |
+
+Ispod se ispiše šta je server odlučio: koji podsjetnik, **tačan naslov i
+tekst**, pa prozori i status po podsjetniku i šta je koga zaklonilo. Panel
+ništa ne odlučuje sam — samo prikazuje izvještaj `/api/cron`, pa ne može
+pokazati jedno a produkcija uraditi drugo.
+
+**Recept za petak:** *prvi petak* → interval **60** → resetuj **isključi** →
+okidaj redom 08:00, 09:00, 12:00, 12:15, 13:00, 14:00. Očekivano: četiri
+petačke, zadnja u 12:00, tišina u 12:15, dnevni od 13:00.
+
+Kad se gleda dan koji nije današnji, na vrhu stoji žuta traka *„proba"*:
+kvačice tog dana idu u **odvojen lokalni prostor** (`moj-zikr-proba`), ne
+dijele se sa serverom i ne diraju stvarni spisak.
+
+> **Panel ne postoji nigdje osim na localhostu.** `script.js` ga učitava samo
+> kad je hostname `localhost`/`127.0.0.1`, sam fajl se ne deployuje
+> (`.vercelignore`), a server otvara `/api/cron` bez `CRON_SECRET`-a samo kad
+> se poklope **dvije nezavisne** stvari: `REMINDER_TIME_TRAVEL=1` u okruženju
+> (stavlja se isključivo u `.env.local`) **i** zahtjev sa localhosta
+> (`devUnlocked()` u `api/_lib.js`). Na Vercelu ni jedno ne vrijedi.
+
+### Cijeli dan na papiru
+
+```bash
+npm run raspored                     # petak, ništa čekirano
+npm run raspored -- petak petak-dio  # jedna petačka stavka urađena
+npm run raspored -- četvrtak
+npm run raspored -- petak sve        # sve čekirano -> tišina
+```
+
+Ispiše svaku minutu u kojoj bi obavijest otišla i sa kojim tekstom, zovući
+**isti** `dueSlot()`/`taskStatus()`/`pushPayload()` koji odlučuje u produkciji
+— bez baze, bez mreže, bez pretplate. Uz to provjeri i četiri pravila kroz
+7 dana × 4 obrasca crona (na pun sat, pomjeren na `:07`, svake minute, i
+ispad od 3h) i vrati izlazni kod 1 ako nešto padne:
+
+1. najviše **jedan** podsjetnik po ciklusu — nikad dva bannera jedan do drugog
+2. `petak` samo petkom, najviše 5 puta, zadnji slot ne prije 12:00
+3. petkom u 12:01–12:59 ne kreće **nijedan** novi podsjetnik
+4. `dan` petkom 13:00–23:00, ostalim danima 08:00–23:00
+
+Vrijedi pokrenuti prije deploya.
+
+### Ručno, curl-om
+
+`dev-server.js` servira i statične fajlove i
 `/api/*`, a bez `KV_REST_API_*` varijabli baza pada na `.dev-store.json`
 (fajl u projektu). Otvaranje `index.html` duplim klikom ili preko običnog
 static servera **ne radi** — tamo `/api/` ne postoji, pa dugme javi
 "Backend nije dostupan" ili "Nema veze sa serverom".
 
-U `.env.local` već stoji `REMINDER_INTERVAL_MINUTES=1` i
-`REMINDER_START_TIME=00:00`, pa ručno okidaj scheduler:
+Scheduler se okida ručno:
 
 ```bash
 curl -H "x-cron-secret: $CRON_SECRET" http://localhost:3000/api/cron
 ```
+
+Uz `REMINDER_TIME_TRAVEL=1` (samo lokalno) endpoint prima i izmišljen trenutak
+— isto što panel koristi:
+
+```bash
+# cijeli petak na papiru, bez slanja i bez upisa
+curl "http://localhost:3000/api/cron?dry=1&date=2026-08-21&at=12:00&interval=60&reset=1"
+
+# pravo slanje kao da je petak 12:00
+curl "http://localhost:3000/api/cron?date=2026-08-21&at=12:00&interval=60&reset=1"
+```
+
+| Parametar | Šta radi |
+|---|---|
+| `dry=1` | ne šalji i ne upisuj, samo javi šta bi bilo (radi i u produkciji) |
+| `date=`, `at=` | glumi dan i vrijeme po Sarajevu |
+| `interval=` | nametni interval za taj poziv (bez njega vrijedi `REMINDER_INTERVAL_MINUTES`) |
+| `reset=1` | gledaj dan kao da još ništa nije poslano |
+
+`quiet` u izvještaju kaže koji podsjetnik trenutno ćuti zbog kojeg
+(`"dan ← petak"`), a `blocked` koji čeka da drugi bude završen.
+
+`REMINDER_START_TIME` **nije** za petačke granice: pomjera start *svim*
+zadacima, pa petak i dan padnu u isti ciklus i upravo pravilo „nikad dvije
+obavijesti" postane neprovjerljivo. Za granice služe panel i `npm run raspored`.
 
 Push sa `localhost` radi u Chromeu (localhost se računa kao siguran
 kontekst). Za pravi test na iPhoneu treba HTTPS, dakle deploy.
@@ -364,7 +534,14 @@ Provjera redom:
    smije dati obavijest. Klikni na drugi program (prozor ostaje vidljiv,
    ali više nije fokusiran) pa okini opet — obavijest stiže.
 
+9. Petak: u panelu *prvi petak*, interval 60, resetuj isključeno — pa okidaj
+   08:00, 12:00, 12:15, 13:00. Treba: petačka, petačka, tišina, dnevna.
+10. Ostali dani: isto za četvrtak — petačke sekcije nema, `dan` kreće u 08:00
+    kao i prije.
+
 Na kraju vrati `REMINDER_INTERVAL_MINUTES=60` i obriši `REMINDER_START_TIME`.
+`REMINDER_TIME_TRAVEL=1` smije ostati u `.env.local` — na Vercel ga ne
+stavljati.
 
 **U produkciji:**
 
@@ -423,15 +600,46 @@ U `notification-tasks.js` dodaj objekat:
 }
 ```
 
-Umjesto `sections` može stajati `exceptSections: ["navecer"]` — tada
+Umjesto `sections` može stajati `exceptSections: ["navecer", "petak"]` — tada
 podsjetnik pokriva **sve** sekcije osim navedenih, pa nova sekcija u
 `data.js` sama ulazi u njega i ne može se zaboraviti dopisati. Tako je
-napisan jutarnji podsjetnik.
+napisan dnevni podsjetnik; izuzete su mu upravo one dvije sekcije koje imaju
+svoj podsjetnik.
 
 Podsjetnik ćuti tek kad je **sve** iz njegovih sekcija čekirano; dok je
 započet, mijenja mu se samo tekst (`messagePartial`). `messagePartial` je
 opciono — bez njega se i u tom slučaju šalje `message`. Ništa drugo se ne
 dira — ni API, ni scheduler, ni frontend.
+
+Za podsjetnik koji vrijedi samo nekim danima:
+
+```js
+days: [5]        // 0 = nedjelja … 5 = petak; ostalim danima ćuti
+```
+
+A da jedan podsjetnik utiša drugog **dok traje**:
+
+```js
+quietFor: ["petak"]   // ćuti dok petački ima prozor i nije završen
+```
+
+Zaklon pada sam — kad se onaj drugi završi ili kad mu prozor (`endTime`) prođe.
+Nijedno vrijeme se ne prepisuje. Za zaklon **bez roka** (čekaj da onaj drugi
+bude završen, pa makar do ponoći) služi `requires`.
+
+Dva upozorenja:
+
+- **`exceptSections` automatski uvlači svaku novu sekciju u `dan`.** Dvije
+  posljedice:
+  1. Sekcija koja ima **svoj** podsjetnik mora biti u `exceptSections` (tako su
+     tamo i `navecer` i `petak`), inače se ista stavka broji u dva računa i
+     tekst *počni/nastavi* laže — dnevni bi rekao „Nastavi" zbog tuđih kvačica.
+  2. Za sekciju vezanu za dan sedmice je i filtriranje po danu obavezno — zato
+     `sectionsFor()` gleda `sectionsForDate(datum)`. Bez toga `dan` nikad ne bi
+     bio „done", zvonio bi do 23:00 svaki dan, a `navecer` (`requires:
+     ["dan"]`) ne bi stigao nikad.
+- **Podsjetnik sa prozorom prije 13:00 petkom** mora dobiti `days` ili
+  `quietFor: ["petak"]`, inače se petkom poklopi sa petačkim.
 
 Ako se prozor novog podsjetnika preklapa sa nekim postojećim, dodaj mu
 `requires: ["id-tog-drugog"]` — tada ćuti dok onaj drugi nije završen, pa
@@ -441,3 +649,36 @@ oboje, kao što `dan` od 19:00 nosi "Nemoj zaboraviti proučiti zikr.".
 
 `/api/state` prihvata **samo** id-eve stavki koje postoje u `data.js`; sve
 ostalo vraća u polju `ignored`.
+
+---
+
+## Dodavanje sekcije koja postoji samo nekim danima
+
+U `data.js` dopiši niz stavki i sekciju sa poljem `days`:
+
+```js
+const petak = [
+  { id: "petak-salavati-30", title: "Salavati", type: "count", repetitions: 30 },
+  …
+];
+
+const sections = [
+  { id: "petak", title: "Petak", icon: "mosque", kind: "list", items: petak, days: [5] },
+  …
+];
+```
+
+I to je sve. `sectionsForDate()` je jedini selektor „koje sekcije postoje tog
+dana" i kroz njega ide **i** aplikacija (`renderSections`, `allItems`,
+`updateProgress` — dakle i prsten i završni ekran) **i** server
+(`sectionsFor` → `taskStatus`). Ništa drugo se ne dira: ni API, ni scheduler,
+ni `style.css`.
+
+Dvije stvari na koje treba pripaziti:
+
+- `icon` mora postojati u registru `ICONS` u `script.js`; ako ne postoji,
+  `makeIcon()` vrati `null` i naslov ostane bez ikonice — **tiho**, bez greške.
+- Dan sedmice se svugdje izvodi iz **datum-stringa** preko `weekdayFromKey()`
+  (`Date.UTC(...).getUTCDay()`), nikad iz `new Date().getDay()` ni
+  `new Date("2026-08-21").getDay()` — drugi oblik se parsira kao UTC ponoć pa
+  prevede u lokalnu zonu i zapadno od Londona vrati dan ranije.

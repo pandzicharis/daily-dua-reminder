@@ -16,6 +16,10 @@
      source         izvor dove — Kur'an ili hadis
      repetitions    opciono, prikazuje se kao "50x"
 
+   POLJA SEKCIJE (niz `sections` na dnu fajla):
+     days           opciono; dani sedmice u kojima sekcija postoji
+                    (0 = nedjelja … 5 = petak). Bez njega — svaki dan.
+
    TIPOVI:
      "surah"   -> samo checkbox + naslov, bez teksta (sve sure)
      "count"   -> checkbox + naslov + broj ponavljanja, bez teksta
@@ -440,17 +444,63 @@
   ];
   
   /* --------------------------------------------------------------------------
+     PETAK
+     Postoji SAMO petkom — vidi `days` u nizu `sections` ispod. Ni jedna
+     stavka nema teksta: "count" bez `repetitions` iscrtava samo checkbox i
+     naslov (isto kao navecer-sehadet).
+     -------------------------------------------------------------------------- */
+  const petak = [
+    { id: "petak-salavati-30", title: "Salavati",     type: "count", repetitions: 30 },
+    { id: "petak-kehf",        title: "Sura El-Kehf", type: "surah", source: "Kur'an, El-Kehf" },
+    { id: "petak-sadaka",      title: "Sadaka",       type: "count" },
+    { id: "petak-duha",        title: "Duha namaz",   type: "count" },
+    { id: "petak-kupanje",     title: "Kupanje",      type: "count" }
+  ];
+
+  /* --------------------------------------------------------------------------
      SEKCIJE — redoslijed na ekranu.
      Premjesti stavku u ovom nizu i aplikacija se sama presloži.
      -------------------------------------------------------------------------- */
   /* `icon` bira ikonicu iz registra ICONS u script.js:
-     "book" | "loop" | "hands" | "moon" */
+     "book" | "loop" | "hands" | "moon" | "mosque"
+
+     `days` (opciono) — dani sedmice u kojima sekcija POSTOJI, po JS
+     konvenciji: 0 = nedjelja … 5 = petak, 6 = subota. Sekcija bez `days`
+     postoji svaki dan, pa se postojeće četiri ne diraju. Filtriranje radi
+     `sectionsForDate()` ispod — i aplikacija i server idu kroz njega. */
   const sections = [
-    { id: "quran",   title: "Kur'an",  icon: "book",  kind: "quran" },
-    { id: "zikr",    title: "Zikr",    icon: "loop",  kind: "list", items: zikr },
-    { id: "dove",    title: "Dove",    icon: "hands", kind: "list", items: dove },
-    { id: "navecer", title: "Navečer", icon: "moon",  kind: "list", items: navecer }
+    { id: "petak",   title: "Petak",   icon: "mosque", kind: "list", items: petak, days: [5] },
+    { id: "quran",   title: "Kur'an",  icon: "book",   kind: "quran" },
+    { id: "zikr",    title: "Zikr",    icon: "loop",   kind: "list", items: zikr },
+    { id: "dove",    title: "Dove",    icon: "hands",  kind: "list", items: dove },
+    { id: "navecer", title: "Navečer", icon: "moon",   kind: "list", items: navecer }
   ];
+
+  /* Dan sedmice iz ključa "YYYY-MM-DD": 0 = nedjelja … 5 = petak.
+
+     Ide preko Date.UTC, a NIKAD preko new Date("2026-08-21").getDay(): taj
+     oblik se parsira kao UTC ponoć pa prevede u lokalnu zonu, i zapadno od
+     Londona vrati dan ranije. Vraća -1 za neispravan ključ. */
+  function weekdayFromKey(dateKey) {
+    var parts = String(dateKey || "").split("-");
+    if (parts.length !== 3) { return -1; }
+    var d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+    return isNaN(d.getTime()) ? -1 : d.getUTCDay();
+  }
+
+  /* JEDINI izvor istine za "koje sekcije postoje tog dana" — koriste ga i
+     aplikacija (script.js) i server (api/_lib.js), pa se pravilo ne vodi na
+     dva mjesta koja se mogu razići.
+
+     Prima ISTI ključ datuma pod kojim se pamti čekirano (dateKey u
+     aplikaciji, now.date na serveru), pa se sekcija, spisak čekiranog i
+     podsjetnik prebacuju u novi dan u istom trenutku. */
+  function sectionsForDate(dateKey) {
+    var wd = weekdayFromKey(dateKey);
+    return sections.filter(function (section) {
+      return !section.days || section.days.indexOf(wd) !== -1;
+    });
+  }
   
   /* --------------------------------------------------------------------------
      KUR'AN
@@ -470,5 +520,14 @@
    se fajl smije `require`-ovati.
    -------------------------------------------------------------------------- */
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { sections: sections };
+  module.exports = {
+    /* SVE sekcije, dan-neovisno — iz ovoga se gradi spisak ispravnih id-eva
+       (validacija upisa u api/_lib.js). */
+    sections: sections,
+    /* Sekcije TOG dana — iz ovoga taskStatus() broji dokle je podsjetnik
+       stigao. Dvije stvari, namjerno razdvojene: kvačica napravljena u petak
+       u 23:58 a poslana u subotu u 00:03 mora proći validaciju. */
+    sectionsForDate: sectionsForDate,
+    weekdayFromKey: weekdayFromKey
+  };
 }

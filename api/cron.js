@@ -27,13 +27,49 @@
    inače bi se poslije 19:00, kad se prozori preklapaju, telefon dvaput
    javio za isto. Dok zaklanja, dnevni od 19:00 nosi `messageLate` tekst
    koji pokriva oboje.
+
+   PETAK. Petkom do podneva stiže samo petački podsjetnik (08, 09, 10, 11 i
+   zadnji u 12:00). Dnevni tog dana ima `quietFor: ["petak"]` — ćuti dok
+   petački ima otvoren prozor i dok nije završen, pa je prva dnevna obavijest
+   u 13:00. Čim se petačke stavke završe, zaklon pada i dnevni nastavlja po
+   uobičajenim pravilima, kao svaki drugi dan.
+
+   PROBA. Tri parametra, svi zaštićeni istim CRON_SECRET-om:
+
+     dry=1              vrati izvještaj, ali ne pošalji ni jedan push i ne
+                        upiši ni jedan slot. Radi uvijek, i u produkciji.
+     date=2026-08-21    glumi datum (dan sedmice!)  — vidi ispod
+     at=12:00           glumi vrijeme po Sarajevu   — vidi ispod
+     interval=60        nametni interval za taj poziv (bez ovoga vrijedi
+                        REMINDER_INTERVAL_MINUTES iz okruženja)
+     reset=1            obriši zapise "zadnji poslani slot" za taj datum,
+                        da se isti dan može odglumiti više puta
+     checked=id1,id2    odluči po OVOM spisku čekiranog umjesto po bazi (panel
+                        šalje ono što je na ekranu). Ne upisuje ništa.
+
+   `date`, `at` i `reset` uz `dry=1` rade svugdje (ništa ne mijenjaju). Za
+   PRAVO slanje sa izmišljenim vremenom mora stajati REMINDER_TIME_TRAVEL=1
+   u okruženju — to se stavlja SAMO lokalno, u .env.local. Bez te varijable
+   pravo slanje uvijek ide po stvarnom vremenu, pa se produkcija ne može
+   navesti da pošalje obavijest za pogrešan trenutak.
+
+     # cijeli petak na papiru, bez slanja
+     curl -H "x-cron-secret: $CRON_SECRET" \
+       "localhost:3000/api/cron?dry=1&date=2026-08-21&at=10:00"
+
+     # pravo slanje kao da je petak 12:00 (samo lokalno)
+     curl -H "x-cron-secret: $CRON_SECRET" \
+       "localhost:3000/api/cron?date=2026-08-21&at=12:00&reset=1"
    ========================================================================== */
 
+const url = require("url");
 const webpush = require("web-push");
 const {
   redis, KEYS, TASKS, DAY_TTL,
   sarajevoNow, dueSlot, pushPayload, removeSubscription,
-  intervalMinutes, cronAuthorized, taskStatus, blockedBy, lateFrom
+  intervalMinutes, cronAuthorized, taskStatus, blockedBy, lateFrom,
+  quietFor, weekdayFromKey, parseTime, DEFAULT_END_TIME, validDate, validItemId,
+  SPACE
 } = require("./_lib.js");
 
 function setupVapid() {
@@ -53,8 +89,53 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: "VAPID varijable nisu postavljene" });
   }
 
-  const now = sarajevoNow();
-  const interval = intervalMinutes();
+  const q = (req.query && Object.keys(req.query).length)
+    ? req.query
+    : (url.parse(req.url, true).query || {});
+
+  const dry = q.dry === "1" || q.dry === "true";
+
+  /* Izmišljeno vrijeme smije uticati na PRAVO slanje samo kad okruženje to
+     izričito dozvoli (lokalni .env.local). U probi (`dry`) je bezopasno pa
+     radi uvijek. */
+  const mayTimeTravel = dry || process.env.REMINDER_TIME_TRAVEL === "1";
+
+  const real = sarajevoNow();
+  const atMinutes = mayTimeTravel ? parseTime(q.at) : null;
+  const now = {
+    date: (mayTimeTravel && validDate(q.date)) ? String(q.date) : real.date,
+    minutes: (atMinutes === null || atMinutes === undefined)
+      ? real.minutes
+      : atMinutes
+  };
+
+  /* Interval je inače iz okruženja (60 u produkciji). Panel ga smije
+     nametnuti po pozivu, da se produkcijski satni ritam može provjeriti i kad
+     u .env.local stoji REMINDER_INTERVAL_MINUTES=1 — inače bi "12:15" izgledao
+     kao da šalje, a u produkciji tu vlada tišina. */
+  const resetSent = mayTimeTravel && (q.reset === "1" || q.reset === "true");
+
+  /* Stanje sa ekrana (`checked=id1,id2`) — testni panel ga šalje da odluka
+     odgovara onome što korisnik vidi. Vrijedi SAMO za taj poziv: baza se ne
+     dira ni u jednom smjeru. Prazan string znači "ništa nije čekirano" i to
+     nije isto kao da parametra nema (tada se čita baza). */
+  const screenChecked = (mayTimeTravel && typeof q.checked === "string")
+    ? String(q.checked).split(",").reduce(function (map, id) {
+        const clean = id.trim();
+        if (clean && validItemId(clean)) { map[clean] = "1"; }
+        return map;
+      }, {})
+    : null;
+
+  const askedInterval = mayTimeTravel ? parseInt(q.interval, 10) : NaN;
+  const interval = (isFinite(askedInterval) && askedInterval >= 1)
+    ? Math.min(askedInterval, 1440)
+    : intervalMinutes();
+
+  /* Dan sedmice se izvodi iz sarajevskog DATUMA, a ne iz new Date().getDay():
+     proces na Vercelu radi u UTC-u, pa bi između 00:00 i 02:00 vratio
+     jučerašnji dan. */
+  const weekday = weekdayFromKey(now.date);
 
   /* Samo za lokalno testiranje: pomjeri sve zadatke da počnu odmah. */
   const startOverride = process.env.REMINDER_START_TIME || null;
@@ -62,7 +143,11 @@ module.exports = async function handler(req, res) {
   const report = {
     date: now.date,
     minutes: now.minutes,
+    weekday: weekday,
+    space: SPACE,
+    dry: dry || undefined,
     interval: interval,
+    windows: {},
     devices: 0,
     status: {},
     sent: [],
@@ -74,10 +159,11 @@ module.exports = async function handler(req, res) {
   try {
     /* Čekirano je zajedničko za sve uređaje, pa se čita JEDNOM po ciklusu i
        jednom se izračuna dokle je koji podsjetnik došao. */
-    const checked = (await redis.hgetall(KEYS.items(now.date))) || {};
+    const checked = screenChecked || (await redis.hgetall(KEYS.items(now.date))) || {};
+    if (screenChecked) { report.checkedFrom = "ekran"; }
     const status = {};
     TASKS.forEach(function (task) {
-      status[task.id] = taskStatus(task, checked);
+      status[task.id] = taskStatus(task, checked, now.date);
     });
     report.status = status;
 
@@ -86,17 +172,54 @@ module.exports = async function handler(req, res) {
        zavisi od uređaja, pa se računa jednom po ciklusu. */
     const blocked = {};
     const late = {};
+    const windows = {};
+    const quiet = {};
     TASKS.forEach(function (task) {
       blocked[task.id] = blockedBy(task, status);
-      const from = lateFrom(task);
+      const from = lateFrom(task, weekday);
       late[task.id] = from !== null && now.minutes >= from;
+      /* Efektivni prozor za TAJ dan — jedini način da se jednim curl-om vidi
+         zašto je ciklus nešto poslao ili preskočio. "—" znači "danas ga
+         nema". */
+      const off = task.enabled === false ||
+        (task.days && task.days.indexOf(weekday) === -1);
+      windows[task.id] = off
+        ? "—"
+        : (startOverride || task.startTime) + "–" +
+          (task.endTime || DEFAULT_END_TIME);
+
+      /* Vremenski zaklon (petkom: dnevni dok petački traje). Ovisi i o satu,
+         pa se računa za trenutak ovog ciklusa. */
+      quiet[task.id] = quietFor(task, weekday, now.minutes, status);
     });
+    report.windows = windows;
+    report.quiet = TASKS
+      .filter(function (task) { return quiet[task.id]; })
+      .map(function (task) { return task.id + " ← " + quiet[task.id]; });
     report.blocked = TASKS
       .filter(function (task) { return blocked[task.id]; })
       .map(function (task) { return task.id + " ← " + blocked[task.id]; });
 
     const ids = await redis.smembers(KEYS.all);
     report.devices = ids.length;
+
+    /* `reset=1` znači "gledaj ovaj dan kao da još ništa nije poslano", pa se
+       isti trenutak može odglumiti više puta. Bez toga druga proba ćuti —
+       tačno onako kako i treba u produkciji.
+
+       U pravom slanju se zapisi brišu. U probi (`dry`) se NE dira baza, nego
+       se zapis samo ignoriše pri čitanju (vidi `ignoreSent` niže) — inače bi
+       proba pokazivala tišinu samo zato što je prethodno pravo slanje
+       ostavilo zapis, i to još i za drugi interval, gdje slotovi nisu ni
+       uporedivi. */
+    if (resetSent && !dry) {
+      for (const id of ids) {
+        for (const task of TASKS) {
+          await redis.del(KEYS.sent(id, task.id, now.date));
+        }
+      }
+      report.reset = now.date;
+    }
 
     for (const id of ids) {
       const sub = await redis.get(KEYS.sub(id));
@@ -112,15 +235,22 @@ module.exports = async function handler(req, res) {
         if (task.enabled === false) { continue; }
 
         /* Zaklonjen drugim podsjetnikom — ćuti, i slot se NE zapisuje, pa
-           stigne prvim ciklusom nakon što se zaklon skine. */
+           stigne prvim ciklusom nakon što se zaklon skine. Isto vrijedi i za
+           vremenski zaklon (`quietFor`): petkom dnevni ćuti dok petački
+           traje, a čim petački završi ili mu prozor prođe, dnevni stiže
+           prvim sljedećim ciklusom. */
         if (blocked[task.id]) { continue; }
+        if (quiet[task.id]) { continue; }
 
         const sentKey = KEYS.sent(id, task.id, now.date);
-        const last = await redis.get(sentKey);
+        /* U probi sa `reset=1` se zapis ignoriše, a baza se ne dira. */
+        const last = (resetSent && dry) ? null : await redis.get(sentKey);
 
         /* Sva pravila su u dueSlot() — ovdje ostaje samo baza i slanje. */
         const slot = dueSlot({
           minutes: now.minutes,
+          weekday: weekday,
+          days: task.days,
           startTime: startOverride || task.startTime,
           endTime: task.endTime,
           interval: interval,
@@ -134,17 +264,34 @@ module.exports = async function handler(req, res) {
         /* Zapis IDE PRIJE slanja. Ako se cron slučajno pokrene dvaput u
            istoj minuti, druga instanca vidi zauzet slot i šuti — bolje
            propustiti jedan podsjetnik nego poslati duplikat. */
+        /* Tekst se pravi ovdje, jednom, pa ide i u izvještaj — tako se u
+           izvještaju vidi TAČNO ono što je uređaj dobio, bez ponavljanja
+           pravila o tekstu na drugom mjestu. */
+        const payload = pushPayload(task, status[task.id], late[task.id]);
+        const shown = JSON.parse(payload);
+
+        /* Proba samo javlja šta BI otišlo — ni jedan upis, ni jedan push. */
+        if (dry) {
+          report.sent.push({
+            device: id.slice(0, 8), task: task.id, slot: slot,
+            status: status[task.id], late: !!late[task.id],
+            title: shown.title, body: shown.body, dry: true
+          });
+          continue;
+        }
+
         await redis.set(sentKey, slot, { ex: DAY_TTL });
 
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: sub.keys },
-            pushPayload(task, status[task.id], late[task.id]),
+            payload,
             { TTL: 60 * 55, urgency: "normal" }
           );
           report.sent.push({
             device: id.slice(0, 8), task: task.id, slot: slot,
-            status: status[task.id], late: !!late[task.id]
+            status: status[task.id], late: !!late[task.id],
+            title: shown.title, body: shown.body
           });
         } catch (err) {
           const code = err && err.statusCode;

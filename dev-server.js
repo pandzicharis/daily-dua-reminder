@@ -135,6 +135,8 @@ server.listen(PORT, function () {
   console.log("  http://localhost:" + PORT);
   console.log("");
   console.log("  baza:      " + kv);
+  console.log("  prostor:   " + (process.env.ZIKR_SPACE || "zajedno") +
+    (process.env.ZIKR_SPACE ? "" : "   <- ISTI KAO U PRODUKCIJI; stavi ZIKR_SPACE u .env.local"));
   console.log("  interval:  " + (process.env.REMINDER_INTERVAL_MINUTES || 60) + " min");
   console.log("  VAPID:     " + (process.env.VAPID_PUBLIC_KEY ? "postavljen" : "NEDOSTAJE — pogledaj .env.local"));
   console.log("");

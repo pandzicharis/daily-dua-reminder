@@ -9,6 +9,12 @@
 
   var STORAGE_KEY = "moj-zikr-state";
 
+  /* Proba drugog dana pamti se ODVOJENO od pravog spiska. Dan se mijenja
+     samo iz testnog panela (dev-panel.js, samo localhost), a kvačica
+     napravljena u probi ne smije ni ući u pravi dan ni otići na server —
+     inače bi proba petka pokvarila stvarni spisak i podsjetnike. */
+  var PREVIEW_KEY = "moj-zikr-proba";
+
   var DAY_NAMES = [
     "Nedjelja", "Ponedjeljak", "Utorak", "Srijeda",
     "Četvrtak", "Petak", "Subota"
@@ -36,6 +42,8 @@
     hands: "M4 13a8 8 0 0 0 16 0zM12 3v3.5M7.5 5l1.4 2.2M16.5 5l-1.4 2.2",
     /* mlađak */
     moon: "M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z",
+    /* kupola sa špicem — sekcija vezana za poseban dan (petak) */
+    mosque: "M4 20h16M6 20v-6a6 6 0 0 1 12 0v6M12 4v4",
     /* list papira — dugme "Vidi stranicu" */
     pages: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6"
   };
@@ -129,6 +137,24 @@
     );
   }
 
+  /* Ključ "YYYY-MM-DD" pomjeren za `delta` dana. Računa se preko UTC ponoći
+     da prelazak na ljetno/zimsko vrijeme ne preskoči ni jedan dan. */
+  function shiftKey(key, delta) {
+    var p = key.split("-").map(Number);
+    var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+    d.setUTCDate(d.getUTCDate() + delta);
+    return d.getUTCFullYear() + "-" +
+           String(d.getUTCMonth() + 1).padStart(2, "0") + "-" +
+           String(d.getUTCDate()).padStart(2, "0");
+  }
+
+  /* Ključ -> lokalni Date, zakačen za podne: tako ni pomjeranje sata ni
+     zona ne mogu ispisati dan ranije ili kasnije. */
+  function dateFromKey(key) {
+    var p = key.split("-").map(Number);
+    return new Date(p[0], p[1] - 1, p[2], 12, 0, 0);
+  }
+
   /* ------------------------------------------------------------------------
      2. Kur'an — automatsko računanje stranice
      ------------------------------------------------------------------------ */
@@ -146,9 +172,14 @@
      3. localStorage — state je vezan za konkretan datum
      ------------------------------------------------------------------------ */
 
+  /* Pravi dan ide u svoj prostor, proba u svoj. */
+  function storeKey() {
+    return isPreview() ? PREVIEW_KEY : STORAGE_KEY;
+  }
+
   function readStore() {
     try {
-      var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      var parsed = JSON.parse(localStorage.getItem(storeKey()));
       return (parsed && typeof parsed === "object") ? parsed : {};
     } catch (e) {
       return {};
@@ -157,7 +188,7 @@
 
   function writeStore(store) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+      localStorage.setItem(storeKey(), JSON.stringify(store));
     } catch (e) {
       /* privatni mod ili pun storage — aplikacija i dalje radi u sesiji */
     }
@@ -204,6 +235,8 @@
 
   function pushChange(itemId, checked) {
     if (!window.mojZikrSync) { return; }
+    /* Proba drugog dana ostaje na ovom uređaju. */
+    if (isPreview()) { return; }
     var changes = {};
     changes[itemId] = checked;
     window.mojZikrSync.change(dateKey, changes);
@@ -243,8 +276,24 @@
      4. Trenutno stanje ekrana
      ------------------------------------------------------------------------ */
 
-  var dateKey = getLocalDateKey();
+  /* Stvarni današnji dan i dan koji je na ekranu. Razlikuju se samo kad se
+     strelicama gleda drugi dan (proba). */
+  var todayKey = getLocalDateKey();
+  var dateKey = todayKey;
+
+  /* Gleda li se dan koji nije današnji. Sve što pamti stanje pita OVO, jer
+     proba ima svoj prostor i ne ide na server. */
+  function isPreview() {
+    return dateKey !== todayKey;
+  }
+
   var state = getDayState(dateKey);
+
+  /* Sekcije koje TOG dana postoje (data.js). SVE što crta i računa ide kroz
+     ovo, nikad kroz globalni `sections` — inače petačka sekcija ostane na
+     ekranu i u subotu, a ostalim danima naraste `total` pa prsten nikad ne
+     dođe do 100% i "Elhamdulillah" se ne otvori. */
+  var visible = sectionsForDate(dateKey);
 
   var el = {
     date: document.getElementById("todayDate"),
@@ -261,7 +310,7 @@
   el.ringFill.style.strokeDashoffset = RING_LENGTH;
 
   function allItems() {
-    return sections.reduce(function (acc, section) {
+    return visible.reduce(function (acc, section) {
       return acc.concat(section.items || []);
     }, []);
   }
@@ -697,7 +746,7 @@
   function renderSections() {
     el.root.textContent = "";
 
-    sections.forEach(function (section) {
+    visible.forEach(function (section) {
       var wrapper = document.createElement("section");
       wrapper.className = "section";
       wrapper.id = "sec-" + section.id;
@@ -759,7 +808,7 @@
     var total = items.length + 1;
     var percent = total > 0 ? Math.round((done / total) * 100) : 0;
 
-    sections.forEach(function (section) {
+    visible.forEach(function (section) {
       var node = el.root.querySelector('[data-section="' + section.id + '"]');
       if (!node) { return; }
       var list = section.items || [];
@@ -957,17 +1006,76 @@
      13. Start
      ------------------------------------------------------------------------ */
 
+  /* Kad se gleda dan koji nije današnji, `body` nosi klasu po kojoj se
+     iscrtava vidljiva oznaka (traka na vrhu, prigušen prsten). Panel se
+     javi kroz `naPromjenu` da osvježi svoj ispis. */
+  var onDayChange = null;
+
+  function markPreview() {
+    document.body.classList.toggle("is-preview", isPreview());
+    if (onDayChange) { onDayChange(dateKey, todayKey); }
+  }
+
+  /* Crta dan koji je u `dateKey` — današnji ili onaj izabran strelicama.
+     Stanje i spisak sekcija se uvijek čitaju iznova, pa je dovoljno
+     promijeniti `dateKey` i pozvati ovo. */
   function render() {
-    dateKey = getLocalDateKey();
+    todayKey = getLocalDateKey();
     state = getDayState(dateKey);
-    var now = new Date();
-    el.date.textContent = formatGregorian(now);
-    el.hijri.textContent = formatHijri(now);
+    visible = sectionsForDate(dateKey);
+    var shown = dateFromKey(dateKey);
+    el.date.textContent = formatGregorian(shown);
+    el.hijri.textContent = formatHijri(shown);
+    markPreview();
     renderSections();
     updateProgress();
   }
 
+  /* Prebacivanje na drugi dan. Završni ekran se pri prebacivanju NE otvara
+     sam (`wasComplete = true`) — čovjek je tražio spisak, ne čestitku; ako
+     je taj dan završen, ostaje dugme kojim se ekran otvori namjerno. */
+  function showDay(key) {
+    if (key === dateKey) { return; }
+    dateKey = key;
+    closeCelebration();
+    wasComplete = true;
+    render();
+    window.scrollTo(0, 0);
+    /* Natrag na današnji dan — povuci zajedničko stanje, jer se u
+       međuvremenu moglo promijeniti na drugom uređaju. */
+    refreshShared();
+  }
+
   render();
+
+  /* ------------------------------------------------------------------------
+     Ono što testni panel (dev-panel.js) smije dirati.
+
+     Namjerno malo i namjerno bez ijedne reference na panel u ostatku koda:
+     kad panela nema (produkcija), ovdje se ništa ne mijenja i aplikacija ne
+     zna da je ikad postojao.
+     ------------------------------------------------------------------------ */
+  window.mojZikr = {
+    /* dan koji je na ekranu, "YYYY-MM-DD" */
+    dan: function () { return dateKey; },
+    /* stvarni današnji dan */
+    danas: function () { return getLocalDateKey(); },
+    proba: function () { return isPreview(); },
+    /* prikaži dati dan (kvačice tog dana su lokalne, vidi isPreview) */
+    prikazi: function (key) { showDay(key); },
+    /* pomjeri prikazani dan za ±n dana */
+    pomjeri: function (delta) { showDay(shiftKey(dateKey, delta)); },
+    /* šta je na ekranu čekirano, u obliku u kojem to server pamti — panel
+       ovo pošalje pri okidanju, da obavijest odgovara onome što se vidi.
+       Bez toga bi proba drugog dana uvijek izgledala kao "ništa čekirano",
+       jer se kvačice tog dana čuvaju lokalno i ne idu na server. */
+    cekirano: function () { return checkedMap(); },
+    /* panel se ovim prijavi da ga zovemo kad se dan promijeni */
+    naPromjenu: function (fn) {
+      onDayChange = fn;
+      fn(dateKey, todayKey);
+    }
+  };
 
   /* Uparivanje sa zajedničkim stanjem: ono što je čekirano na drugom
      uređaju stiže ovamo, a ono što je ovdje čekirano ide gore. */
@@ -977,7 +1085,11 @@
   }
 
   function refreshShared() {
-    if (window.mojZikrSync) { window.mojZikrSync.start(dateKey, checkedMap()); }
+    if (!window.mojZikrSync) { return; }
+    /* Proba drugog dana se ne dijeli — ni gore ni dolje. Bez ovoga bi
+       `start()` poslao probne kvačice na server pod tim datumom. */
+    if (isPreview()) { return; }
+    window.mojZikrSync.start(todayKey, checkedMap());
   }
 
   /* Ako je kartica ostala otvorena preko ponoći, na povratku se sam
@@ -985,7 +1097,12 @@
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { return; }
 
-    if (getLocalDateKey() !== dateKey) {
+    /* Ponoć je prešla dok je kartica bila otvorena. Ako se gledao današnji
+       dan, otvara se novi; u probi se ostaje na izabranom danu, samo se
+       "natrag na danas" pomjerio. */
+    if (getLocalDateKey() !== todayKey) {
+      todayKey = getLocalDateKey();
+      if (!isPreview()) { dateKey = todayKey; }
       render();
       window.scrollTo(0, 0);
     }
@@ -998,5 +1115,20 @@
 
   /* Mreža se vratila — pošalji što je čekalo i pokupi tuđe promjene. */
   window.addEventListener("online", refreshShared);
+
+  /* ------------------------------------------------------------------------
+     Testni panel (dev-panel.js) — SAMO localhost.
+
+     Učitava se ovdje, a ne kroz <script> u index.html, da u produkciji ne
+     postoji ni jedan zahtjev za njim: fajl se i ne deployuje (.vercelignore),
+     pa bi statični tag tamo davao 404 u konzoli.
+     ------------------------------------------------------------------------ */
+  if (location.hostname === "localhost" ||
+      location.hostname === "127.0.0.1" ||
+      location.hostname === "[::1]") {
+    var devPanel = document.createElement("script");
+    devPanel.src = "dev-panel.js";
+    document.body.appendChild(devPanel);
+  }
 
 })();

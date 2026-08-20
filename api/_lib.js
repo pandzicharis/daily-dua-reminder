@@ -6,7 +6,13 @@
 const crypto = require("crypto");
 const { Redis } = require("@upstash/redis");
 const TASKS = require("../notification-tasks.js");
-const SECTIONS = require("../data.js").sections;
+const DATA = require("../data.js");
+/* SVE sekcije (dan-neovisno) — iz ovoga se gradi spisak ispravnih id-eva. */
+const SECTIONS = DATA.sections;
+/* Sekcije koje postoje na dati datum — jedini izvor istine za "šta se danas
+   broji", isti koji vidi i aplikacija. */
+const sectionsForDate = DATA.sectionsForDate;
+const weekdayFromKey = DATA.weekdayFromKey;
 
 const TZ = "Europe/Sarajevo";
 
@@ -50,22 +56,34 @@ function findTask(id) {
 
 /* Sekcije koje podsjetnik pokriva: ili one nabrojane u `sections`, ili sve
    osim onih u `exceptSections`. Drugi oblik postoji da nova sekcija u
-   data.js sama uđe u dnevni podsjetnik i ne može se zaboraviti dopisati. */
-function sectionsFor(task) {
+   data.js sama uđe u dnevni podsjetnik i ne može se zaboraviti dopisati.
+
+   Broji se samo ono što TOG dana postoji (sekcija sa `days` u data.js). Bez
+   filtriranja po danu bi `exceptSections` uvukao petačku sekciju i u utorak:
+   `dan` nikad ne bi bio "done", pa bi zvonio do 23:00 svaki dan, a `navecer`
+   (requires: ["dan"]) ne bi stigao nikad. */
+function sectionsFor(task, dateKey) {
+  const pool = sectionsForDate(dateKey || sarajevoNow().date);
   if (task.sections) {
-    return SECTIONS.filter(function (section) {
+    return pool.filter(function (section) {
       return task.sections.indexOf(section.id) !== -1;
     });
   }
   const except = task.exceptSections || [];
-  return SECTIONS.filter(function (section) {
+  return pool.filter(function (section) {
     return except.indexOf(section.id) === -1;
   });
 }
 
 /* Sve što se može čekirati. Kur'an nije stavka liste — pamti se kao jedno
    polje "quran" — pa ulazi u spisak ručno. Sve van ovog skupa je smeće i
-   ne ulazi u bazu. */
+   ne ulazi u bazu.
+
+   NAMJERNO nad SVIM sekcijama, ne nad današnjim: ovo je validacija upisa
+   ("je li id poznat"), a ne odluka o slanju. Filtriranje po danu bi odbilo
+   kvačicu napravljenu u petak u 23:58 a poslanu u subotu u 00:03 (state.js
+   svjesno dopušta ±1 dan), i zavisilo bi od dana u kojem se topla serverless
+   instanca startovala. */
 const ITEM_IDS = (function () {
   const set = new Set();
   SECTIONS.forEach(function (section) {
@@ -86,13 +104,14 @@ function validItemId(id) {
      "partial"  nešto čekirano   -> podsjeti da se nastavi
      "done"     sve čekirano     -> do sutra ništa
 
-   `checked` je ono što vrati HGETALL nad KEYS.items(date). */
-function taskStatus(task, checked) {
+   `checked` je ono što vrati HGETALL nad KEYS.items(date), a `dateKey` je
+   datum tog istog zapisa — iz njega se zna koje sekcije tog dana postoje. */
+function taskStatus(task, checked, dateKey) {
   const map = checked || {};
   let total = 0;
   let done = 0;
 
-  sectionsFor(task).forEach(function (section) {
+  sectionsFor(task, dateKey).forEach(function (section) {
     const ids = (section.kind === "quran")
       ? ["quran"]
       : (section.items || []).map(function (item) { return item.id; });
@@ -103,13 +122,18 @@ function taskStatus(task, checked) {
     });
   });
 
-  /* Prazan podsjetnik nema šta da podsjeti — tretira se kao gotov. */
+  /* Prazan podsjetnik nema šta da podsjeti — tretira se kao gotov. Ovo je
+     ujedno drugi sloj tišine za podsjetnik vezan za dan sedmice: kad njegove
+     sekcije tog dana nema, total je 0 pa ćuti i bez `days`. */
   if (total === 0) { return "done"; }
   if (done === 0) { return "none"; }
   return done >= total ? "done" : "partial";
 }
 
-/* Podsjetnik koji ovaj zaklanja: dok svi id-evi iz `requires` nisu "done",
+/* `requires` NIKAD ne smije pokazivati na podsjetnik ograničen `days`-om:
+   ovdje se gleda samo status, ne prozor i ne dan sedmice.
+
+   Podsjetnik koji ovaj zaklanja: dok svi id-evi iz `requires` nisu "done",
    ovaj se NE šalje. Postoji zato što se prozori dnevnog (08–21) i večernjeg
    (19–23) preklapaju — bez ovoga bi poslije 19:00 stizale dvije obavijesti
    jedna do druge. Vraća id-a koji zaklanja, ili null ako je put slobodan. */
@@ -121,14 +145,64 @@ function blockedBy(task, status) {
   return null;
 }
 
+/* Vremenski ograničen zaklon (`quietFor`): podsjetnik ćuti dok DRUGI
+   podsjetnik ima otvoren prozor i dok nije završen. Tako petkom do 12:59
+   stiže samo petačka obavijest, a dnevni ne javlja isto po drugi put.
+
+   Razlika od `blockedBy`/`requires`, i razlog zašto su to dva pojma:
+
+     requires   — uslov po SADRŽAJU, bez roka. Večernji čeka da dnevni bude
+                  završen, pa makar to bilo u 23:00.
+     quietFor   — uslov po SADRŽAJU **i** po SATU. Pada na dva načina: kad
+                  onaj drugi završi (nema šta više da javi) ili kad mu prozor
+                  prođe. Zato dnevni petkom kreće u 13:00 kad se ništa ne
+                  uradi, a odmah kad se petačke stavke završe.
+
+   Granica se NE upisuje ovdje nego se čita iz `endTime`-a tog drugog
+   podsjetnika, pa "12:59" postoji na jednom mjestu.
+
+   Namjerno se NE koristi pomjeranje startTime-a po danu: start mora biti
+   isti cijeli dan da slot ostane monoton. Kad bi se mijenjao zavisno od
+   toga je li petak završen, odčekiravanje stavke bi vratilo start na kasnije
+   vrijeme, novi slot bi bio manji od zapisanog i `last >= slot` bi utišao
+   dnevni do kraja dana.
+
+   Vraća id onoga koji zaklanja, ili null ako je put slobodan. */
+function quietFor(task, weekday, minutes, status) {
+  const ids = task.quietFor || [];
+
+  for (const id of ids) {
+    const other = findTask(id);
+    if (!other || other.enabled === false) { continue; }
+
+    /* Podsjetnik koji tog dana ne postoji nikoga ne utišava. */
+    if (other.days && other.days.indexOf(weekday) === -1) { continue; }
+
+    /* Završen je — nema šta da javi, pa nema ni koga zaklanjati. */
+    if ((status || {})[id] === "done") { continue; }
+
+    /* "00:00" znači ponoć na kraju dana — isto kao u dueSlot(). */
+    let end = parseTime(other.endTime || DEFAULT_END_TIME);
+    if (end === 0) { end = 24 * 60; }
+    if (end === null) { continue; }
+
+    if (minutes <= end) { return id; }
+  }
+
+  return null;
+}
+
 /* Od kada tekst `messageLate` zamjenjuje uobičajeni: od trenutka kad se
    otvori prozor prvog podsjetnika koji ovaj zaklanja. Vrijeme se izvodi iz
    njegovog `startTime`, pa ne postoji na dva mjesta koja se mogu raziće.
    Vraća minute od ponoći, ili null ako ovaj podsjetnik nikog ne zaklanja. */
-function lateFrom(task) {
+function lateFrom(task, weekday) {
   let earliest = null;
   TASKS.forEach(function (other) {
     if (other.enabled === false) { return; }
+    /* Podsjetnik koji tog dana ne postoji nikoga ne zaklanja, pa ne može ni
+       pomjeriti tekst na `messageLate`. */
+    if (other.days && other.days.indexOf(weekday) === -1) { return; }
     if (!other.requires || other.requires.indexOf(task.id) === -1) { return; }
     const start = parseTime(other.startTime);
     if (start === null) { return; }
@@ -292,9 +366,16 @@ function pushPayload(task, status, late) {
    padaju u isti slot, a slot se šalje samo jednom. Odatle idempotentnost:
    ni deset pokretanja u istom satu ne mogu dati dvije obavijesti.
 
-   opts = { minutes, startTime, endTime, interval, lastSlot, status }
+   opts = { minutes, weekday, days, startTime, endTime, interval, lastSlot,
+            status }
    ------------------------------------------------------------------------ */
 function dueSlot(opts) {
+  /* Podsjetnik koji važi samo nekim danima (petak) — ostalim danima ga nema.
+     [5].indexOf(undefined) === -1, dakle ako `weekday` ne dođe, zadatak
+     ĆUTI; tiši smjer je ispravniji, a zato izvještaj /api/cron nosi
+     `weekday` i `windows` da se to vidi. */
+  if (opts.days && opts.days.indexOf(opts.weekday) === -1) { return null; }
+
   /* Zadatak je danas u cijelosti završen — do sutra ništa. Djelimično
      urađen NE utišava podsjetnik; mijenja mu samo tekst (pushPayload). */
   if (opts.status === "done") { return null; }
@@ -331,7 +412,26 @@ function dueSlot(opts) {
    secret kroz "x-cron-secret". Bez postavljenog secreta endpoint je
    zatvoren — da ga bilo ko sa interneta ne može okidati.
    ------------------------------------------------------------------------ */
+/* Testni panel u aplikaciji (dev-panel.js) zove /api/cron iz browsera, gdje
+   secret ne smije stajati. Zato se endpoint otvara bez njega SAMO kad se
+   poklope dvije nezavisne stvari:
+
+     1. REMINDER_TIME_TRAVEL=1 u okruženju — postavlja se isključivo u
+        .env.local, nikad na Vercelu;
+     2. zahtjev dolazi sa localhosta.
+
+   Na Vercelu ni jedno ne vrijedi (varijable nema, a Host je pravi domen), pa
+   endpoint tamo ostaje zatvoren kao i do sada. */
+function devUnlocked(req) {
+  if (process.env.REMINDER_TIME_TRAVEL !== "1") { return false; }
+  const host = String((req.headers && req.headers.host) || "").toLowerCase();
+  const name = host.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
+  return name === "localhost" || name === "127.0.0.1" || name === "::1";
+}
+
 function cronAuthorized(req) {
+  if (devUnlocked(req)) { return true; }
+
   const secret = process.env.CRON_SECRET || "";
   if (!secret) { return false; }
 
@@ -350,7 +450,8 @@ module.exports = {
   TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
   findTask, sectionsFor, taskStatus, blockedBy, lateFrom, validItemId,
+  quietFor, sectionsForDate, weekdayFromKey,
   sarajevoNow, parseTime, subId, dueSlot, pushPayload,
   readJson, validSubscription, validDate,
-  removeSubscription, intervalMinutes, cronAuthorized
+  removeSubscription, intervalMinutes, cronAuthorized, devUnlocked
 };
