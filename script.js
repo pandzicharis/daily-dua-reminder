@@ -31,22 +31,8 @@
     "ramazan", "ševval", "zu-l-ka'de", "zu-l-hidždže"
   ];
 
-  /* Ikonice sekcija — inline SVG, bez ijedne vanjske zavisnosti.
-     Ključ je `icon` iz data.js, a boju nasljeđuju od naslova sekcije. */
-  var ICONS = {
-    /* otvorena knjiga */
-    book: "M12 7c-1.6-1.3-3.7-2-6-2H3v13h3c2.3 0 4.4.7 6 2m0-13c1.6-1.3 3.7-2 6-2h3v13h-3c-2.3 0-4.4.7-6 2m0-13v13",
-    /* petlja ponavljanja — brojani zikr */
-    loop: "M17 3l3 3-3 3M20 6H9a4 4 0 0 0 0 8M7 21l-3-3 3-3M4 18h11a4 4 0 0 0 0-8",
-    /* sklopljene ruke sa svjetlom iznad */
-    hands: "M4 13a8 8 0 0 0 16 0zM12 3v3.5M7.5 5l1.4 2.2M16.5 5l-1.4 2.2",
-    /* mlađak */
-    moon: "M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z",
-    /* kupola sa špicem — sekcija vezana za poseban dan (petak) */
-    mosque: "M4 20h16M6 20v-6a6 6 0 0 1 12 0v6M12 4v4",
-    /* list papira — dugme "Vidi stranicu" */
-    pages: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6"
-  };
+  /* Ikonice su u data.js (`SECTION_ICONS`, `makeSectionIcon`) — isti znak nosi
+     i naslov sekcije ovdje i zaglavlje akordeona u postavkama. */
 
   /* ------------------------------------------------------------------------
      1. Datum — uvijek lokalno vrijeme, nikad UTC
@@ -297,24 +283,24 @@
   /* ------------------------------------------------------------------------
      Config korisnika (settings.js)
 
-     Dva prekidača dodiruju ovaj fajl: `transkript` mijenja šta se ispisuje
-     ispod naslova dove, a sekcijski prekidači (petak) mijenjaju šta uopšte
-     postoji. Oba se čitaju pri svakom crtanju, ne pamte se u varijabli —
-     drawer ih mijenja usred rada.
+     Dvije stvari iz configa dodiruju ovaj fajl: `transkript` mijenja šta se
+     ispisuje ispod naslova dove, a `skriveno` mijenja šta uopšte postoji.
+     Oba se čitaju pri svakom crtanju, ne pamte se u varijabli — drawer ih
+     mijenja usred rada.
 
-     Ako settings.js nije učitan, vrijedi prazan config: sve sekcije postoje,
+     Ako settings.js nije učitan, vrijedi prazan config: sve postoji,
      transkripcija je ugašena. Aplikacija tada radi kao prije njega.
      ------------------------------------------------------------------------ */
   function prefs() {
     return (window.mojZikrConfig && window.mojZikrConfig.prefs()) || {};
   }
 
-  /* Sekcije koje TOG dana postoje (data.js) i koje korisnik nije ugasio. SVE
-     što crta i računa ide kroz ovo, nikad kroz globalni `sections` — inače
-     petačka sekcija ostane na ekranu i u subotu, a ostalim danima naraste
-     `total` pa prsten nikad ne dođe do 100% i "Elhamdulillah" se ne otvori.
-     Isto vrijedi i za ugašenu sekciju: da ostane u računu, dan se ne bi
-     mogao završiti. */
+  /* Sekcije koje TOG dana postoje (data.js), bez stavki koje je korisnik
+     isključio. SVE što crta i računa ide kroz ovo, nikad kroz globalni
+     `sections` — inače petačka sekcija ostane na ekranu i u subotu, a ostalim
+     danima naraste `total` pa se dan nikad ne završi i "Elhamdulillah" se ne
+     otvori. Isto vrijedi i za isključenu stavku: da ostane u računu, dan se
+     ne bi mogao završiti. */
   var visible = sectionsForDate(dateKey, prefs());
 
   var el = {
@@ -328,6 +314,24 @@
     return visible.reduce(function (acc, section) {
       return acc.concat(section.items || []);
     }, []);
+  }
+
+  /* Kur'anska stranica se ne broji kroz `allItems()` — nije stavka liste nego
+     jedno polje (`state.quran`) — pa svaki zbir dodaje njenu jedinicu ručno.
+     Od kad se i ona smije isključiti, ta jedinica NIJE stalna: bez ovoga bi
+     `total` ostao veći od stvarnog i dan se nikad ne bi mogao završiti. */
+  function quranVisible() {
+    return visible.some(function (section) { return section.kind === "quran"; });
+  }
+
+  /* Sekcije koje se stvarno crtaju. Ona kojoj su SVE stavke isključene se
+     preskače cijela — naslov nad prazninom ne govori ništa, a uključuju se
+     tamo gdje su i isključene (postavke). `sectionsForDate()` je svejedno
+     vraća, jer postavkama treba cijeli spisak. */
+  function drawableSections() {
+    return visible.filter(function (section) {
+      return section.kind === "quran" || (section.items || []).length > 0;
+    });
   }
 
   /* ------------------------------------------------------------------------
@@ -357,25 +361,6 @@
     input.checked = !!checked;
     input.setAttribute("aria-label", label);
     return input;
-  }
-
-  function makeIcon(name, className) {
-    var d = ICONS[name];
-    if (!d) { return null; }
-    var NS = "http://www.w3.org/2000/svg";
-    var svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("class", className || "section-icon");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "1.6");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    svg.setAttribute("aria-hidden", "true");
-    var path = document.createElementNS(NS, "path");
-    path.setAttribute("d", d);
-    svg.appendChild(path);
-    return svg;
   }
 
   /* Dova se prikazuje kao jedan neprekidan tok teksta — prelomi redova iz
@@ -583,6 +568,13 @@
      ovoga header prekrije baš onaj naslov zbog kojeg se skrolalo. Granica se
      mjeri, ne prepisuje: header je viši na širem ekranu, a testna traka ga
      dodatno spusti. */
+  function sectionById(id) {
+    for (var i = 0; i < visible.length; i++) {
+      if (visible[i].id === id) { return visible[i]; }
+    }
+    return null;
+  }
+
   function scrollSectionIntoView(section, duration) {
     var header = document.querySelector(".app-header");
     var edge = header ? header.getBoundingClientRect().bottom : 0;
@@ -672,7 +664,7 @@
       var viewBtn = document.createElement("button");
       viewBtn.type = "button";
       viewBtn.className = "view-page-btn";
-      viewBtn.appendChild(makeIcon("pages", "btn-icon"));
+      viewBtn.appendChild(makeSectionIcon("pages", "btn-icon"));
       viewBtn.appendChild(document.createTextNode("Vidi stranicu"));
       viewBtn.addEventListener("click", function (e) {
         /* da klik ne prebaci checkbox kartice */
@@ -852,10 +844,41 @@
      10. Sekcije
      ------------------------------------------------------------------------ */
 
+  /* Prazan spisak — korisnik je u postavkama isključio sve. Nije greška
+     niti završen dan, samo nema šta pokazati; dugme vodi nazad u postavke. */
+  function renderEmpty() {
+    var empty = document.createElement("div");
+    empty.className = "empty-state";
+
+    var msg = document.createElement("p");
+    msg.className = "empty-msg";
+    msg.textContent = "Nema dova";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "empty-btn";
+    btn.textContent = "Odaberi dove";
+    btn.addEventListener("click", function () {
+      if (window.mojZikrConfig && window.mojZikrConfig.otvori) {
+        window.mojZikrConfig.otvori();
+      }
+    });
+
+    empty.appendChild(msg);
+    empty.appendChild(btn);
+    el.root.appendChild(empty);
+  }
+
   function renderSections() {
     el.root.textContent = "";
 
-    visible.forEach(function (section) {
+    var draw = drawableSections();
+    if (!draw.length) {
+      renderEmpty();
+      return;
+    }
+
+    draw.forEach(function (section) {
       var wrapper = document.createElement("section");
       wrapper.className = "section";
       wrapper.id = "sec-" + section.id;
@@ -866,7 +889,7 @@
       var heading = document.createElement("h2");
       heading.className = "section-title";
 
-      var icon = makeIcon(section.icon);
+      var icon = makeSectionIcon(section.icon);
       if (icon) { heading.appendChild(icon); }
       heading.appendChild(document.createTextNode(section.title));
       head.appendChild(heading);
@@ -886,16 +909,14 @@
       if (section.kind === "quran") {
         list.appendChild(renderQuranCard());
       } else {
-        /* Dove se numerišu automatski po sekciji: DOVA #1, #2, ...
-           Sure i brojani zikr zadržavaju svoje ime. */
-        var duaNo = 0;
+        /* Dove se numerišu automatski po sekciji (DOVA #1, #2, ...), a sure i
+           brojani zikr zadržavaju svoje ime. Numeraciju daje `itemTitles()` iz
+           data.js, ne brojač ovdje: ona ide preko CIJELOG spiska sekcije, pa
+           dova sakrivena u postavkama ne prenumeriše one ispod sebe i u
+           postavkama i na ekranu piše isti broj. */
+        var titles = itemTitles(section.id);
         section.items.forEach(function (item) {
-          var title = item.title;
-          if (item.type === "dua") {
-            duaNo += 1;
-            title = "DOVA #" + duaNo;
-          }
-          list.appendChild(renderItem(item, title));
+          list.appendChild(renderItem(item, titles[item.id] || item.title));
         });
       }
 
@@ -1102,11 +1123,13 @@
 
   function updateProgress() {
     var items = allItems();
+    var quran = quranVisible();
+
     var done = items.reduce(function (sum, item) {
       return sum + (state.items[item.id] ? 1 : 0);
-    }, 0) + (state.quran ? 1 : 0);
+    }, 0) + ((quran && state.quran) ? 1 : 0);
 
-    var total = items.length + 1;
+    var total = items.length + (quran ? 1 : 0);
 
     visible.forEach(function (section) {
       var node = el.root.querySelector('[data-section="' + section.id + '"]');
@@ -1125,8 +1148,12 @@
     updateGroupBars();
 
     /* Dan je završen — "Elhamdulillah" preko cijelog ekrana. Ako dan više
-       nije završen (odčekirano, ili je prešla ponoć), ekran se sam skloni. */
-    var complete = done === total;
+       nije završen (odčekirano, ili je prešla ponoć), ekran se sam skloni.
+
+       `total > 0` je za slučaj da je korisnik u postavkama isključio SVE:
+       prazan spisak nije završen dan nego prazan spisak, i čestitka za nula
+       urađenih stvari bi bila podsmijeh. */
+    var complete = total > 0 && done === total;
     if (complete && !wasComplete) {
       openCelebration();
     } else if (!complete) {
@@ -1346,7 +1373,7 @@
      gotov, do "Navečer" mora skrolati kroz cijeli spisak. Ako danas nije
      čekirano ništa, ostaje se na vrhu: nema se šta preskočiti. */
   function anyChecked() {
-    if (state.quran) { return true; }
+    if (quranVisible() && state.quran) { return true; }
     return allItems().some(function (item) { return !!state.items[item.id]; });
   }
 
@@ -1427,17 +1454,18 @@
   /* ------------------------------------------------------------------------
      Promjena u postavkama
 
-     Tri stvari mogu doći odavde: druga transkripcija, ugašena/upaljena
-     sekcija, i drugo ime. Sve tri traže isto — ponovo iscrtati dan.
+     Tri stvari mogu doći odavde: druga transkripcija, isključena/uključena
+     stavka, i drugo ime. Sve tri traže isto — ponovo iscrtati dan.
 
      Kod imena ide i ponovno uparivanje: novi korisnik ima svoj spisak, pa
      ono što se vidi na ekranu više ne mora biti njegovo. `start()` prvo
      pošalje ono što je ovdje čekirano a nije stiglo gore, pa povuče stanje
      tog korisnika.
 
-     Završni ekran se pri ovome NE otvara sam. Gašenjem petka dan zna postati
-     završen, a puni ekran "Elhamdulillah" preko otvorenih postavki bi bio
-     iznenađenje umjesto čestitke. Dugme za njega svejedno ostaje.
+     Završni ekran se pri ovome NE otvara sam. Isključivanjem zadnjih
+     neobavljenih stavki dan zna postati završen, a puni ekran "Elhamdulillah"
+     preko otvorenih postavki bi bio iznenađenje umjesto čestitke. Dugme za
+     njega svejedno ostaje.
      ------------------------------------------------------------------------ */
   if (window.mojZikrConfig) {
     var lastUser = window.mojZikrConfig.korisnik();

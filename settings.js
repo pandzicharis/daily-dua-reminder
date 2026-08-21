@@ -13,13 +13,18 @@
      transkripcija umjesto arapskog teksta prikazuje transliteraciju iz
                    data.js. ZAMJENA, ne dodatak — ispod je i dalje prevod.
 
-     petak         (i svaka druga sekcija sa `optional: true`) postoji ili ne
-                   postoji. Ugašena nestaje i sa ekrana i iz računa
-                   podsjetnika, jer server gleda isti taj config.
+     spisak stavki kvačica po dovi, u akordeonu po sekciji. Ko ne radi dio
+                   dnevnog ili večernjeg zikra ne mora ga ni gledati.
+                   Isključena stavka nestaje i sa ekrana i iz računa
+                   podsjetnika, a sekcija kojoj je isključeno sve nestaje
+                   cijela.
 
-   Prekidači se NE nabrajaju ovdje. Poseban je samo `transkript`; sve ostalo
-   je spisak `optionalSections()` iz data.js, pa nova takva sekcija sama
-   dobije svoj red u drawer-u.
+   Prekidača za cijelu sekciju nema. Postojao je (petak), ali kvačice rade
+   isto i na jednom mjestu: isključi svih pet petačkih stavki i sekcije nema,
+   kao ni njenog podsjetnika. Zbog toga je `transkript` jedini prekidač.
+
+   Spisak sekcija se NE nabraja ovdje — akordeoni se prave iz
+   `pickableSections()` u data.js, pa nova sekcija sa spiskom sama dobije svoj.
 
    Podsjetnici (zvono) su premješteni u ovaj drawer, ali ih i dalje vodi
    notifications.js — ovdje se samo pravi red u koji on ubaci svoje dugme.
@@ -28,9 +33,10 @@
 
    Šta ide gore na server, a šta ostaje ovdje:
 
-     server (cfg:<ime>)   oba prekidača — da drugi uređaj istog korisnika
-                          zatekne isto stanje, i da scheduler zna za petak
-     localStorage         ime i kopija prekidača, da aplikacija zna šta da
+     server (cfg:<ime>)   transkripcija i spisak isključenih stavki — da
+                          drugi uređaj istog korisnika zatekne isto stanje, i
+                          da scheduler zna šta se uopšte broji
+     localStorage         ime i kopija svega toga, da aplikacija zna šta da
                           nacrta prije nego odgovor sa servera stigne, i da
                           radi bez mreže
    ========================================================================== */
@@ -69,26 +75,63 @@
      Stanje
      ------------------------------------------------------------------------ */
 
-  /* Spisak sekcija koje se smiju ugasiti — iz data.js, ne prepisan ovdje. */
-  function optionalne() {
-    return (typeof optionalSections === "function") ? optionalSections() : [];
+  /* Sekcije čije se pojedinačne stavke smiju isključiti — iz data.js, ne
+     prepisane ovdje. Spisak stavki se nikad ne piše u ovom fajlu; nova dova u
+     data.js sama dobije svoju kvačicu. */
+  function birljive() {
+    return (typeof pickableSections === "function") ? pickableSections() : [];
   }
 
-  function podrazumijevano() {
-    var out = { transkript: false };
-    optionalne().forEach(function (section) { out[section.id] = true; });
+  /* Stavke jedne sekcije — takođe iz data.js, jer Kur'an svoju jedinu stavku
+     nema u `items` (vidi `sectionItems()` tamo). */
+  function stavke(section) {
+    return (typeof sectionItems === "function")
+      ? sectionItems(section)
+      : (section.items || []);
+  }
+
+  /* Svi id-evi koje `skriveno` smije nositi — po njima se odbacuje zastario
+     zapis (dova obrisana iz data.js). */
+  function poznateStavke() {
+    var out = {};
+    birljive().forEach(function (section) {
+      stavke(section).forEach(function (item) { out[item.id] = true; });
+    });
     return out;
   }
 
-  /* Prihvata samo poznata polja i samo boolean — isto kao `cleanPrefs()` na
-     serveru. Sve ostalo pada na podrazumijevano, pa pokvaren ili zastario
-     zapis u localStorage-u ne može ostaviti aplikaciju u čudnom stanju. */
+  /* `skriveno` je spisak SAKRIVENIH, ne prikazanih: podrazumijevano je "sve
+     se vidi", pa nova dova ne mora ni u čijem configu biti dopisana. */
+  function podrazumijevano() {
+    return { transkript: false, skriveno: [] };
+  }
+
+  /* Prihvata samo poznata polja i samo boolean (uz `skriveno`, koje je spisak
+     id-eva) — isto kao `cleanPrefs()` na serveru. Sve ostalo pada na
+     podrazumijevano, pa pokvaren ili zastario zapis u localStorage-u ne može
+     ostaviti aplikaciju u čudnom stanju. */
   function ocisti(raw) {
     var out = podrazumijevano();
     if (!raw || typeof raw !== "object") { return out; }
+
     Object.keys(out).forEach(function (id) {
+      if (id === "skriveno") { return; }
       if (typeof raw[id] === "boolean") { out[id] = raw[id]; }
     });
+
+    /* Bez duplikata i uvijek sortirano. Sortiranje nije kozmetika: `povuci()`
+       poredi config sa servera sa ovim preko JSON.stringify, pa bi isti spisak
+       u drugom redoslijedu prošao kao promjena i ponovo iscrtao cijeli ekran. */
+    if (Array.isArray(raw.skriveno)) {
+      var poznato = poznateStavke();
+      var vidjeno = {};
+      out.skriveno = raw.skriveno.filter(function (id) {
+        if (typeof id !== "string" || !poznato[id] || vidjeno[id]) { return false; }
+        vidjeno[id] = true;
+        return true;
+      }).sort();
+    }
+
     return out;
   }
 
@@ -156,10 +199,10 @@
       .catch(function () { return null; });
   }
 
-  function posalji() {
-    if (!kljuc(ime)) { return Promise.resolve(); }
+  function posaljiSad() {
+    if (!kljuc(ime)) { return; }
 
-    return fetch("/api/prefs", {
+    fetch("/api/prefs", {
       method: "POST",
       headers: zaglavlja({ "Content-Type": "application/json" }),
       body: JSON.stringify({ prefs: config })
@@ -168,6 +211,25 @@
          Config se ne stavlja u red čekanja kao kvačice: zadnja postavka
          pobjeđuje, pa nema šta da se izgubi osim jednog kruga. */
     });
+  }
+
+  /* Slanje se sabija u jedan zahtjev. Prekidača je par i tu je svejedno, ali
+     prolaz kroz spisak dova je desetak kvačica u nekoliko sekundi — a config
+     ide CIJEL i zadnji pobjeđuje, pa deset zahtjeva nose istu informaciju kao
+     jedan zadnji.
+
+     `posalji(true)` šalje bez čekanja. Zatvaranje drawer-a to koristi, da se
+     zadnja kvačica ne rastane od zatvorene aplikacije. */
+  var cekaSlanje = null;
+
+  function posalji(odmah) {
+    if (cekaSlanje) { clearTimeout(cekaSlanje); cekaSlanje = null; }
+    if (!kljuc(ime)) { return; }
+    if (odmah) { posaljiSad(); return; }
+    cekaSlanje = setTimeout(function () {
+      cekaSlanje = null;
+      posaljiSad();
+    }, 500);
   }
 
   /* ------------------------------------------------------------------------
@@ -188,6 +250,35 @@
   }
 
   /* Red sa prekidačem. `onChange` dobija novo stanje. */
+  /* Sam prekidač, bez reda oko sebe — koriste ga i red u postavkama i
+     zaglavlje akordeona.
+
+     Input je pravi checkbox razvučen preko cijelog prekidača i providan: tako
+     klik, fokus i čitač ekrana rade sami od sebe, bez ijedne linije koja bi
+     glumila kontrolu. Traka ispod je samo slika stanja. */
+  function prekidac(id) {
+    var wrap = document.createElement("span");
+    wrap.className = "switch";
+
+    var input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = "switch-input";
+    if (id) { input.id = "set-" + id; }
+
+    var knob = document.createElement("span");
+    knob.className = "switch-knob";
+
+    var track = document.createElement("span");
+    track.className = "switch-track";
+    track.setAttribute("aria-hidden", "true");
+    track.appendChild(knob);
+
+    wrap.appendChild(input);
+    wrap.appendChild(track);
+
+    return { wrap: wrap, input: input };
+  }
+
   function redPrekidac(id, naslov, opis) {
     var row = document.createElement("div");
     row.className = "set-row";
@@ -201,39 +292,272 @@
     text.appendChild(label);
     text.appendChild(p("set-note", opis));
 
-    var wrap = document.createElement("span");
-    wrap.className = "switch";
+    var sw = prekidac(id);
+    sw.input.checked = config[id] === true;
 
-    var input = document.createElement("input");
-    input.type = "checkbox";
-    input.className = "switch-input";
-    input.id = "set-" + id;
-    input.checked = config[id] === true;
-
-    var knob = document.createElement("span");
-    knob.className = "switch-knob";
-
-    var track = document.createElement("span");
-    track.className = "switch-track";
-    track.setAttribute("aria-hidden", "true");
-    track.appendChild(knob);
-
-    /* Input je pravi checkbox razvučen preko cijelog prekidača i providan —
-       tako klik, fokus i čitač ekrana rade sami od sebe, bez ijedne linije
-       koja bi glumila kontrolu. Traka ispod je samo slika stanja. */
-    wrap.appendChild(input);
-    wrap.appendChild(track);
-
-    input.addEventListener("change", function () {
-      config[id] = input.checked;
+    sw.input.addEventListener("change", function () {
+      config[id] = sw.input.checked;
       zapamtiConfig();
       javi();
       posalji();
     });
 
     row.appendChild(text);
-    row.appendChild(wrap);
-    return { row: row, input: input };
+    row.appendChild(sw.wrap);
+    return { row: row, input: sw.input };
+  }
+
+  /* ------------------------------------------------------------------------
+     Spisak stavki — akordeon po sekciji
+
+     Svaki akordeon ima dvije kontrole u zaglavlju: naslov (otvara i zatvara
+     spisak) i prekidač — je li sekcija uopšte na spisku. Prekidač NE pamti
+     svoje stanje nego ga čita iz kvačica, i ima samo dva položaja:
+
+       upaljen   prikazuje se bar jedna stavka
+       ugašen    ni jedna, pa sekcije nema ni na ekranu ni u podsjetniku
+
+     Zato prekidača za sekciju nema u configu: jedini zapis je `skriveno`, pa
+     se ne mogu razići. Gašenje isključi sve, paljenje uključi sve.
+
+     Fina podjela je unutra: kvačica po stavci i „Označi sve / Odznači sve“ na
+     vrhu spiska, jer se 34 kvačice ne prolaze jedna po jedna. Da je sekcija
+     djelimična vidi se po brojci (4 / 6, zlatna) — prekidač o tome ne govori.
+
+     Sekcija sa samo jednom stavkom (Kur'an) nema šta da rasklopi: dobija
+     obični red sa prekidačem, bez šiljka i bez spiska koji bi ponovio isto.
+
+     Ostalo stoji sklopljeno jer je predugo da bi stajalo otvoreno: sama
+     sekcija „Dove“ ima 34 reda, a u postavke se najčešće ulazi zbog imena i
+     podsjetnika.
+     ------------------------------------------------------------------------ */
+
+  /* Iscrtani akordeoni — po njima `osvjeziStavke()` vraća kvačice u stanje
+     koje je stiglo sa servera. */
+  var akordeoni = [];
+
+  function jeSkriveno(id) {
+    return config.skriveno.indexOf(id) !== -1;
+  }
+
+  /* Vraća true samo ako se stanje stvarno promijenilo — pozivalac po tome zna
+     treba li iscrtavati i slati. */
+  function postaviPrikaz(id, prikazi) {
+    var i = config.skriveno.indexOf(id);
+    if (prikazi && i !== -1) { config.skriveno.splice(i, 1); return true; }
+    if (!prikazi && i === -1) { config.skriveno.push(id); config.skriveno.sort(); return true; }
+    return false;
+  }
+
+  /* Jedna promjena spiska: zapamti, osvježi kvačice, javi ekranu, pošalji. */
+  function primiPrikaz() {
+    zapamtiConfig();
+    osvjeziStavke();
+    javi();
+    posalji();
+  }
+
+  /* Naslov dove je samo broj ("DOVA #7"), pa se po njemu ne zna koja je —
+     ispod ide početak prevoda. Prevod, a ne arapski: po njemu se i bira. */
+  function opisStavke(item) {
+    if (item.type !== "dua") { return ""; }
+    var text = String(item.translation || item.transliteration || "").trim();
+    if (!text) { return ""; }
+    if (text.length <= 78) { return text; }
+    /* Rez na zadnjoj cijeloj riječi — presječena riječ izgleda kao greška. */
+    return text.slice(0, 78).replace(/[\s.,;:!?]+\S*$/, "") + "…";
+  }
+
+  /* Pali ili gasi sve stavke sekcije odjednom. */
+  function postaviSve(items, prikazi) {
+    var promjena = false;
+    items.forEach(function (item) {
+      if (postaviPrikaz(item.id, prikazi)) { promjena = true; }
+    });
+    if (promjena) { primiPrikaz(); } else { osvjeziStavke(); }
+  }
+
+  /* Isti znak koji sekcija nosi na listi (data.js). Ovdje je da se red u
+     postavkama i naslov na ekranu prepoznaju kao ista stvar. */
+  function ikona(section) {
+    return (typeof makeSectionIcon === "function")
+      ? makeSectionIcon(section.icon, "set-acc-icon")
+      : null;
+  }
+
+  function akordeon(section) {
+    var titles = (typeof itemTitles === "function") ? itemTitles(section.id) : {};
+    var items = stavke(section);
+    var solo = items.length < 2;
+
+    var box = document.createElement("div");
+    box.className = "set-acc" + (solo ? " is-solo" : "");
+
+    var head = document.createElement("div");
+    head.className = "set-acc-head";
+
+    /* Prekidač sekcije. Stanje mu daje `osvjeziStavke()`, ne ovaj klik —
+       ugašen znači "ni jedna stavka", pa paljenje vraća sve. */
+    var sw = prekidac("sek-" + section.id);
+    sw.input.setAttribute("aria-label", "Prikaži „" + section.title + "“");
+    sw.input.addEventListener("change", function () {
+      postaviSve(items, sw.input.checked);
+    });
+
+    /* --- sekcija sa jednom stavkom: obični red, bez rasklapanja --- */
+    if (solo) {
+      var soloTitle = document.createElement("span");
+      soloTitle.className = "set-acc-title";
+      soloTitle.textContent = section.title;
+
+      /* Kur'an je jedna stavka — umjesto "0 / 1" piše se "1 stranica",
+         istim fontom kojim ostale sekcije pišu svoju brojku, na istoj liniji. */
+      var soloCount = document.createElement("span");
+      soloCount.className = "set-acc-count";
+      soloCount.textContent = "1 stranica";
+
+      var soloIcon = ikona(section);
+      if (soloIcon) { head.appendChild(soloIcon); }
+      head.appendChild(soloTitle);
+      head.appendChild(soloCount);
+      head.appendChild(sw.wrap);
+      box.appendChild(head);
+
+      return {
+        node: box, items: items, inputs: {}, count: null, section: sw.input
+      };
+    }
+
+    var body = document.createElement("div");
+    body.className = "set-acc-body";
+    body.id = "acc-" + section.id;
+    body.hidden = true;
+
+    /* Naslov je dugme, prekidač je checkbox — dvije kontrole, pa ne mogu biti
+       jedan element. Checkbox u <button> nije dopušten, a klik po traci koji
+       bi i otvarao spisak bio bi dvije radnje na jedan dodir. */
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "set-acc-toggle";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", body.id);
+
+    var title = document.createElement("span");
+    title.className = "set-acc-title";
+    title.textContent = section.title;
+
+    var count = document.createElement("span");
+    count.className = "set-acc-count";
+
+    var chevron = document.createElement("span");
+    chevron.className = "set-acc-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+
+    var icon = ikona(section);
+    if (icon) { toggle.appendChild(icon); }
+    toggle.appendChild(title);
+    toggle.appendChild(count);
+    toggle.appendChild(chevron);
+
+    toggle.addEventListener("click", function () {
+      var otvori = body.hidden;
+      body.hidden = !otvori;
+      toggle.setAttribute("aria-expanded", otvori ? "true" : "false");
+      box.classList.toggle("is-open", otvori);
+    });
+
+    head.appendChild(toggle);
+    head.appendChild(sw.wrap);
+
+    /* „Označi sve / Odznači sve“ na vrhu spiska. Tekst prati stanje, pa dugme
+       uvijek nudi ono što još nije učinjeno (piše ga `osvjeziStavke()`). */
+
+    var inputs = {};
+
+    items.forEach(function (item) {
+      /* <label>, ne <div> sa handlerom: klik po cijelom redu prebacuje
+         kvačicu sam od sebe, i red dolazi pod čitač ekrana kao jedna
+         kontrola sa svojim imenom. */
+      var row = document.createElement("label");
+      row.className = "set-pick";
+
+      var input = document.createElement("input");
+      input.type = "checkbox";
+      input.className = "check";
+      input.checked = !jeSkriveno(item.id);
+
+      var text = document.createElement("span");
+      text.className = "set-pick-text";
+
+      var label = document.createElement("span");
+      label.className = "set-pick-title";
+      label.textContent = titles[item.id] || item.title;
+      text.appendChild(label);
+
+      var opis = opisStavke(item);
+      if (opis) {
+        var note = document.createElement("span");
+        note.className = "set-pick-note";
+        note.textContent = opis;
+        text.appendChild(note);
+      }
+
+      row.appendChild(input);
+      row.appendChild(text);
+
+      input.addEventListener("change", function () {
+        if (postaviPrikaz(item.id, input.checked)) { primiPrikaz(); }
+      });
+
+      inputs[item.id] = input;
+      body.appendChild(row);
+    });
+
+    box.appendChild(head);
+    box.appendChild(body);
+
+    return {
+      node: box, items: items, inputs: inputs, count: count,
+      section: sw.input
+    };
+  }
+
+  /* Kvačice, brojka i prekidač sekcije u stanje iz `config`. Zove se i poslije
+     odgovora sa servera, jer config može doći sa drugog uređaja.
+
+     Ovdje je jedino mjesto gdje se piše stanje prekidača sekcije — on ga ne
+     pamti nego ga uvijek dobije iz kvačica. */
+  function osvjeziStavke() {
+    akordeoni.forEach(function (acc) {
+      var gore = 0;
+
+      acc.items.forEach(function (item) {
+        var on = !jeSkriveno(item.id);
+        if (on) { gore += 1; }
+        /* Sekcija sa jednom stavkom nema svoje kvačice — nju vodi prekidač. */
+        var input = acc.inputs[item.id];
+        if (input && input.checked !== on) { input.checked = on; }
+      });
+
+      var sve = acc.items.length;
+      if (acc.count) { acc.count.textContent = gore + " / " + sve; }
+
+      /* Prekidač ima samo dva položaja: ugašen znači "ni jedna stavka". Kad je
+         djelimično, ostaje upaljen — da je nešto isključeno kaže brojka, a ne
+         prekidač. */
+      acc.section.checked = gore > 0;
+
+      if (acc.all) {
+        acc.all.textContent = (gore === sve) ? "Odznači sve" : "Označi sve";
+      }
+
+      /* Stanja i za oko: puna sekcija je obična, djelimična nosi zlatnu
+         brojku, a prazna je cijela prigušena — ta se uopšte ne pojavljuje na
+         spisku, pa se to mora vidjeti i odavde. */
+      acc.node.classList.toggle("is-full", gore === sve);
+      acc.node.classList.toggle("is-partial", gore > 0 && gore < sve);
+      acc.node.classList.toggle("is-empty", gore === 0);
+    });
   }
 
   function build() {
@@ -278,6 +602,11 @@
     nameLabel.textContent = "Ime";
     field.appendChild(nameLabel);
 
+    /* Polje i oznaka stanja dijele isti okvir, pa kvačica sjedi UNUTAR
+       inputa — na desnom rubu, gdje je i pogled kad se ime otkuca. */
+    var nameWrap = document.createElement("div");
+    nameWrap.className = "set-input-wrap";
+
     el.name = document.createElement("input");
     el.name.type = "text";
     el.name.id = "setName";
@@ -288,9 +617,14 @@
     el.name.setAttribute("autocapitalize", "words");
     el.name.setAttribute("spellcheck", "false");
     el.name.setAttribute("maxlength", "32");
-    field.appendChild(el.name);
+    nameWrap.appendChild(el.name);
+
+    el.mark = oznakaStanja();
+    nameWrap.appendChild(el.mark);
+    field.appendChild(nameWrap);
 
     el.hint = p("set-hint", "");
+    el.hint.hidden = true;
     field.appendChild(el.hint);
     body.appendChild(field);
 
@@ -302,20 +636,14 @@
     });
     el.name.addEventListener("blur", function () { primiIme(el.name.value); });
 
-    /* Prekidači */
+    /* Prekidač — samo jedan. Sekcije se ne gase prekidačem nego kvačicama
+       u spisku ispod (vidi komentar na vrhu fajla). */
     el.switches = {};
 
     var t = redPrekidac("transkript", "Transkripcija",
       "Umjesto arapskog teksta prikaži transkripciju. Prevod ostaje ispod.");
     el.switches.transkript = t.input;
     body.appendChild(t.row);
-
-    optionalne().forEach(function (section) {
-      var s = redPrekidac(section.id, section.title,
-        "Prikaži sekciju „" + section.title + "“ i njen podsjetnik.");
-      el.switches[section.id] = s.input;
-      body.appendChild(s.row);
-    });
 
     /* Podsjetnici — red pravi ovaj fajl, dugme u njega stavlja
        notifications.js (traži ga po id-u `notifyBtn`). */
@@ -338,16 +666,24 @@
     status.id = "notifyStatus";
     body.appendChild(status);
 
-    /* Izlaz na dnu, pored ✕ u zaglavlju. Palac na telefonu je dolje, a spisak
-       postavki je duži od ekrana — dok se doskrola do kraja, ✕ je već otišao
-       gore. Isti tekst i isti oblik kao dugme na završnom ekranu, da "nazad
-       na spisak" svugdje izgleda jednako. */
-    var back = document.createElement("button");
-    back.type = "button";
-    back.className = "set-back";
-    back.textContent = "Nazad na dove";
-    back.addEventListener("click", zatvori);
-    body.appendChild(back);
+    /* Spisak stavki — na dnu jer je najduži dio postavki. Ime, prekidači i
+       podsjetnici ostaju odmah pod rukom; spiskovi su ionako sklopljeni. */
+    var birane = birljive();
+    if (birane.length) {
+      var pickHead = document.createElement("div");
+      pickHead.className = "set-group-head";
+      pickHead.appendChild(p("set-label", "Prikaz"));
+      pickHead.appendChild(p("set-note",
+        "Odaberi dove koje će se prikazati"));
+      body.appendChild(pickHead);
+
+      akordeoni = birane.map(function (section) {
+        var acc = akordeon(section);
+        body.appendChild(acc.node);
+        return acc;
+      });
+      osvjeziStavke();
+    }
 
     sheet.appendChild(head);
     sheet.appendChild(body);
@@ -403,10 +739,69 @@
      Ime — prihvatanje i posljedice
      ------------------------------------------------------------------------ */
 
+  /* Napomena pod poljem se SKRIVA kad je prazna. Prije je stalno držala jedan
+     prazan red (`min-height`) da se spisak ne pomjeri kad se tekst pojavi, ali
+     taj red je bio prazan skoro uvijek — pa je ispod imena stajala rupa. */
   function pisiHint(text, tone) {
     if (!el.hint) { return; }
     el.hint.textContent = text || "";
     el.hint.className = "set-hint" + (tone ? " is-" + tone : "");
+    el.hint.hidden = !text;
+  }
+
+  /* Oznaka u desnom rubu polja za ime. Tri stanja:
+
+       ""          ništa se ne dešava — oznake nema
+       "cuva"      zahtjev je u zraku (vrti se prsten)
+       "spaseno"   zapamćeno (kvačica, sama izblijedi)
+
+     Zašto uopšte: ime se ne prima na svaki pritisak tipke nego na Enter i na
+     izlazak iz polja, pa se bez ikakvog znaka ne vidi je li primljeno. Tekst
+     ispod polja to kaže samo kad se PROSTOR promijeni; kad se ispravi samo
+     način pisanja ("haris" -> "Haris"), nema šta da se ispiše a jeste
+     zapamćeno. */
+  function oznakaStanja() {
+    var NS = "http://www.w3.org/2000/svg";
+
+    var wrap = document.createElement("span");
+    wrap.className = "set-mark";
+    wrap.setAttribute("aria-hidden", "true");
+
+    var spin = document.createElement("span");
+    spin.className = "set-mark-spin";
+    wrap.appendChild(spin);
+
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "set-mark-check");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2.4");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    var path = document.createElementNS(NS, "path");
+    path.setAttribute("d", "M4 12.5l5 5L20 6.5");
+    svg.appendChild(path);
+    wrap.appendChild(svg);
+
+    return wrap;
+  }
+
+  /* Kvačica sama sklizne za par sekundi — inače bi stajala do sljedeće
+     promjene i izgledala kao trajno stanje polja, a ne kao odgovor na radnju. */
+  var markTimer = null;
+
+  function pisiOznaku(stanje) {
+    if (!el.mark) { return; }
+    if (markTimer) { clearTimeout(markTimer); markTimer = null; }
+    el.mark.className = "set-mark" + (stanje ? " is-" + stanje : "");
+    if (stanje === "spaseno") {
+      markTimer = setTimeout(function () {
+        markTimer = null;
+        el.mark.className = "set-mark";
+      }, 2200);
+    }
   }
 
   function primiIme(raw) {
@@ -416,6 +811,7 @@
     /* Upisano je nešto od čega ne ostane ni jedno slovo (npr. samo znakovi
        interpunkcije) — to nije ime i ne pravi prostor. */
     if (novo && !noviKljuc) {
+      pisiOznaku("");
       pisiHint("Ime mora imati bar jedno slovo ili broj.", "warn");
       return;
     }
@@ -423,7 +819,7 @@
     if (noviKljuc === kljuc(ime)) {
       /* Isti prostor, možda drugačije napisano ("haris" -> "Haris").
          Zapamti kako je otkucano, ali ne diraj ništa drugo. */
-      if (novo !== ime) { ime = novo; zapamtiIme(); }
+      if (novo !== ime) { ime = novo; zapamtiIme(); pisiOznaku("spaseno"); }
       return;
     }
 
@@ -431,6 +827,7 @@
     zapamtiIme();
 
     if (!noviKljuc) {
+      pisiOznaku("");
       pisiHint("Bez imena spisak ostaje samo na ovom uređaju.", "warn");
       javi();
       return;
@@ -441,15 +838,20 @@
        vidljivo najviše koliko traje jedan zahtjev, a bez mreže ostaje dok se
        veza ne vrati. Zamjena praznim configom bila bi gora: spisak bi
        zatreptao na podrazumijevano pa nazad. */
+    pisiOznaku("cuva");
     pisiHint("Uparujem…", null);
     javi();
 
     povuci().then(function (known) {
       osvjeziPrekidace();
       if (known === null) {
+        /* Ime je zapamćeno lokalno, ali nije stiglo gore — kvačica bi tu bila
+           laž, pa je nema. Poruka ispod polja to kaže riječima. */
+        pisiOznaku("");
         pisiHint("Nema veze sa serverom — spisak je za sada samo ovdje.", "warn");
         return;
       }
+      pisiOznaku("spaseno");
       pisiHint(known
         ? "Ime već postoji — spojen si na njegov spisak."
         : "Novo ime — kreće čist spisak.", known ? "ok" : null);
@@ -460,6 +862,7 @@
     Object.keys(el.switches || {}).forEach(function (id) {
       el.switches[id].checked = config[id] === true;
     });
+    osvjeziStavke();
   }
 
   /* ------------------------------------------------------------------------
@@ -481,6 +884,8 @@
     if (!el.drawer || el.drawer.hidden) { return; }
     /* Ime otkucano pa zatvoreno bez izlaska iz polja — svejedno se prima. */
     if (document.activeElement === el.name) { primiIme(el.name.value); }
+    /* Zadnja kvačica u spisku možda još čeka svoj krug — ne čeka se dalje. */
+    if (cekaSlanje) { posalji(true); }
     el.drawer.hidden = true;
     otvoren = false;
     document.body.classList.remove("no-scroll");
@@ -511,10 +916,13 @@
     ime: function () { return ime; },
     /* ključ prostora — ovo ide u zaglavlje zahtjeva, "" ako imena nema */
     korisnik: function () { return kljuc(ime); },
-    /* { transkript, petak, ... } — uvijek cijel, nikad null */
+    /* { transkript, skriveno: [...] } — uvijek cijel, nikad null.
+       Spisak se kopira, ne dijeli: pozivalac ga ne smije mijenjati pod nama. */
     prefs: function () {
       var copy = {};
-      Object.keys(config).forEach(function (k) { copy[k] = config[k]; });
+      Object.keys(config).forEach(function (k) {
+        copy[k] = Array.isArray(config[k]) ? config[k].slice() : config[k];
+      });
       return copy;
     },
     /* fn(prefs, korisnik) pri svakoj promjeni imena ili prekidača */

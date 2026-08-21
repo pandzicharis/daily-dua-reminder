@@ -12,8 +12,6 @@ const SECTIONS = DATA.sections;
 /* Sekcije koje postoje na dati datum — jedini izvor istine za "šta se danas
    broji", isti koji vidi i aplikacija. */
 const sectionsForDate = DATA.sectionsForDate;
-/* Sekcije koje korisnik smije ugasiti — iz ovoga se gradi i validira config. */
-const optionalSections = DATA.optionalSections;
 const weekdayFromKey = DATA.weekdayFromKey;
 
 const TZ = "Europe/Sarajevo";
@@ -328,33 +326,50 @@ function subId(endpoint) {
 /* ------------------------------------------------------------------------
    Config korisnika
 
-   Dva prekidača, oba podrazumijevano UKLJUČENA:
+   Dva polja:
 
      transkript   ekran pokazuje transliteraciju umjesto arapskog
-     petak        petačka sekcija postoji (i njen podsjetnik radi)
+     skriveno     spisak id-eva stavki koje korisnik ne želi vidjeti
 
-   Prekidači sekcija se ne nabrajaju ovdje nego se čitaju iz data.js
-   (`optionalSections`), pa nova sekcija sa `optional: true` sama dobije
-   svoje mjesto u configu. Sve što nije na tom spisku se odbacuje — server
-   ne pamti polja koja ne razumije.
+   `skriveno` se vodi kao spisak ISKLJUČENIH, a ne prikazanih, jer je
+   podrazumijevano "sve se prikazuje": nova dova u data.js tako sama uđe u
+   spisak i ne treba dopisivati config svakom korisniku.
+
+   Prekidača za cijelu sekciju nema. Postojao je (`petak`), ali kvačice rade
+   isto: isključi svih pet petačkih stavki i sekcija ispadne iz
+   `sectionsForDate()`, njen podsjetnik dobije total 0 i ućuti. Zapis iz tog
+   vremena (`petak: false`) prolazi kroz `cleanPrefs()` i otpada kao svako
+   drugo nepoznato polje.
    ------------------------------------------------------------------------ */
-const OPTIONAL_IDS = optionalSections().map(function (s) { return s.id; });
 
 function defaultPrefs() {
-  const out = { transkript: false };
-  OPTIONAL_IDS.forEach(function (id) { out[id] = true; });
-  return out;
+  return { transkript: false, skriveno: [] };
 }
 
-/* Prihvata samo poznata polja i samo boolean vrijednosti. Ono što nije
-   poslano ostaje na podrazumijevanom — config je mali i uvijek cijeli. */
+/* Prihvata samo poznata polja. Ono što nije poslano ostaje na
+   podrazumijevanom — config je mali i uvijek cijeli. */
 function cleanPrefs(raw) {
   const out = defaultPrefs();
   if (!raw || typeof raw !== "object") { return out; }
   if (typeof raw.transkript === "boolean") { out.transkript = raw.transkript; }
-  OPTIONAL_IDS.forEach(function (id) {
-    if (typeof raw[id] === "boolean") { out[id] = raw[id]; }
-  });
+
+  /* Sakrivene stavke: samo POZNATI id-evi, bez duplikata, uvijek sortirano.
+     Sortiranje nije kozmetika — aplikacija svoj config poredi sa onim sa
+     servera preko JSON.stringify, pa bi drugačiji redoslijed istog spiska
+     izgledao kao promjena i ponovo iscrtao cijeli ekran.
+
+     `slice` prije `filter` je granica posla: tijelo zahtjeva može nositi
+     spisak od sto hiljada elemenata, a ispravnih id-eva ima nekoliko
+     desetina. */
+  if (Array.isArray(raw.skriveno)) {
+    const seen = Object.create(null);
+    out.skriveno = raw.skriveno.slice(0, 1000).filter(function (id) {
+      if (!validItemId(id) || seen[id]) { return false; }
+      seen[id] = true;
+      return true;
+    }).sort();
+  }
+
   return out;
 }
 
@@ -550,7 +565,7 @@ module.exports = {
   TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
   findTask, sectionsFor, taskStatus, blockedBy, lateFrom, validItemId,
-  quietFor, sectionsForDate, optionalSections, weekdayFromKey,
+  quietFor, sectionsForDate, weekdayFromKey,
   sarajevoNow, parseTime, subId, dueSlot, pushPayload,
   readJson, validSubscription, validDate,
   removeSubscription, intervalMinutes, cronAuthorized, devUnlocked,

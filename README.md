@@ -160,18 +160,42 @@ stvari i ništa više:
 |---|---|
 | **Ime** | određuje čiji je spisak. Isto ime na dva uređaja = jedan spisak. |
 | **Transkripcija** | umjesto arapskog teksta prikazuje transliteraciju iz `data.js`. Zamjena, ne dodatak — prevod ostaje ispod. |
-| **Petak** | postoji li petačka sekcija. Ugašena nestaje i sa ekrana i iz računa podsjetnika. |
+| **Šta se prikazuje** | kvačica po stavci, u akordeonu po sekciji, plus prekidač za cijelu sekciju u zaglavlju akordeona. Isključena dova nestaje i sa ekrana i iz računa podsjetnika. |
 
 Uz njih je i dugme za podsjetnike (zvono), preseljeno iz glavnog ekrana.
 
 Config se čuva pod `cfg:<ime>` i dijeli kroz uređaje istog korisnika, isto
-kao i čekirano. Server ga čita jer **petak mijenja i slanje, ne samo ekran**:
-ugašena sekcija ne ulazi u račun, pa njen podsjetnik ima `total = 0`, status
-`done` i ćuti. Time pada i zaklon `quietFor`, pa dnevni petkom kreće u 08:00
-kao svaki drugi dan — sve to bez ijednog posebnog pravila, samo iz brojanja.
+kao i čekirano.
 
-Prekidači sekcija se ne nabrajaju nigdje u kodu: sekcija sa `optional: true`
-u `data.js` sama dobije svoj red u drawer-u i svoje polje u configu.
+**Isključene stavke.** Config nosi polje `skriveno` — spisak id-eva — i vodi
+se kao spisak **isključenih**, a ne prikazanih: podrazumijevano je "sve se
+vidi", pa nova dova u `data.js` sama uđe u spisak i ne treba je dopisivati u
+ničiji config. Filtriranje radi isti `sectionsForDate()` kroz koji prolaze i
+ekran i scheduler, pa **isključena dova mijenja i slanje, ne samo ekran**: ne
+ulazi u `total`, a sekcija kojoj je isključeno sve ispada cijela — njen
+podsjetnik onda ima `total = 0`, status `done` i ćuti. Petkom time pada i
+zaklon `quietFor`, pa dnevni kreće u 08:00 kao svaki drugi dan. Sve to bez
+ijednog posebnog pravila, samo iz brojanja.
+
+Numeraciju dova daje `itemTitles()` i ide preko **cijelog** spiska sekcije, ne
+preko prikazanog — zato "DOVA #7" ostane #7 kad se neka iznad nje isključi, a
+u spisku se vidi rupa. Bez toga se ista dova u postavkama i na ekranu ne bi
+zvala isto.
+
+**Prekidač sekcije ima tri položaja** i **ne pamti ništa** — stanje uvijek
+izvodi iz kvačica ispod sebe:
+
+| kvačice | prekidač | izgled |
+|---|---|---|
+| sve uključene | upaljen | zeleno |
+| nešto isključeno | na pola (`indeterminate`) | zlatna traka, zlatna brojka |
+| sve isključene | ugašen | sivo, prigušen naslov |
+
+Klik na nepun prekidač pali sve, klik na pun gasi sve. Zato u configu nema
+polja za sekciju: jedini zapis je `skriveno`, pa se prekidač i kvačice ne mogu
+razići. (Nekad je postojao pravi prekidač za sekciju — polje `optional` u
+`data.js` i `petak: false` u configu. Uklonjen je jer je isto radio dvaput;
+stari zapis otpada u `cleanPrefs()` kao svako nepoznato polje.)
 
 **Normalizacija imena.** `Haris`, `haris `, `HARIS` → isti ključ `haris`.
 Naša slova se svode na ASCII (`č/ć→c`, `ž→z`, `š→s`, `đ→d`), pa se spisak

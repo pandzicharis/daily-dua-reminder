@@ -186,11 +186,13 @@
       var head = node("p", "devp-user");
       head.textContent = ime + " · " + u.devices +
         (u.devices === 1 ? " uređaj" : " uređaja");
-      /* Ugašen prekidač je čest razlog tišine — neka se vidi bez kopanja. */
-      var off = Object.keys(u.prefs || {}).filter(function (k) {
-        return u.prefs[k] === false && k !== "transkript";
-      });
-      if (off.length) { head.textContent += " · ugašeno: " + off.join(", "); }
+      /* Isključene stavke su čest razlog tišine: one smanjuju `total`, pa
+         podsjetnik zna biti "done" a da ništa ne izgleda urađeno. Neka se
+         vidi bez kopanja po bazi. */
+      var skriveno = (u.prefs && u.prefs.skriveno) || [];
+      if (skriveno.length) {
+        head.textContent += " · isključeno stavki: " + skriveno.length;
+      }
       el.result.appendChild(head);
 
       var why = node("dl", "devp-why");

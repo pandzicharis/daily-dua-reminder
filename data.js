@@ -19,12 +19,18 @@
    POLJA SEKCIJE (niz `sections` na dnu fajla):
      days           opciono; dani sedmice u kojima sekcija postoji
                     (0 = nedjelja … 5 = petak). Bez njega — svaki dan.
-     optional       opciono; sekcija koju korisnik smije ugasiti u svom
-                    configu (prekidač u drawer-u). Ugašena ne postoji ni na
-                    ekranu ni u računu podsjetnika — `sectionsForDate()` je
-                    izbaci, pa joj podsjetnik ima total 0 i sam ućuti.
-                    Podrazumijevano je UKLJUČENA: sekcija se gasi samo kad
-                    config izričito kaže `false`.
+   ŠTA KORISNIK SMIJE ISKLJUČITI. Pojedinu stavku, u postavkama (spisak
+   kvačica po sekciji). To se NE piše ovdje ni jednim poljem: config nosi
+   `skriveno`, spisak id-eva, a sve što nije na njemu se prikazuje — pa nova
+   dova u ovom fajlu sama uđe u spisak i ne treba je nigdje dopisivati.
+   Isključena stavka ispada i iz računa podsjetnika, jer i server prolazi
+   kroz `sectionsForDate()`; sekcija kojoj je isključeno sve nestaje sama.
+
+   Kur'anska stranica je i sama takva stavka, pod id-em "quran" — nije u
+   nizu `items` (vidi `sectionItems()`), ali se isključuje isto kao dova.
+
+   Prekidač u postavkama nema svoje polje u configu: pali i gasi sve kvačice
+   sekcije odjednom, pa se ne može raziće sa njima.
 
    TIPOVI:
      "surah"   -> samo checkbox + naslov, bez teksta (sve sure)
@@ -574,14 +580,59 @@
     { id: "petak-kehf",        title: "Sura El-Kehf", type: "surah", source: "Kur'an, El-Kehf" },
     { id: "petak-sadaka",      title: "Sadaka",       type: "count" },
     { id: "petak-duha",        title: "Duha namaz",   type: "count" },
-    { id: "petak-kupanje",     title: "Kupanje",      type: "count" }
+    /* id ostaje "petak-kupanje" iako naslov više nije "Kupanje" — po id-u se
+       pamti kvačica, pa mijenjanje id-a briše sve dosad označeno. */
+    { id: "petak-kupanje",     title: "Higijena",     type: "count" },
+    { id: "petak-dova",        title: "Dova",         type: "count" }
   ];
 
   /* --------------------------------------------------------------------------
      SEKCIJE — redoslijed na ekranu.
      Premjesti stavku u ovom nizu i aplikacija se sama presloži.
      -------------------------------------------------------------------------- */
-  /* `icon` bira ikonicu iz registra ICONS u script.js:
+  /* Ikonice — inline SVG, bez ijedne vanjske zavisnosti. Ključ je `icon` iz
+     niza `sections` ispod, a boju nasljeđuju od teksta oko sebe.
+
+     Stoje ovdje a ne u script.js jer ih crtaju dva mjesta: naslov sekcije na
+     listi i zaglavlje akordeona u postavkama — ista sekcija mora nositi isti
+     znak na oba, pa se registar ne smije voditi na dva mjesta. */
+  const SECTION_ICONS = {
+    /* otvorena knjiga */
+    book: "M12 7c-1.6-1.3-3.7-2-6-2H3v13h3c2.3 0 4.4.7 6 2m0-13c1.6-1.3 3.7-2 6-2h3v13h-3c-2.3 0-4.4.7-6 2m0-13v13",
+    /* petlja ponavljanja — brojani zikr */
+    loop: "M17 3l3 3-3 3M20 6H9a4 4 0 0 0 0 8M7 21l-3-3 3-3M4 18h11a4 4 0 0 0 0-8",
+    /* sklopljene ruke sa svjetlom iznad */
+    hands: "M4 13a8 8 0 0 0 16 0zM12 3v3.5M7.5 5l1.4 2.2M16.5 5l-1.4 2.2",
+    /* mlađak */
+    moon: "M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z",
+    /* kupola sa špicem — sekcija vezana za poseban dan (petak) */
+    mosque: "M4 20h16M6 20v-6a6 6 0 0 1 12 0v6M12 4v4",
+    /* list papira — dugme "Vidi stranicu" */
+    pages: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6"
+  };
+
+  /* Vraća <svg> za dati ključ, ili null ako ga u registru nema. Klasa se daje
+     izvana jer isti znak nosi različitu veličinu na listi i u postavkama. */
+  function makeSectionIcon(name, className) {
+    var d = SECTION_ICONS[name];
+    if (!d) { return null; }
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", className || "section-icon");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.6");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    var path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  /* `icon` bira znak iz registra `SECTION_ICONS` iznad:
      "book" | "loop" | "hands" | "moon" | "mosque"
 
      `days` (opciono) — dani sedmice u kojima sekcija POSTOJI, po JS
@@ -589,7 +640,7 @@
      postoji svaki dan, pa se postojeće četiri ne diraju. Filtriranje radi
      `sectionsForDate()` ispod — i aplikacija i server idu kroz njega. */
   const sections = [
-    { id: "petak",   title: "Petak",   icon: "mosque", kind: "list", items: petak, days: [5], optional: true },
+    { id: "petak",   title: "Petak",   icon: "mosque", kind: "list", items: petak, days: [5] },
     { id: "quran",   title: "Kur'an",  icon: "book",   kind: "quran" },
     { id: "zikr",    title: "Zikr",    icon: "loop",   kind: "list", items: zikr },
     { id: "dove",    title: "Dove",    icon: "hands",  kind: "list", items: dove },
@@ -616,29 +667,94 @@
      aplikaciji, now.date na serveru), pa se sekcija, spisak čekiranog i
      podsjetnik prebacuju u novi dan u istom trenutku.
 
-     `prefs` je config korisnika, { idSekcije: bool }, i gasi SAMO sekcije
-     označene sa `optional`. Nepoznat ili nepostojeći config ne gasi ništa —
-     ugašeno mora biti izričito `false`, inače bi svaki poziv bez configa
-     (stari kod, uređaj bez imena) tiho pobrisao pola spiska.
+     `prefs` je config korisnika i iz njega se čita samo `skriveno` — spisak
+     id-eva stavki koje je isključio. Nepoznat ili nepostojeći config ne gasi
+     ništa: ugašeno mora biti izričito na tom spisku, inače bi svaki poziv bez
+     configa (stari kod, uređaj bez imena) tiho pobrisao pola spiska.
 
-     Server prosljeđuje config vlasnika baze, pa "petak ugašen" znači isto na
-     ekranu i u odluci o podsjetniku: sekcije nema, njen podsjetnik ima total
-     0 i sam ućuti. */
+     Server prosljeđuje config vlasnika baze, pa isključena stavka znači isto
+     na ekranu i u odluci o podsjetniku: nema je u računu, a sekcija kojoj je
+     isključeno sve dobije total 0 i njen podsjetnik ućuti. */
   function sectionsForDate(dateKey, prefs) {
     var wd = weekdayFromKey(dateKey);
+    var skriveno = (prefs && Array.isArray(prefs.skriveno)) ? prefs.skriveno : [];
+
     return sections.filter(function (section) {
       if (section.days && section.days.indexOf(wd) === -1) { return false; }
-      if (section.optional && prefs && prefs[section.id] === false) { return false; }
+      /* Kur'anska sekcija nema `items` pa je ne može isprazniti filter ispod —
+         gasi je njena jedina stavka, pod id-em "quran". */
+      if (section.kind === "quran") { return skriveno.indexOf("quran") === -1; }
       return true;
+    }).map(function (section) {
+      if (!section.items || !skriveno.length) { return section; }
+
+      var kept = section.items.filter(function (item) {
+        return skriveno.indexOf(item.id) === -1;
+      });
+      if (kept.length === section.items.length) { return section; }
+
+      /* KOPIJA, ne izmjena zatečenog objekta: `sections` je jedan zajednički
+         niz, a na serveru kroz istu (toplu) instancu prolaze configi više
+         korisnika — izmjena na mjestu bi Harisov spisak nakalemila Leili. */
+      var copy = {};
+      Object.keys(section).forEach(function (k) { copy[k] = section[k]; });
+      copy.items = kept;
+      return copy;
+    /* Sekcija kojoj je isključeno sve nema šta prikazati na glavnoj
+       listi, ali u postavkama jeste — njenu stavku je moguće opet uključiti.
+       Dakle, ostaje u resultu ali sa praznom stavkom (`items: []`). Njen
+       podsjetnik dobije total 0 i sam ućuti. Kur'anska sekcija nema `items`
+       (jedna je stavka) i nikad ne biva ispražnjena.
+       Na ekranu će se tada umjesto liste stavki prikazati "nema dova" + dugme. */
     });
   }
   
-  /* Sekcije koje korisnik smije ugasiti — jedini spisak po kojem se gradi
-     config i po kojem ga server validira. Ime prekidača u drawer-u je naslov
-     sekcije, pa nova `optional` sekcija u nizu gore sama dobije svoj prekidač
-     i ne mora se dopisivati ni u jednom drugom fajlu. */
-  function optionalSections() {
-    return sections.filter(function (section) { return !!section.optional; });
+  /* Stavke sekcije onako kako ih vidi korisnik u postavkama.
+
+     Kur'anska sekcija nije lista: ona je JEDNA stavka i pamti se pod poljem
+     "quran". Da bi i ona mogla u spisak kvačica, ovdje dobija svoj jedan red.
+     `items` joj se namjerno NE dodaje u nizu `sections` gore — ušla bi u svaki
+     račun koji ide preko `section.items` (a svi oni Kur'an već broje posebno,
+     preko `kind === "quran"`), pa bi se stranica računala dvaput. */
+  var QURAN_ITEM = { id: "quran", title: "Današnja stranica", type: "count" };
+
+  function sectionItems(section) {
+    if (!section) { return []; }
+    if (section.kind === "quran") { return [QURAN_ITEM]; }
+    return section.items || [];
+  }
+
+  /* Sekcije čije se POJEDINAČNE stavke smiju isključiti — sve. Iz ovoga se
+     gradi spisak kvačica u postavkama i po njemu server odbacuje nepoznate
+     id-eve iz `skriveno`. */
+  function pickableSections() {
+    return sections.slice();
+  }
+
+  /* Naslovi kakve korisnik vidi: { idStavke: "DOVA #7" }.
+
+     Numeracija dova ide preko CIJELOG spiska sekcije, a ne preko onoga što je
+     trenutno prikazano — zato se ovdje traži sekcija u `sections`, a ne prima
+     ona koju vrati `sectionsForDate()`. Bez toga bi sakrivanje jedne dove
+     prenumerisalo sve ispod nje, pa se u postavkama i na ekranu ista dova ne
+     bi zvala isto. Ovako "DOVA #7" ostane #7, a u spisku se vidi rupa —
+     tačan opis stanja, jer je ta dova stvarno isključena. */
+  function itemTitles(sectionId) {
+    var out = {};
+    var found = null;
+    sections.forEach(function (s) { if (s.id === sectionId) { found = s; } });
+    if (!found) { return out; }
+
+    var duaNo = 0;
+    sectionItems(found).forEach(function (item) {
+      if (item.type === "dua") {
+        duaNo += 1;
+        out[item.id] = "DOVA #" + duaNo;
+      } else {
+        out[item.id] = item.title;
+      }
+    });
+    return out;
   }
 
   /* --------------------------------------------------------------------------
@@ -667,9 +783,11 @@ if (typeof module !== "undefined" && module.exports) {
        stigao. Dvije stvari, namjerno razdvojene: kvačica napravljena u petak
        u 23:58 a poslana u subotu u 00:03 mora proći validaciju. */
     sectionsForDate: sectionsForDate,
-    /* Spisak sekcija koje config smije ugasiti — server po njemu odbacuje
-       sve ostalo iz poslanog configa. */
-    optionalSections: optionalSections,
+    /* Sekcije čije se stavke smiju isključiti — iz ovoga se gradi spisak
+       ispravnih id-eva za polje `skriveno` u configu. */
+    pickableSections: pickableSections,
+    sectionItems: sectionItems,
+    itemTitles: itemTitles,
     weekdayFromKey: weekdayFromKey
   };
 }

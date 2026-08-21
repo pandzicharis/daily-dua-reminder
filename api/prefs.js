@@ -5,7 +5,7 @@
           -> { user, prefs, known }
 
      POST /api/prefs        (uz zaglavlje X-Zikr-User)
-          { prefs: { transkript: true, petak: false } }
+          { prefs: { transkript: true, skriveno: ["dova-a2"] } }
           -> { user, prefs, known }
 
    Config je namjerno malen i uvijek se šalje CIJEL, za razliku od /api/state
@@ -22,9 +22,10 @@
    imena se ne vraća nikad i ne postoji endpoint koji ga daje — odgovara se
    samo na pitanje o imenu koje je pozivalac već znao.
 
-   Prekidači se ne nabrajaju ovdje: `transkript` je jedini poseban, a sve
-   ostalo su sekcije sa `optional: true` iz data.js (vidi cleanPrefs u
-   _lib.js). Nova takva sekcija sama dobije svoje polje u configu.
+   Config ima dva polja: `transkript` i `skriveno` — spisak id-eva stavki
+   koje korisnik ne želi vidjeti. Spisak se ne nabraja ovdje; `cleanPrefs()`
+   u _lib.js ga provjerava po stavkama iz data.js, pa nova dova sama uđe u
+   igru a nepoznat id otpada.
    ========================================================================== */
 
 const url = require("url");

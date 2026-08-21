@@ -83,23 +83,42 @@ h1, h2, h3, p {
    4. Header
    -------------------------------------------------------------------------- */
 /* Sticky "staklo": ostaje na vrhu dok se skrola, sadržaj se nazire kroz blur.
-   Boja pozadine je --background sa providnošću, da blur ima šta miješati. */
+   Boja pozadine je --background sa providnošću, da blur ima šta miješati.
+
+   Blur i pozadina stoje na ::before, a NE na samom headeru. To nije ukras
+   nego popravka: na iOS-u (WebKit) element koji je istovremeno
+   `position: sticky` i nosi `backdrop-filter` izgubi svoju djecu kad se
+   strana pomjeri iz JavaScripta — a upravo to radi klik na traku napretka.
+   Ostane zamućena prazna ploča bez naslova, datuma i traka. Kad blur pređe
+   na pseudoelement, element sa filterom nema djece koja se mogu izgubiti,
+   pa sadržaj ostaje nacrtan. Izgled je isti do piksela. */
 .app-header {
   position: sticky;
   top: 0;
   z-index: 50;
   padding: 12px 0;
   padding-top: max(12px, env(safe-area-inset-top));
+  border-bottom: 1px solid rgba(231, 224, 210, 0.9);
+}
+
+/* Nikakav `transform` ni `filter` ne smije doći na .app-header: oba prave
+   novi "backdrop root", pa bi ::before umjesto strane ispod zamućivao sam
+   header i blur bi nestao. */
+.app-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: rgba(250, 247, 240, 0.72);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border-bottom: 1px solid rgba(231, 224, 210, 0.9);
+  pointer-events: none;
 }
 
 /* Ako browser nema backdrop-filter, pozadina mora biti puna —
    inače bi se tekst ispod providno miješao sa headerom. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .app-header {
+  .app-header::before {
     background: var(--background);
   }
 }
@@ -394,6 +413,54 @@ main {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Prazan spisak — sve isključeno u postavkama. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  margin-top: 72px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.empty-msg {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.empty-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 20px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--surface);
+  background: var(--primary);
+  border: 0;
+  border-radius: 99px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.empty-btn:hover {
+  background: var(--primary-soft);
+}
+
+.empty-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-btn:hover { transform: none; }
 }
 
 /* --------------------------------------------------------------------------
@@ -878,13 +945,18 @@ main {
 
 /* Ime — jedino polje za unos u cijeloj aplikaciji. */
 .set-field {
-  padding: 4px 0 18px;
+  padding: 2px 0 14px;
+}
+
+.set-input-wrap {
+  position: relative;
+  margin-top: 10px;
 }
 
 .set-input {
   width: 100%;
-  margin-top: 10px;
-  padding: 11px 14px;
+  /* Mjesto za oznaku stanja u desnom rubu — tekst ne smije ući pod nju. */
+  padding: 11px 44px 11px 14px;
   font-family: inherit;
   font-size: 1rem;
   color: var(--text);
@@ -901,12 +973,74 @@ main {
   box-shadow: 0 0 0 3px rgba(184, 146, 90, 0.16);
 }
 
+/* --- oznaka "zapamćeno" u polju za ime ---------------------------------- */
+/* Ime se ne prima na svaki pritisak tipke nego na Enter i na izlazak iz
+   polja, pa bez znaka nije jasno je li primljeno. Prsten dok zahtjev traje,
+   kvačica kad je zapamćeno — i kvačica sama izblijedi, da ne izgleda kao
+   trajno stanje polja. */
+.set-mark {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.set-mark-spin,
+.set-mark-check {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.set-mark-spin {
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: set-mark-turn 0.7s linear infinite;
+}
+
+.set-mark-check {
+  width: 18px;
+  height: 18px;
+  color: var(--primary-soft);
+  transform: scale(0.6);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.set-mark.is-cuva .set-mark-spin {
+  opacity: 1;
+}
+
+.set-mark.is-spaseno .set-mark-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@keyframes set-mark-turn {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .set-mark-spin { animation-duration: 2s; }
+  .set-mark-check { transition: opacity 0.18s ease; transform: none; }
+  .set-mark.is-spaseno .set-mark-check { transform: none; }
+}
+
+/* Napomena stoji samo kad ima šta reći — `hidden` je postavlja settings.js.
+   Prije je stalno držala jedan prazan red, pa je ispod imena bila rupa. */
 .set-hint {
   margin-top: 8px;
   font-size: 0.8125rem;
   line-height: 1.55;
   color: var(--muted);
-  min-height: 1.2em;
+}
+
+.set-hint[hidden] {
+  display: none;
 }
 
 .set-hint.is-ok {
@@ -917,36 +1051,230 @@ main {
   color: var(--accent);
 }
 
-/* Izlaz na dnu drawer-a. Isti oblik kao dugme na završnom ekranu — puna
-   pilula sa velikim razmakom slova — samo preko cijele širine, jer ovdje
-   nema ničega pored njega. */
-.set-back {
-  display: block;
-  width: 100%;
-  margin-top: 22px;
-  padding: 14px 24px;
+/* --- spisak stavki: akordeon po sekciji ---------------------------------- */
+/* Prekidač iznad gasi cijelu sekciju; ovdje se bira stavka po stavka. Stoji
+   sklopljeno jer je predugo da bi stajalo otvoreno — sama sekcija „Dove“ ima
+   34 reda, a u postavke se najčešće ulazi zbog imena i podsjetnika. */
+.set-group-head {
+  margin-top: 4px;
+  padding: 20px 0 10px;
+  border-top: 1px solid var(--line);
+}
+
+.set-acc {
+  border-top: 1px solid var(--line);
+}
+
+/* Zaglavlje nosi dvije kontrole: naslov (otvara spisak) i prekidač (cijela
+   sekcija odjednom). Zato je <div> sa dva djeteta, a ne jedno dugme. */
+.set-acc-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.set-acc-toggle {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 6px 0;
   font-family: inherit;
-  font-size: 0.75rem;
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.set-acc-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Sekcija sa jednom stavkom (Kur'an) — nema šta rasklopiti, pa nema ni dugme
+   ni šiljak: naslov i brojka na istoj liniji sa prekidačem, kao obični red. */
+
+/* Brojka ispod naslova — isti font kao "x / x" kod ostalih sekcija. */
+.set-acc.is-solo .set-acc-count {
+  display: block;
+  margin-top: 2px;
+}
+
+.set-acc-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Isti znak koji sekcija nosi na listi, u boji naslova sekcije — po njemu se
+   red u postavkama i naslov na ekranu prepoznaju kao ista sekcija.
+   Negativna margina svodi razmak na 8px, koliko ima i naslov na listi:
+   roditelj ovdje ima svoj gap (12px u dugmetu, 16px u redu bez dugmeta). */
+.set-acc-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  margin-right: -4px;
+  color: var(--accent);
+}
+
+.set-acc-head > .set-acc-icon {
+  margin-right: -8px;
+}
+
+.set-acc-count {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tri stanja sekcije. Prekidač ih ne razlikuje sva tri (ima samo upaljen i
+   ugašen), pa razliku između pune i djelimične nosi ovo:
+
+     is-full      sve uključeno — obično, ništa se ne ističe
+     is-partial   nešto isključeno — zlatna brojka, jer je to odstupanje
+     is-empty     sve isključeno — cijelo zaglavlje prigušeno, kao ugašen red;
+                  ta se sekcija uopšte ne pojavljuje na spisku, pa mora biti
+                  vidljivo i odavde
+*/
+.set-acc.is-partial .set-acc-count {
+  color: var(--accent);
+}
+
+.set-acc.is-empty .set-acc-icon,
+.set-acc.is-empty .set-acc-title,
+.set-acc.is-empty .set-acc-count {
+  opacity: 0.5;
+}
+
+.set-acc.is-empty .set-acc-count {
+  color: var(--accent);
+}
+
+/* Šiljak: dvije ivice kvadrata rotirane 45°. Bez SVG-a jer mu je jedina
+   uloga da se vidi je li red otvoren. */
+.set-acc-chevron {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border: solid var(--muted);
+  border-width: 0 1.6px 1.6px 0;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.18s ease;
+}
+
+.set-acc.is-open .set-acc-chevron {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .set-acc-chevron { transition: none; }
+}
+
+.set-acc-body[hidden] {
+  display: none;
+}
+
+.set-acc-body {
+  padding-bottom: 12px;
+}
+
+/* „Označi sve / Odznači sve“ — 34 kvačice se ne prolaze jedna po jedna kad se
+   hoće sve isto. Prekidač u zaglavlju radi isto, ali je gore i gasi sekciju u
+   cjelini; ovo stoji tu gdje se i bira. */
+.set-acc-all {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 6px 13px;
+  font-family: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--surface);
-  background: var(--primary);
-  border: 1px solid var(--primary);
+  color: var(--muted);
+  background: var(--background-alt);
+  border: 1px solid var(--line);
   border-radius: 99px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.18s ease, border-color 0.18s ease;
 }
 
-.set-back:hover {
-  background: var(--primary-soft);
-  border-color: var(--primary-soft);
+.set-acc-all:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
 }
 
-.set-back:focus-visible {
+.set-acc-all:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Red spiska: kvačica lijevo, naslov i početak prevoda desno. Cijeli red je
+   <label>, pa klik bilo gdje po njemu prebacuje kvačicu. */
+.set-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.set-pick .check {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-width: 1.75px;
+  border-radius: 7px;
+}
+
+/* Ista računica kao kod velike kvačice (vidi 8), samo za manju kutiju. */
+.set-pick .check::after {
+  width: 5px;
+  height: 10px;
+  border-width: 0 2px 2px 0;
+  transform: translate(calc(-50% + 0.25px), calc(-50% - 1.6px))
+             rotate(45deg) scale(0.4);
+}
+
+.set-pick .check:checked::after {
+  transform: translate(calc(-50% + 0.25px), calc(-50% - 1.6px))
+             rotate(45deg) scale(1);
+}
+
+.set-pick-text {
+  min-width: 0;
+}
+
+/* Isključen red je prigušen — odmah se vidi šta neće biti na spisku.
+   Ide preko susjeda (`+`), a ne preko `:has()`, jer input stoji prije
+   teksta pa susjedni selektor radi i na starijem WebKit-u. */
+.set-pick .check:not(:checked) + .set-pick-text {
+  opacity: 0.45;
+}
+
+.set-pick-title {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Početak prevoda — naslov dove je samo broj, po njemu se ne zna koja je. */
+.set-pick-note {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 /* --- prekidač ------------------------------------------------------------ */
@@ -999,6 +1327,7 @@ main {
 .switch-input:checked ~ .switch-track .switch-knob {
   transform: translateX(18px);
 }
+
 
 .switch-input:focus-visible ~ .switch-track {
   outline: 2px solid var(--accent);
