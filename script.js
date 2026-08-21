@@ -294,26 +294,35 @@
 
   var state = getDayState(dateKey);
 
-  /* Sekcije koje TOG dana postoje (data.js). SVE što crta i računa ide kroz
-     ovo, nikad kroz globalni `sections` — inače petačka sekcija ostane na
-     ekranu i u subotu, a ostalim danima naraste `total` pa prsten nikad ne
-     dođe do 100% i "Elhamdulillah" se ne otvori. */
-  var visible = sectionsForDate(dateKey);
+  /* ------------------------------------------------------------------------
+     Config korisnika (settings.js)
+
+     Dva prekidača dodiruju ovaj fajl: `transkript` mijenja šta se ispisuje
+     ispod naslova dove, a sekcijski prekidači (petak) mijenjaju šta uopšte
+     postoji. Oba se čitaju pri svakom crtanju, ne pamte se u varijabli —
+     drawer ih mijenja usred rada.
+
+     Ako settings.js nije učitan, vrijedi prazan config: sve sekcije postoje,
+     transkripcija je ugašena. Aplikacija tada radi kao prije njega.
+     ------------------------------------------------------------------------ */
+  function prefs() {
+    return (window.mojZikrConfig && window.mojZikrConfig.prefs()) || {};
+  }
+
+  /* Sekcije koje TOG dana postoje (data.js) i koje korisnik nije ugasio. SVE
+     što crta i računa ide kroz ovo, nikad kroz globalni `sections` — inače
+     petačka sekcija ostane na ekranu i u subotu, a ostalim danima naraste
+     `total` pa prsten nikad ne dođe do 100% i "Elhamdulillah" se ne otvori.
+     Isto vrijedi i za ugašenu sekciju: da ostane u računu, dan se ne bi
+     mogao završiti. */
+  var visible = sectionsForDate(dateKey, prefs());
 
   var el = {
     date: document.getElementById("todayDate"),
     hijri: document.getElementById("todayHijri"),
-    progress: document.getElementById("progress"),
-    ringFill: document.getElementById("ringFill"),
-    ringLabel: document.getElementById("ringLabel"),
     groups: document.getElementById("progressGroups"),
     root: document.getElementById("sectionsRoot")
   };
-
-  /* Obim prstena: r = 18 u viewBox-u 44x44 -> 2 * PI * 18 */
-  var RING_LENGTH = 2 * Math.PI * 18;
-  el.ringFill.style.strokeDasharray = RING_LENGTH;
-  el.ringFill.style.strokeDashoffset = RING_LENGTH;
 
   function allItems() {
     return visible.reduce(function (acc, section) {
@@ -423,15 +432,27 @@
     article.appendChild(head);
 
     /* "surah" i "count" -> samo checkbox + naslov, bez teksta.
-       "dua" -> arapski u jednom toku, pa prevod ispod. */
+       "dua" -> arapski u jednom toku, pa prevod ispod.
+
+       Uz upaljenu transkripciju arapski se ZAMJENJUJE transliteracijom, ne
+       dopunjava: dvoje istog teksta jedno ispod drugog samo produži karticu
+       a ništa ne doda. Prevod ostaje u oba slučaja.
+
+       Dova bez `transliteration` bi u tom režimu ostala bez ijednog teksta,
+       pa se za nju vraća arapski. Trenutno je imaju sve, ali nova dova se
+       može dodati bez nje i ne smije ispasti prazna. */
     if (item.type === "dua") {
       var body = document.createElement("div");
+      var transcript = prefs().transkript === true && !!item.transliteration;
       body.className = "item-body";
 
-      var flow = arabicAsOneFlow(item.arabic);
-      if (flow) {
-        body.appendChild(makeArabic(flow));
+      if (transcript) {
+        body.appendChild(makeParagraph("transliteration", item.transliteration));
+      } else {
+        var flow = arabicAsOneFlow(item.arabic);
+        if (flow) { body.appendChild(makeArabic(flow)); }
       }
+
       if (item.translation) {
         body.appendChild(makeParagraph("translation", item.translation));
       }
@@ -886,8 +907,10 @@
   /* ------------------------------------------------------------------------
      11. Progress — trake po dobu dana
 
-     Prsten u headeru broji cijeli dan zajedno, pa na 60% ne piše je li
-     dnevni zikr gotov ili je stao na pola. Ove trake su ta razlika.
+     Jedini prikaz napretka. Prije njih je u headeru stajao prsten sa jednim
+     postotkom, ali na 60% nije govorio je li dnevni zikr gotov ili je stao
+     na pola — a to je jedino što treba znati. Trake to kažu, pa je prsten
+     uklonjen i na njegovo mjesto je došlo dugme za postavke.
 
      Podjela se NE piše ovdje — čita se iz notification-tasks.js, iz istog
      spiska po kojem stižu obavijesti. Tako "Dan" na ekranu pokriva tačno
@@ -1074,7 +1097,7 @@
   }
 
   /* ------------------------------------------------------------------------
-     11b. Progress — ukupno (prsten u headeru i brojke po sekcijama)
+     11b. Progress — ukupno (brojke po sekcijama i završen dan)
      ------------------------------------------------------------------------ */
 
   function updateProgress() {
@@ -1084,7 +1107,6 @@
     }, 0) + (state.quran ? 1 : 0);
 
     var total = items.length + 1;
-    var percent = total > 0 ? Math.round((done / total) * 100) : 0;
 
     visible.forEach(function (section) {
       var node = el.root.querySelector('[data-section="' + section.id + '"]');
@@ -1096,17 +1118,10 @@
       node.textContent = secDone + " / " + list.length;
     });
 
-    /* Brojke i završen dan pokazuje prsten — nema posebnog teksta ispod. */
-    el.progress.classList.toggle("is-complete", done === total);
-    el.progress.setAttribute(
-      "aria-label", "Dnevni napredak: " + done + " od " + total
-    );
-
-    /* Prsten se puni skraćivanjem crtice — 0% je pun offset, 100% je nula. */
-    el.ringFill.style.strokeDashoffset = RING_LENGTH * (1 - percent / 100);
-    el.ringLabel.textContent = percent + "%";
-    el.progress.setAttribute("aria-valuenow", String(percent));
-
+    /* Ukupan napredak se vidi iz traka po dobu dana — prstena u headeru
+       nema. Traka je i preciznija: kaže i KOJI dio dana nedostaje, što je
+       jedan postotak nikad nije govorio. Zbir se i dalje računa jer o njemu
+       zavisi završni ekran. */
     updateGroupBars();
 
     /* Dan je završen — "Elhamdulillah" preko cijelog ekrana. Ako dan više
@@ -1287,8 +1302,8 @@
      ------------------------------------------------------------------------ */
 
   /* Kad se gleda dan koji nije današnji, `body` nosi klasu po kojoj se
-     iscrtava vidljiva oznaka (traka na vrhu, prigušen prsten). Panel se
-     javi kroz `naPromjenu` da osvježi svoj ispis. */
+     iscrtava vidljiva oznaka (traka na vrhu, prigušene trake napretka).
+     Panel se javi kroz `naPromjenu` da osvježi svoj ispis. */
   var onDayChange = null;
 
   function markPreview() {
@@ -1302,7 +1317,7 @@
   function render() {
     todayKey = getLocalDateKey();
     state = getDayState(dateKey);
-    visible = sectionsForDate(dateKey);
+    visible = sectionsForDate(dateKey, prefs());
     var shown = dateFromKey(dateKey);
     el.date.textContent = formatGregorian(shown);
     el.hijri.textContent = formatHijri(shown);
@@ -1407,6 +1422,38 @@
   if (window.mojZikrSync) {
     window.mojZikrSync.onState(applyRemoteState);
     window.mojZikrSync.start(dateKey, checkedMap());
+  }
+
+  /* ------------------------------------------------------------------------
+     Promjena u postavkama
+
+     Tri stvari mogu doći odavde: druga transkripcija, ugašena/upaljena
+     sekcija, i drugo ime. Sve tri traže isto — ponovo iscrtati dan.
+
+     Kod imena ide i ponovno uparivanje: novi korisnik ima svoj spisak, pa
+     ono što se vidi na ekranu više ne mora biti njegovo. `start()` prvo
+     pošalje ono što je ovdje čekirano a nije stiglo gore, pa povuče stanje
+     tog korisnika.
+
+     Završni ekran se pri ovome NE otvara sam. Gašenjem petka dan zna postati
+     završen, a puni ekran "Elhamdulillah" preko otvorenih postavki bi bio
+     iznenađenje umjesto čestitke. Dugme za njega svejedno ostaje.
+     ------------------------------------------------------------------------ */
+  if (window.mojZikrConfig) {
+    var lastUser = window.mojZikrConfig.korisnik();
+
+    window.mojZikrConfig.naPromjenu(function (config, user) {
+      wasComplete = true;
+      render();
+
+      if (user !== lastUser) {
+        lastUser = user;
+        /* Spisak prethodnog korisnika se ne prenosi novom: ono što je u
+           redu za slanje pripada danu, a ne imenu, pa `start()` to pošalje
+           pod novim imenom i odmah povuče njegovo stanje. */
+        refreshShared();
+      }
+    });
   }
 
   function refreshShared() {

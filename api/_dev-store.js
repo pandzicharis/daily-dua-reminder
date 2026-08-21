@@ -50,21 +50,29 @@ class DevStore {
   async exists(k) { return (k in load()) ? 1 : 0; }
   async expire() { return 1; }
 
-  /* --- setovi --- */
+  /* --- setovi ---
+     SADD i SREM vraćaju BROJ STVARNO promijenjenih članova, kao pravi Redis:
+     0 kad je član već bio unutra (odnosno kad ga nije ni bilo). Nije
+     kozmetika — /api/prefs iz te nule zaključuje da ime već postoji ("spojen
+     si na njegov spisak"). Sa bezuslovnom jedinicom bi lokalno svaki
+     korisnik izgledao kao nov, a u produkciji ne bi — i to bi se vidjelo tek
+     poslije deploya. */
   async sadd(k, m) {
     const db = load();
     const list = (db[k] && db[k].__set) || [];
-    if (list.indexOf(m) === -1) { list.push(m); }
+    const nov = list.indexOf(m) === -1;
+    if (nov) { list.push(m); }
     db[k] = { __set: list };
     save(db);
-    return 1;
+    return nov ? 1 : 0;
   }
   async srem(k, m) {
     const db = load();
     const list = (db[k] && db[k].__set) || [];
+    const bio = list.indexOf(m) !== -1;
     db[k] = { __set: list.filter(function (x) { return x !== m; }) };
     save(db);
-    return 1;
+    return bio ? 1 : 0;
   }
   async smembers(k) {
     const db = load();

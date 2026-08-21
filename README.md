@@ -8,11 +8,13 @@ podsjetnike dok zadatak nije završen.
 iPhone PWA  ←→  localStorage (offline keš)
                      ↓ promjena checkboxa          ↑ povlačenje pri otvaranju
               POST /api/state  { date, items }   GET /api/state?date=
-                     ↓                             ↑
-              Upstash Redis — ZAJEDNIČKI spisak čekiranog za sve uređaje
+                     ↓  X-Zikr-User: haris          ↑
+              Upstash Redis — spisak čekiranog PO KORISNIKU
+                              (items:<ime>:<datum>)
                      ↓ svakih 15 min
               Vercel Cron → /api/cron
-                     ↓ ako sekcija nije cijela gotova i sljedeći sat je stigao
+                     ↓ grupiše uređaje po imenu, pa za svako ime posebno:
+                       njegov spisak + njegov config → šalje li se i šta
               Web Push (VAPID) → service worker → obavijest na iPhoneu
                                        ↓
                           (osim ako je sesija u toku:
@@ -30,12 +32,14 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `manifest.webmanifest` | ime, boje, ikonice, `display: standalone` |
 | `service-worker.js` | prima push, prikazuje obavijest, obrađuje klik, offline keš |
 | `notifications.js` | dozvola, pretplata, uključi/isključi |
+| `settings.js` | config korisnika (ime, transkripcija, petak) + drawer u kojem se podešava |
 | `sync.js` | zajedničko stanje kroz uređaje: slanje promjena, povlačenje, offline red |
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
 | `icons/*.png` | 96, 192, 512, maskable 192/512, apple-touch 180, favicon 32 |
 | `api/config.js` | `GET` → javni VAPID ključ |
 | `api/subscribe.js` | `POST` upiši pretplatu, `DELETE` obriši |
 | `api/state.js` | `GET` pročitaj / `POST` promijeni zajednički spisak čekiranog |
+| `api/prefs.js` | `GET`/`POST` config korisnika (`cfg:<ime>`), dijeljen kroz njegove uređaje |
 | `api/cron.js` | scheduler; jedino mjesto koje odlučuje šalje li se push |
 | `api/_lib.js` | Redis, vrijeme po Sarajevu, validacija, `dueSlot()`, `taskStatus()` |
 | `api/_dev-store.js` | fajl-baza za lokalni rad kad KV varijable fale (na Vercelu puca namjerno) |
@@ -109,11 +113,17 @@ Telefon i računar rade nad **istim** spiskom čekiranog. Server je izvor
 istine, a `localStorage` (`moj-zikr-state`) ostaje offline keš — aplikacija
 radi i bez interneta, samo se tada ne vidi šta je urađeno na drugom uređaju.
 
-Nema logina. Svi uređaji dijele jedan prostor, `ZIKR_SPACE` (default
-`zajedno`). Ključ u bazi je `items:<prostor>:<datum>`, Redis HASH oblika
-`itemId -> "1"`. Odčekirano se **briše** iz hash-a, pa "nema polja" i "nije
-urađeno" znače isto. Kur'an nije stavka liste nego zaseban boolean u
-aplikaciji, a gore se pamti kao obično polje `quran`.
+Prostor određuje **ime iz configa** (vidi 4b). Ključ u bazi je
+`items:<ime>:<datum>`, Redis HASH oblika `itemId -> "1"`. Svi uređaji sa
+istim imenom vide isti spisak; dva imena su dva odvojena spiska. Odčekirano
+se **briše** iz hash-a, pa "nema polja" i "nije urađeno" znače isto. Kur'an
+nije stavka liste nego zaseban boolean u aplikaciji, a gore se pamti kao
+obično polje `quran`.
+
+Ime putuje u zaglavlju `X-Zikr-User`, ne u query stringu — tako ne završi u
+logovima servera. Bez imena `/api/state` vraća 400 i aplikacija ostaje na
+lokalnom spisku; to je namjerno strože nego pad na neki podrazumijevani
+prostor, jer bi upis u tuđi spisak zbog izostalog zaglavlja bio tiha greška.
 
 **Šalju se samo promjene, nikad cijelo stanje:**
 
@@ -141,10 +151,48 @@ obrisalo checkmarke napravljene prije nego je dijeljenje uopšte postojalo.
 Šalju se samo čekirane stavke — ništa se ne skida, pa se ne može pregaziti
 ono što je drugi uređaj odčekirao.
 
-> Prostor je zajednički za sve koji otvore aplikaciju — to je namjerno, jer
-> je aplikacija lična i tako telefon i računar odmah vide isto stanje, bez
-> uparivanja. Ako ikad zatreba odvojiti dvije osobe, svakoj treba svoj
-> `ZIKR_SPACE` (i svoj deploy).
+## 4b. Config korisnika
+
+Zupčanik u headeru otvara drawer sa dna (`settings.js`). U njemu su tri
+stvari i ništa više:
+
+| | šta radi |
+|---|---|
+| **Ime** | određuje čiji je spisak. Isto ime na dva uređaja = jedan spisak. |
+| **Transkripcija** | umjesto arapskog teksta prikazuje transliteraciju iz `data.js`. Zamjena, ne dodatak — prevod ostaje ispod. |
+| **Petak** | postoji li petačka sekcija. Ugašena nestaje i sa ekrana i iz računa podsjetnika. |
+
+Uz njih je i dugme za podsjetnike (zvono), preseljeno iz glavnog ekrana.
+
+Config se čuva pod `cfg:<ime>` i dijeli kroz uređaje istog korisnika, isto
+kao i čekirano. Server ga čita jer **petak mijenja i slanje, ne samo ekran**:
+ugašena sekcija ne ulazi u račun, pa njen podsjetnik ima `total = 0`, status
+`done` i ćuti. Time pada i zaklon `quietFor`, pa dnevni petkom kreće u 08:00
+kao svaki drugi dan — sve to bez ijednog posebnog pravila, samo iz brojanja.
+
+Prekidači sekcija se ne nabrajaju nigdje u kodu: sekcija sa `optional: true`
+u `data.js` sama dobije svoj red u drawer-u i svoje polje u configu.
+
+**Normalizacija imena.** `Haris`, `haris `, `HARIS` → isti ključ `haris`.
+Naša slova se svode na ASCII (`č/ć→c`, `ž→z`, `š→s`, `đ→d`), pa se spisak
+nađe i kad se kuca bez kvačica; posljedica je da su `Đenan` i `Denan` isti
+korisnik. Isto pravilo stoji u `settings.js` (`kljuc`) i u `api/_lib.js`
+(`userKey`) — klijent normalizuje jer HTTP zaglavlje ne prima naša slova, a
+server normalizuje još jednom, što nad već sređenim ključem ništa ne mijenja.
+
+> **Ime nije lozinka.** Nema logina; ko upiše tuđe ime, vidi tuđi spisak. To
+> je i smisao — drugi telefon iste osobe se prijavi istim imenom i odmah je
+> uparen. Za porodičnu aplikaciju je dovoljno, ali se ne treba oslanjati na
+> to da sadržaj iko ne može vidjeti.
+
+`known` u odgovoru `/api/prefs` kaže je li ime već postojalo prije tog
+poziva, pa aplikacija ispiše "novo ime — kreće čist spisak" ili "ime već
+postoji — spojen si na njegov spisak". Spisak svih imena se ne vraća nikad.
+
+`ZIKR_SPACE` više nije prostor svih uređaja nego samo **zatečeni**: pretplata
+napravljena prije configa nema ime uz sebe, pa je scheduler vodi tamo dok se
+aplikacija na tom uređaju ne otvori i ne javi ime (`notifications.js` to radi
+sam, pri prvom otvaranju).
 
 ## 5. Kako radi satna logika
 

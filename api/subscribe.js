@@ -2,12 +2,22 @@
    POST   /api/subscribe   { subscription }   -> upiši pretplatu
    DELETE /api/subscribe   { endpoint }       -> obriši pretplatu
 
-   Uređaj se identifikuje isključivo svojom push pretplatom. Nema naloga,
-   lozinki ni ličnih podataka — samo endpoint koji je izdao browser.
+   Uređaj se identifikuje isključivo svojom push pretplatom. Nema naloga ni
+   lozinki — samo endpoint koji je izdao browser i ime iz configa.
+
+   Ime (zaglavlje X-Zikr-User) se pamti UZ pretplatu jer scheduler mora
+   znati čiji spisak da gleda kad odlučuje šalje li obavijest tom uređaju.
+   Isti telefon smije promijeniti ime bez pravljenja nove pretplate:
+   aplikacija tada ponovo pošalje POST sa istom pretplatom, a ovdje se samo
+   prepiše `user`.
+
+   Pretplata BEZ imena je zatečena — napravljena prije nego je config
+   postojao. Ne odbija se; scheduler je vodi u starom prostoru (ZIKR_SPACE)
+   dok se aplikacija na tom uređaju ne otvori i ne javi ime.
    ========================================================================== */
 
 const {
-  redis, KEYS, subId, readJson, validSubscription, removeSubscription
+  redis, KEYS, subId, readJson, validSubscription, removeSubscription, userFrom
 } = require("./_lib.js");
 
 module.exports = async function handler(req, res) {
@@ -21,13 +31,20 @@ module.exports = async function handler(req, res) {
       }
 
       const id = subId(sub.endpoint);
+      /* Prazno ime nije greška — vidi zaglavlje. Zapis tada nema `user`, pa
+         ga scheduler vodi u zatečenom prostoru. */
+      const user = userFrom(req, body);
 
       await Promise.all([
         redis.set(KEYS.sub(id), {
           endpoint: sub.endpoint,
-          keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }
+          keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+          user: user || undefined
         }),
-        redis.sadd(KEYS.all, id)
+        redis.sadd(KEYS.all, id),
+        /* Uređaj koji se pretplati je i potvrda da ime postoji — bez ovoga
+           bi korisnik koji nikad ne otvori config ostao van spiska imena. */
+        user ? redis.sadd(KEYS.users, user) : Promise.resolve()
       ]);
 
       /* Browser je zamijenio pretplatu (pushsubscriptionchange) — stara

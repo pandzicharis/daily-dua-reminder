@@ -105,10 +105,17 @@
        upisuje. */
     var checked = Object.keys(window.mojZikr.cekirano()).join(",");
 
+    /* Ime ide uz `checked`: stanje sa ekrana je stanje JEDNOG korisnika, pa
+       server bez ovoga nametne ovaj spisak i tuđim uređajima i izvještaj
+       slaže. Bez imena (config prazan) server gleda sve uređaje, što je
+       tačno ono što treba na svježoj instalaciji. */
+    var user = (window.mojZikrConfig && window.mojZikrConfig.korisnik()) || "";
+
     var params = "date=" + encodeURIComponent(day) +
                  "&at=" + encodeURIComponent(atTime) +
                  "&interval=" + interval +
                  "&checked=" + encodeURIComponent(checked) +
+                 (user ? "&user=" + encodeURIComponent(user) : "") +
                  (el.reset.checked ? "&reset=1" : "") +
                  (dry ? "&dry=1" : "");
 
@@ -143,10 +150,11 @@
       (r.checkedFrom === "ekran" ? " · po ekranu" : "");
     el.result.appendChild(head);
 
-    /* Koji prostor baze — da se nikad ne pomiješa proba sa zajedničkim
-       spiskom koji čita telefon. */
-    if (r.space && el.host) {
-      el.host.textContent = "localhost · prostor: " + r.space;
+    /* Čiji spisak — da se nikad ne pomiješa proba sa tuđim. */
+    var imena = Object.keys(r.users || {});
+    if (el.host) {
+      el.host.textContent = "localhost · " +
+        (imena.length ? imena.join(", ") : "bez korisnika");
     }
 
     if (!r.devices) {
@@ -168,22 +176,39 @@
       });
     }
 
-    /* Zašto — prozori, status i zaklanjanje, doslovno iz izvještaja. */
-    var why = node("dl", "devp-why");
-    Object.keys(r.windows || {}).forEach(function (id) {
-      why.appendChild(node("dt", null, id));
-      why.appendChild(node("dd", null,
-        r.windows[id] + "   ·   " + ((r.status || {})[id] || "?")));
+    /* Zašto — prozori, status i zaklanjanje, doslovno iz izvještaja. Sve to
+       zavisi od spiska i configa POJEDINOG korisnika, pa se ispisuje po
+       korisniku. Sa jednim (uobičajeno) izgleda kao i prije, samo sa imenom
+       iznad. */
+    imena.forEach(function (ime) {
+      var u = r.users[ime];
+
+      var head = node("p", "devp-user");
+      head.textContent = ime + " · " + u.devices +
+        (u.devices === 1 ? " uređaj" : " uređaja");
+      /* Ugašen prekidač je čest razlog tišine — neka se vidi bez kopanja. */
+      var off = Object.keys(u.prefs || {}).filter(function (k) {
+        return u.prefs[k] === false && k !== "transkript";
+      });
+      if (off.length) { head.textContent += " · ugašeno: " + off.join(", "); }
+      el.result.appendChild(head);
+
+      var why = node("dl", "devp-why");
+      Object.keys(u.windows || {}).forEach(function (id) {
+        why.appendChild(node("dt", null, id));
+        why.appendChild(node("dd", null,
+          u.windows[id] + "   ·   " + ((u.status || {})[id] || "?")));
+      });
+      if (u.quiet && u.quiet.length) {
+        why.appendChild(node("dt", null, "ćuti"));
+        why.appendChild(node("dd", null, u.quiet.join(", ")));
+      }
+      if (u.blocked && u.blocked.length) {
+        why.appendChild(node("dt", null, "zaklonjeno"));
+        why.appendChild(node("dd", null, u.blocked.join(", ")));
+      }
+      el.result.appendChild(why);
     });
-    if (r.quiet && r.quiet.length) {
-      why.appendChild(node("dt", null, "ćuti"));
-      why.appendChild(node("dd", null, r.quiet.join(", ")));
-    }
-    if (r.blocked && r.blocked.length) {
-      why.appendChild(node("dt", null, "zaklonjeno"));
-      why.appendChild(node("dd", null, r.blocked.join(", ")));
-    }
-    el.result.appendChild(why);
   }
 
   function hhmmOf(minutes) {

@@ -10,7 +10,7 @@
    worker ne radi — zakazivanje je isključivo na serveru (Vercel Cron).
    ========================================================================== */
 
-var CACHE = "moj-zikr-v2";
+var CACHE = "moj-zikr-v3";
 
 /* Ikonice obavijesti se keširaju već pri instalaciji. Push može doći kad
    uređaj nema mreže, a obavijest bez ikonice ne izgleda kao da je iz

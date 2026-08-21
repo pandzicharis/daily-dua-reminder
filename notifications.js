@@ -13,17 +13,77 @@
    Šta je danas čekirano ne ide odavde — to je posao sync.js, jer je stanje
    zajedničko za sve uređaje i vrijedi i kad podsjetnici uopšte nisu
    uključeni. Server sam računa dokle je koji podsjetnik došao.
+
+   IME KORISNIKA ide uz pretplatu. Bez njega scheduler ne zna čiji spisak da
+   gleda kad odlučuje šalje li obavijest ovom uređaju. Zato se pretplata
+   ponovo prijavi svaki put kad se ime promijeni — pretplata ostaje ista, na
+   serveru se prepiše samo `user`. Isto pokriva i prelazak sa zatečene
+   verzije, gdje su pretplate upisane prije nego je config postojao.
+
+   Dugme i njegov status NISU u index.html nego u drawer-u postavki, koji
+   pravi settings.js. Ovaj fajl ih samo nađe po id-u (`notifyBtn`,
+   `notifyStatus`) — zato settings.js mora biti učitan prije njega.
    ========================================================================== */
 
 (function () {
   "use strict";
 
-  var SUB_ID_KEY = "moj-zikr-sub-id";   /* id pretplate koji vrati server */
+  var SUB_ID_KEY = "moj-zikr-sub-id";     /* id pretplate koji vrati server */
+  var SUB_USER_KEY = "moj-zikr-sub-ime";  /* ime sa kojim je zadnji put prijavljena */
 
   var el = {
     btn: document.getElementById("notifyBtn"),
     status: document.getElementById("notifyStatus")
   };
+
+  function user() {
+    return (window.mojZikrConfig && window.mojZikrConfig.korisnik()) || "";
+  }
+
+  /* Prijava pretplate serveru. Ista funkcija služi i za prvo uključivanje i
+     za prepisivanje imena — server gleda endpoint, pa ponovni POST sa istom
+     pretplatom ne pravi novu nego osvježi zatečenu. */
+  function register(sub) {
+    var ime = user();
+    return fetch("/api/subscribe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Zikr-User": ime
+      },
+      body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub })
+    }).then(function (res) {
+      if (!res.ok) {
+        throw new Error("Server nije primio pretplatu (" + res.status + ") — provjeri bazu (KV_REST_API_*).");
+      }
+      return res.json();
+    }).then(function (data) {
+      if (!data || !data.id) { throw new Error("server nije vratio id"); }
+      localStorage.setItem(SUB_ID_KEY, data.id);
+      /* Pamti se pod kojim imenom je prijavljena, da se pri svakom otvaranju
+         ne šalje isti zahtjev bez razloga. */
+      try { localStorage.setItem(SUB_USER_KEY, ime); } catch (e) {}
+      return data;
+    });
+  }
+
+  /* Ime se promijenilo (ili je pretplata zatečena, bez imena) — prijavi je
+     ponovo. Tiho: ovo se dešava u pozadini, a ne kao odgovor na dugme, pa
+     neuspjeh ne treba ispisivati preko cijelog drawer-a. Popraviće se pri
+     sljedećem otvaranju ili promjeni. */
+  function syncSubscriptionUser() {
+    if (!("serviceWorker" in navigator)) { return; }
+    if (!localStorage.getItem(SUB_ID_KEY)) { return; }
+
+    var zadnje = null;
+    try { zadnje = localStorage.getItem(SUB_USER_KEY); } catch (e) {}
+    if (zadnje === user()) { return; }
+
+    navigator.serviceWorker.ready
+      .then(function (reg) { return reg.pushManager.getSubscription(); })
+      .then(function (sub) { return sub ? register(sub) : null; })
+      .catch(function () {});
+  }
 
   var supported =
     "serviceWorker" in navigator &&
@@ -118,23 +178,8 @@
             });
           });
       })
-      .then(function (sub) {
-        return fetch("/api/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subscription: sub.toJSON() })
-        }).then(function (res) {
-          if (!res.ok) {
-            throw new Error("Server nije primio pretplatu (" + res.status + ") — provjeri bazu (KV_REST_API_*).");
-          }
-          return res.json();
-        });
-      })
-      .then(function (data) {
-        if (!data || !data.id) { throw new Error("server nije vratio id"); }
-        localStorage.setItem(SUB_ID_KEY, data.id);
-        render();
-      })
+      .then(register)
+      .then(function () { render(); })
       .catch(function (err) {
         el.btn.disabled = false;
         /* Puna greška ide u konzolu, a korisniku se ispiše konkretan
@@ -166,6 +211,7 @@
       .catch(function () { /* svejedno gasimo lokalno */ })
       .then(function () {
         localStorage.removeItem(SUB_ID_KEY);
+        try { localStorage.removeItem(SUB_USER_KEY); } catch (e) {}
         el.btn.disabled = false;
         render();
       });
@@ -214,6 +260,12 @@
     });
   }
 
+  /* Ime se promijenilo u postavkama — pretplata mora slijediti, inače bi
+     obavijesti i dalje stizale po spisku prethodnog korisnika. */
+  if (window.mojZikrConfig) {
+    window.mojZikrConfig.naPromjenu(function () { syncSubscriptionUser(); });
+  }
+
   if (supported) {
     /* Registruj SW i pri običnom otvaranju — tako offline keš i push rade
        i prije nego korisnik dodirne dugme. */
@@ -225,8 +277,13 @@
     }).then(function (sub) {
       if (!sub && localStorage.getItem(SUB_ID_KEY)) {
         localStorage.removeItem(SUB_ID_KEY);
+        try { localStorage.removeItem(SUB_USER_KEY); } catch (e) {}
       }
       render();
+      /* Zatečena pretplata (upisana prije nego je config postojao) ovdje
+         dobije ime — bez toga bi je scheduler zauvijek vodio u starom
+         zajedničkom prostoru. */
+      syncSubscriptionUser();
     }).catch(function () { render(); });
 
     /* Klik na notifikaciju kad je aplikacija već otvorena. */

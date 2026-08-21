@@ -1,12 +1,19 @@
 /* ==========================================================================
-   /api/state — zajednički spisak čekiranog, isti za sve uređaje.
+   /api/state — zajednički spisak čekiranog, isti za sve uređaje JEDNOG
+   korisnika.
 
-     GET  /api/state?date=2026-08-18
+     GET  /api/state?date=2026-08-18        (uz zaglavlje X-Zikr-User)
           -> { date, items: { "zikr-salavat-50": true, "quran": true } }
 
-     POST /api/state
+     POST /api/state                        (uz zaglavlje X-Zikr-User)
           { date, items: { "zikr-salavat-50": true, "quran": false } }
           -> { date, items: <cijelo stanje poslije upisa>, ignored: [] }
+
+   Ime korisnika ide u ZAGLAVLJU, ne u query stringu — tako ne završi u
+   logovima ni u historiji zahtjeva. Bez imena se ne dira baza: vraća se 400
+   i aplikacija ostaje na lokalnom spisku. To je namjerno strože nego "padni
+   na neki podrazumijevani prostor": upis u tuđi spisak zbog izostalog
+   zaglavlja bio bi tiha i teško uočljiva greška.
 
    POST prima SAMO promjene ("delta"), nikad cijelo stanje. To je namjerno:
    ako telefon nešto odčekira dok je računar offline, računar poslije pošalje
@@ -23,7 +30,7 @@
 const url = require("url");
 const {
   redis, KEYS, DAY_TTL,
-  validItemId, readJson, validDate, sarajevoNow
+  validItemId, readJson, validDate, sarajevoNow, userFrom
 } = require("./_lib.js");
 
 /* Prihvata se samo današnji datum po Sarajevu, plus dan lijevo-desno zbog
@@ -38,8 +45,8 @@ function dateAllowed(date) {
 
 /* HGETALL vrati { id: "1" } ili null -> { id: true }, oblik koji očekuje
    aplikacija. */
-async function readItems(date) {
-  const raw = (await redis.hgetall(KEYS.items(date))) || {};
+async function readItems(user, date) {
+  const raw = (await redis.hgetall(KEYS.items(user, date))) || {};
   const out = {};
   Object.keys(raw).forEach(function (id) {
     if (raw[id]) { out[id] = true; }
@@ -60,13 +67,20 @@ module.exports = async function handler(req, res) {
     const body = isPost ? (readJson(req) || {}) : {};
     /* GET nosi datum u query stringu, POST u body-ju. */
     /* Vercel popuni req.query sam; lokalni dev-server ne, pa se URL parsira. */
-    const date = isGet
-      ? String((req.query && req.query.date) ||
-               (url.parse(req.url, true).query || {}).date || "")
-      : body.date;
+    const query = (req.query && Object.keys(req.query).length)
+      ? req.query
+      : (url.parse(req.url, true).query || {});
+
+    const date = isGet ? String(query.date || "") : body.date;
 
     if (!validDate(date) || !dateAllowed(date)) {
       return res.status(400).json({ error: "neispravan datum" });
+    }
+
+    /* Bez imena nema prostora u bazi — vidi zaglavlje fajla. */
+    const user = userFrom(req, body, query);
+    if (!user) {
+      return res.status(400).json({ error: "nedostaje korisnik" });
     }
 
     /* Odgovor se nikad ne kešira — dvije sekunde stare liste su gore nego
@@ -74,7 +88,7 @@ module.exports = async function handler(req, res) {
     res.setHeader("Cache-Control", "no-store");
 
     if (isGet) {
-      return res.status(200).json({ date: date, items: await readItems(date) });
+      return res.status(200).json({ date: date, items: await readItems(user, date) });
     }
 
     const items = body.items;
@@ -95,7 +109,7 @@ module.exports = async function handler(req, res) {
       if (items[id] === true) { set[id] = "1"; } else { clear.push(id); }
     });
 
-    const key = KEYS.items(date);
+    const key = KEYS.items(user, date);
     if (Object.keys(set).length) { await redis.hset(key, set); }
     if (clear.length) { await redis.hdel(key, ...clear); }
     /* Zapis živi par dana i sam ističe — novi dan kreće čist. */
@@ -105,7 +119,7 @@ module.exports = async function handler(req, res) {
        drugi uređaj u međuvremenu promijenio. */
     return res.status(200).json({
       date: date,
-      items: await readItems(date),
+      items: await readItems(user, date),
       ignored: ignored
     });
 

@@ -28,6 +28,12 @@
         "12:59", a ne "12:00")
      4. "dan" petkom 13:00–23:00, ostalim danima 08:00–23:00
 
+   Računa se BEZ korisničkog configa, dakle sa svim sekcijama uključenim.
+   Tako i treba: ovdje se provjerava sam raspored, a config ga ne mijenja
+   nego samo izbacuje sekcije iz računa (ugašen petak -> total 0 -> "done"
+   -> tišina). Kako izgleda kod pojedinog korisnika sa njegovim prekidačima,
+   vidi se kroz `/api/cron?dry=1&user=<ime>`.
+
    Ne šalje ništa i ne dira bazu — za pravu obavijest na uređaju služi
    `npm run test-push`, a za odluku servera nad stvarnim stanjem
    `/api/cron?dry=1`.

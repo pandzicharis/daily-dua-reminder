@@ -19,6 +19,12 @@
    POLJA SEKCIJE (niz `sections` na dnu fajla):
      days           opciono; dani sedmice u kojima sekcija postoji
                     (0 = nedjelja … 5 = petak). Bez njega — svaki dan.
+     optional       opciono; sekcija koju korisnik smije ugasiti u svom
+                    configu (prekidač u drawer-u). Ugašena ne postoji ni na
+                    ekranu ni u računu podsjetnika — `sectionsForDate()` je
+                    izbaci, pa joj podsjetnik ima total 0 i sam ućuti.
+                    Podrazumijevano je UKLJUČENA: sekcija se gasi samo kad
+                    config izričito kaže `false`.
 
    TIPOVI:
      "surah"   -> samo checkbox + naslov, bez teksta (sve sure)
@@ -28,9 +34,24 @@
    Naslov dove se ne piše ovdje — aplikacija ih sama numeriše po sekciji
    ("DOVA #1", "DOVA #2", ...). `title` je bitan samo za "surah" i "count".
 
-   TRANSLITERACIJA I SITNE OZNAKE SE NE PRIKAZUJU. Polja `transliteration`
-   su ostavljena u fajlu da se ne izgubi ono što si poslao, ali ih
-   aplikacija ignoriše — ispod arapskog ide samo `translation`.
+   TRANSLITERACIJA. Svaka dova je ima, i ona je zamjena za arapski, nikad
+   dodatak: kad korisnik u svom configu upali "transkripcija", ispod naslova
+   stoji `transliteration` umjesto `arabic`. Prevod ide ispod u oba slučaja.
+   Bez tog prekidača se ne prikazuje.
+
+   Pravila po kojima je pisana, da nova dova ne ispadne iz reda:
+     ج → dž,  ش → š,  خ → h,  ذ/ظ → z,  ث → s,  ح/ه → h
+     ع i ء   → apostrof: 'abduke, e'uzu, ni'metike, šej'un
+     fetha   → e (Ente, ene, minel-hemmi), ali a uz emfatike
+               (Rabba, sana'tu, kahrir-ridžal)
+     و       → ve; član se spaja: vel-hazen, bil-islami, fil-erdi
+     sunčeva slova asimilirana i spojena crticom: jagfiruz-zunube,
+       galebetid-dejn, Huves-Semi'ul-'Alim. Asimilira se SAMO član — ostalo
+       se piše rastavljeno ("ve in lem", ne "ve il-lem"), da se čita lakše.
+     velika slova za Allahova imena i zamjenice: Ente, Rabbi, Huve
+     bez dužinskih znakova (nikakvo ā/ī/ū)
+     kraj dove je u pauznom obliku ('azaben-nar), sredina u vezanom
+     više pasusa arapskog → jedan tok teksta, kao što se i arapski prikazuje
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -69,11 +90,11 @@
     },
     {
       id: "dove-sejjidul-istigfar",
-      title: "Allahume Ente Rabbi...",
+      title: "Allahumme Ente Rabbi...",
       type: "dua",
       arabic: "اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَٰهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ، وَأَنَا عَلَىٰ عَهْدِكَ وَوَعْدِكَ مَا اسْتَطَعْتُ، أَعُوذُ بِكَ مِنْ شَرِّ مَا صَنَعْتُ، أَبُوءُ لَكَ بِنِعْمَتِكَ عَلَيَّ، وَأَبُوءُ لَكَ بِذَنْبِي، فَاغْفِرْ لِي، فَإِنَّهُ لَا يَغْفِرُ الذُّنُوبَ إِلَّا أَنْتَ",
       transliteration:
-        "Allahume Ente Rabbi, la ilahe illa Ente, halakteni ve ene 'abduke, " +
+        "Allahumme Ente Rabbi, la ilahe illa Ente, halakteni ve ene 'abduke, " +
         "ve ene 'ala 'ahdike ve va'dike mesteta'tu. E'uzu bike min šerri ma sana'tu, " +
         "ebu'u leke bi ni'metike 'alejje, ve ebu'u bi zenbi, fagfir li, " +
         "fe innehu la jagfiruz-zunube illa Ente.",
@@ -97,6 +118,8 @@
       title: "#1",
       type: "dua",
       arabic: "رَبَّنَا تَقَبَّلْ مِنَّا ۖ إِنَّكَ أَنْتَ السَّمِيعُ الْعَلِيمُ",
+      transliteration:
+        "Rabbena tekabbel minna, inneke Entes-Semi'ul-'Alim.",
       translation: "Gospodaru naš, primi od nas! Zaista Ti sve čuješ i sve znaš.",
       source: "Kur'an, 2:127"
     },
@@ -105,6 +128,9 @@
       title: "#2",
       type: "dua",
       arabic: "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ",
+      transliteration:
+        "Rabbena atina fid-dunja haseneten ve fil-ahireti haseneten ve kina " +
+        "'azaben-nar.",
       translation: "Gospodaru naš, daj nam dobro na ovom svijetu i dobro na budućem svijetu i sačuvaj nas kazne Džehennema.",
       source: "Kur'an, 2:201"
     },
@@ -113,6 +139,9 @@
       title: "#3",
       type: "dua",
       arabic: "رَبَّنَا أَفْرِغْ عَلَيْنَا صَبْرًا وَثَبِّتْ أَقْدَامَنَا وَانْصُرْنَا عَلَى الْقَوْمِ الْكَافِرِينَ",
+      transliteration:
+        "Rabbena efrig 'alejna sabren ve sebbit akdamena vensurna " +
+        "'alel-kavmil-kafirin.",
       translation: "Gospodaru naš, obaspi nas strpljivošću, učvrsti naše noge i pomozi nam protiv naroda nevjerničkog.",
       source: "Kur'an, 2:250"
     },
@@ -121,6 +150,9 @@
       title: "#5",
       type: "dua",
       arabic: "رَبَّنَا لَا تُزِغْ قُلُوبَنَا بَعْدَ إِذْ هَدَيْتَنَا وَهَبْ لَنَا مِنْ لَدُنْكَ رَحْمَةً ۚ إِنَّكَ أَنْتَ الْوَهَّابُ",
+      transliteration:
+        "Rabbena la tuzig kulubena ba'de iz hedejtena ve heb lena min " +
+        "ledunke rahmeten, inneke Entel-Vehhab.",
       translation: "Gospodaru naš, ne dopusti da naša srca skrenu nakon što si nas uputio i daruj nam od Sebe milost. Zaista, Ti si Onaj Koji mnogo daruje.",
       source: "Kur'an, 3:8"
     },
@@ -129,6 +161,8 @@
       title: "#6",
       type: "dua",
       arabic: "رَبَّنَا إِنَّنَا آمَنَّا فَاغْفِرْ لَنَا ذُنُوبَنَا وَقِنَا عَذَابَ النَّارِ",
+      transliteration:
+        "Rabbena innena amenna fagfir lena zunubena ve kina 'azaben-nar.",
       translation: "Gospodaru naš, mi smo vjerovali, pa nam oprosti grijehe naše i sačuvaj nas patnje u Vatri.",
       source: "Kur'an, 3:16"
     },
@@ -140,6 +174,13 @@
         "قُلِ اللَّهُمَّ مَالِكَ الْمُلْكِ تُؤْتِي الْمُلْكَ مَنْ تَشَاءُ وَتَنْزِعُ الْمُلْكَ مِمَّنْ تَشَاءُ وَتُعِزُّ مَنْ تَشَاءُ وَتُذِلُّ مَنْ تَشَاءُ ۖ بِيَدِكَ الْخَيْرُ ۖ إِنَّكَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ",
         "تُولِجُ اللَّيْلَ فِي النَّهَارِ وَتُولِجُ النَّهَارَ فِي اللَّيْلِ وَتُخْرِجُ الْحَيَّ مِنَ الْمَيِّتِ وَتُخْرِجُ الْمَيِّتَ مِنَ الْحَيِّ وَتَرْزُقُ مَنْ تَشَاءُ بِغَيْرِ حِسَابٍ"
       ],
+      transliteration:
+        "Kulillahumme malikel-mulki tu'til-mulke men tešau ve " +
+        "tenzi'ul-mulke mimmen tešau ve tu'izzu men tešau ve tuzillu men " +
+        "tešau, bijedikel-hajr, inneke 'ala kulli šej'in kadir. " +
+        "Tulidžul-lejle fin-nehari ve tulidžun-nehare fil-lejli ve " +
+        "tuhridžul-hajje minel-mejjiti ve tuhridžul-mejjite minel-hajji ve " +
+        "terzuku men tešau bigajri hisab.",
       translation: "Reci: 'Allahu, Gospodaru svega što postoji, Ti daješ vlast kome hoćeš, a oduzimaš vlast od koga hoćeš. Ti uzvisuješ koga hoćeš, a ponižavaš koga hoćeš. U Tvojoj ruci je svako dobro i Ti nad svime imaš moć. Ti uvodiš noć u dan i uvodiš dan u noć. Ti izvodiš živo iz mrtvog i izvodiš mrtvo iz živog. Ti opskrbljuješ koga hoćeš bez računa.'",
       source: "Kur'an, 3:26-27"
     },
@@ -148,6 +189,9 @@
       title: "#8",
       type: "dua",
       arabic: "رَبَّنَا آمَنَّا بِمَا أَنْزَلْتَ وَاتَّبَعْنَا الرَّسُولَ فَاكْتُبْنَا مَعَ الشَّاهِدِينَ",
+      transliteration:
+        "Rabbena amenna bima enzelte vettebe'ner-resule fektubna " +
+        "me'aš-šahidin.",
       translation: "Gospodaru naš, vjerujemo u ono što si objavio i slijedimo Poslanika, pa nas upiši među svjedoke.",
       source: "Kur'an, 3:53"
     },
@@ -156,6 +200,9 @@
       title: "#9",
       type: "dua",
       arabic: "رَبَّنَا اغْفِرْ لَنَا ذُنُوبَنَا وَإِسْرَافَنَا فِي أَمْرِنَا وَثَبِّتْ أَقْدَامَنَا وَانْصُرْنَا عَلَى الْقَوْمِ الْكَافِرِينَ",
+      transliteration:
+        "Rabbenagfir lena zunubena ve israfena fi emrina ve sebbit akdamena " +
+        "vensurna 'alel-kavmil-kafirin.",
       translation: "Gospodaru naš, oprosti nam grijehe naše i pretjerivanje naše u poslovima našim, učvrsti naše noge i pomozi nam protiv naroda nevjerničkog.",
       source: "Kur'an, 3:147"
     },
@@ -169,6 +216,14 @@
         "رَبَّنَا إِنَّنَا سَمِعْنَا مُنَادِيًا يُنَادِي لِلْإِيمَانِ أَنْ آمِنُوا بِرَبِّكُمْ فَآمَنَّا ۚ رَبَّنَا فَاغْفِرْ لَنَا ذُنُوبَنَا وَكَفِّرْ عَنَّا سَيِّئَاتِنَا وَتَوَفَّنَا مَعَ الْأَبْرَارِ",
         "رَبَّنَا وَآتِنَا مَا وَعَدْتَنَا عَلَىٰ رُسُلِكَ وَلَا تُخْزِنَا يَوْمَ الْقِيَامَةِ ۗ إِنَّكَ لَا تُخْلِفُ الْمِيعَادَ"
       ],
+      transliteration:
+        "Rabbena ma halakte haza batilen, subhaneke fekina 'azaben-nar. " +
+        "Rabbena inneke men tudhilin-nare fekad ahzejteh, ve ma " +
+        "liz-zalimine min ensar. Rabbena innena semi'na munadijen junadi " +
+        "lil-imani en aminu bi Rabbikum fe amenna, Rabbena fagfir lena " +
+        "zunubena ve keffir 'anna sejjiatina ve teveffena me'al-ebrar. " +
+        "Rabbena ve atina ma ve'adtena 'ala rusulike ve la tuhzina " +
+        "jevmel-kijameh, inneke la tuhliful-mi'ad.",
       translation: "Gospodaru naš, Ti ovo nisi uzalud stvorio. Slavljen neka si Ti, pa nas sačuvaj kazne u Vatri. Gospodaru naš, koga Ti uvedeš u Vatru, Ti si ga ponizio, a nasilnicima nema pomagača. Gospodaru naš, mi smo čuli glasnika koji poziva vjeri: 'Vjerujte u Gospodara svoga!', pa smo vjerovali. Gospodaru naš, oprosti nam grijehe naše, poništi naša loša djela i usmrti nas s dobrima. Gospodaru naš, podari nam ono što si nam obećao preko Svojih poslanika i nemoj nas poniziti na Sudnjem danu. Zaista, Ti ne kršiš obećanje.",
       source: "Kur'an, 3:191-194"
     },
@@ -177,6 +232,9 @@
       title: "#11",
       type: "dua",
       arabic: "رَبَّنَا ظَلَمْنَا أَنْفُسَنَا وَإِنْ لَمْ تَغْفِرْ لَنَا وَتَرْحَمْنَا لَنَكُونَنَّ مِنَ الْخَاسِرِينَ",
+      transliteration:
+        "Rabbena zalemna enfusena ve in lem tagfir lena ve terhamna " +
+        "lenekunenne minel-hasirin.",
       translation: "Gospodaru naš, sami smo sebi nepravdu učinili i ako nam Ti ne oprostiš i ne smiluješ nam se, sigurno ćemo biti među gubitnicima.",
       source: "Kur'an, 7:23"
     },
@@ -196,6 +254,9 @@
       title: "#13",
       type: "dua",
       arabic: "فَاطِرَ السَّمَاوَاتِ وَالْأَرْضِ أَنْتَ وَلِيِّي فِي الدُّنْيَا وَالْآخِرَةِ ۖ تَوَفَّنِي مُسْلِمًا وَأَلْحِقْنِي بِالصَّالِحِينَ",
+      transliteration:
+        "Fatires-semavati vel-erdi Ente velijji fid-dunja vel-ahireh, " +
+        "teveffeni muslimen ve elhikni bis-salihin.",
       translation: "Stvoritelju nebesa i Zemlje, Ti si moj zaštitnik na ovom i na budućem svijetu. Daj da umrem kao musliman i pridruži me dobrima.",
       source: "Kur'an, 12:101"
     },
@@ -207,6 +268,10 @@
         "رَبِّ اجْعَلْنِي مُقِيمَ الصَّلَاةِ وَمِنْ ذُرِّيَّتِي ۚ رَبَّنَا وَتَقَبَّلْ دُعَاءِ",
         "رَبَّنَا اغْفِرْ لِي وَلِوَالِدَيَّ وَلِلْمُؤْمِنِينَ يَوْمَ يَقُومُ الْحِسَابُ"
       ],
+      transliteration:
+        "Rabbidž'alni mukimes-salati ve min zurrijjeti, Rabbena ve tekabbel " +
+        "du'a. Rabbenagfir li ve li validejje ve lil-mu'minine jevme " +
+        "jekumul-hisab.",
       translation: "Gospodaru moj, učini mene i potomstvo moje ustrajnima u obavljanju namaza. Gospodaru naš, primi moju dovu. Gospodaru naš, oprosti meni, mojim roditeljima i svim vjernicima na Dan kada se bude polagao račun.",
       source: "Kur'an, 14:40-41"
     },
@@ -215,6 +280,9 @@
       title: "#15",
       type: "dua",
       arabic: "رَبِّ أَدْخِلْنِي مُدْخَلَ صِدْقٍ وَأَخْرِجْنِي مُخْرَجَ صِدْقٍ وَاجْعَلْ لِي مِنْ لَدُنْكَ سُلْطَانًا نَصِيرًا",
+      transliteration:
+        "Rabbi edhilni mudhale sidkin ve ahridžni muhredže sidkin vedž'al " +
+        "li min ledunke sultanen nasira.",
       translation: "Gospodaru moj, uvedi me na lijep način i izvedi me na lijep način i podari mi od Sebe snagu koja će mi pomoći.",
       source: "Kur'an, 17:80"
     },
@@ -223,6 +291,9 @@
       title: "#16",
       type: "dua",
       arabic: "رَبَّنَا آتِنَا مِنْ لَدُنْكَ رَحْمَةً وَهَيِّئْ لَنَا مِنْ أَمْرِنَا رَشَدًا",
+      transliteration:
+        "Rabbena atina min ledunke rahmeten ve hejji' lena min emrina " +
+        "rešeda.",
       translation: "Gospodaru naš, podari nam od Sebe milost i pripremi nam u našem poslu ono što je ispravno.",
       source: "Kur'an, 18:10"
     },
@@ -231,6 +302,8 @@
       title: "#17",
       type: "dua",
       arabic: "لَا إِلَٰهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ",
+      transliteration:
+        "La ilahe illa Ente, subhaneke inni kuntu minez-zalimin.",
       translation: "Nema boga osim Tebe, slavljen neka si Ti! Ja sam zaista bio među onima koji su sebi nepravdu učinili.",
       source: "Kur'an, 21:87"
     },
@@ -239,6 +312,8 @@
       title: "#18",
       type: "dua",
       arabic: "رَبِّ لَا تَذَرْنِي فَرْدًا وَأَنْتَ خَيْرُ الْوَارِثِينَ",
+      transliteration:
+        "Rabbi la tezerni ferden ve Ente hajrul-varisin.",
       translation: "Gospodaru moj, ne ostavljaj me samog, a Ti si najbolji nasljednik.",
       source: "Kur'an, 21:89"
     },
@@ -248,6 +323,9 @@
       type: "dua",
       arabic: "رَبِّ أَعُوذُ بِكَ مِنْ هَمَزَاتِ الشَّيَاطِينِ ۝\n" +
               "وَأَعُوذُ بِكَ رَبِّ أَنْ يَحْضُرُونِ",
+      transliteration:
+        "Rabbi e'uzu bike min hemezatiš-šejatin, ve e'uzu bike Rabbi en " +
+        "jahdurun.",
       translation: "Gospodaru moj, utječem Ti se od šejtanskih došaptavanja i utječem Ti se, Gospodaru moj, da mi se približe.",
       source: "Kur'an, 23:97-98"
     },
@@ -257,6 +335,9 @@
       type: "dua",
       arabic: "رَبَّنَا اصْرِفْ عَنَّا عَذَابَ جَهَنَّمَ ۖ إِنَّ عَذَابَهَا كَانَ غَرَامًا ۝\n" +
               "إِنَّهَا سَاءَتْ مُسْتَقَرًّا وَمُقَامًا",
+      transliteration:
+        "Rabbenasrif 'anna 'azabe džehenneme, inne 'azabeha kane garama. " +
+        "Inneha saet mustekarren ve mukama.",
       translation: "Gospodaru naš, odvrati od nas patnju Džehennema, jer je njegova patnja zaista neprekidna. On je ružno boravište i prebivalište.",
       source: "Kur'an, 25:65-66"
     },
@@ -265,6 +346,9 @@
       title: "#21",
       type: "dua",
       arabic: "رَبَّنَا هَبْ لَنَا مِنْ أَزْوَاجِنَا وَذُرِّيَّاتِنَا قُرَّةَ أَعْيُنٍ وَاجْعَلْنَا لِلْمُتَّقِينَ إِمَامًا",
+      transliteration:
+        "Rabbena heb lena min ezvadžina ve zurrijjatina kurrete a'junin " +
+        "vedž'alna lil-muttekine imama.",
       translation: "Gospodaru naš, podari nam u našim suprugama i našem potomstvu radost očiju i učini nas predvodnicima bogobojaznih.",
       source: "Kur'an, 25:74"
     },
@@ -278,6 +362,11 @@
               "وَلَا تُخْزِنِي يَوْمَ يُبْعَثُونَ ۝\n" +
               "يَوْمَ لَا يَنْفَعُ مَالٌ وَلَا بَنُونَ ۝\n" +
               "إِلَّا مَنْ أَتَى اللَّهَ بِقَلْبٍ سَلِيمٍ",
+      transliteration:
+        "Rabbi heb li hukmen ve elhikni bis-salihin. Vedž'al li lisane " +
+        "sidkin fil-ahirin. Vedž'alni min veraseti džennetin-ne'im. Ve la " +
+        "tuhzini jevme jub'asun. Jevme la jenfe'u malun ve la benun. Illa " +
+        "men etellahe bi kalbin selim.",
       translation: "Gospodaru moj, podari mi mudrost i pridruži me dobrima. Podari mi lijep spomen među kasnijim naraštajima. Učini me jednim od nasljednika Dženneta blagostanja. Nemoj me osramotiti na Dan kada će ljudi biti proživljeni, na Dan kada neće koristiti ni imetak ni djeca, osim onome ko Allahu dođe čista srca.",
       source: "Kur'an, 26:83-89"
     },
@@ -286,6 +375,10 @@
       title: "#23",
       type: "dua",
       arabic: "رَبِّ أَوْزِعْنِي أَنْ أَشْكُرَ نِعْمَتَكَ الَّتِي أَنْعَمْتَ عَلَيَّ وَعَلَىٰ وَالِدَيَّ وَأَنْ أَعْمَلَ صَالِحًا تَرْضَاهُ وَأَصْلِحْ لِي فِي ذُرِّيَّتِي ۖ إِنِّي تُبْتُ إِلَيْكَ وَإِنِّي مِنَ الْمُسْلِمِينَ",
+      transliteration:
+        "Rabbi evzi'ni en eškure ni'metekelleti en'amte 'alejje ve 'ala " +
+        "validejje ve en a'mele salihan terdah, ve aslih li fi zurrijjeti, " +
+        "inni tubtu ilejke ve inni minel-muslimin.",
       translation: "Gospodaru moj, nadahni me da budem zahvalan na blagodati Tvojoj koju si podario meni i roditeljima mojim i da činim dobra djela kojima si zadovoljan. Učini dobrim moje potomstvo. Ja Ti se zaista kajem i ja sam među muslimanima.",
       source: "Kur'an, 46:15"
     },
@@ -294,6 +387,10 @@
       title: "#24",
       type: "dua",
       arabic: "رَبَّنَا اغْفِرْ لَنَا وَلِإِخْوَانِنَا الَّذِينَ سَبَقُونَا بِالْإِيمَانِ وَلَا تَجْعَلْ فِي قُلُوبِنَا غِلًّا لِلَّذِينَ آمَنُوا رَبَّنَا إِنَّكَ رَءُوفٌ رَحِيمٌ",
+      transliteration:
+        "Rabbenagfir lena ve li ihvaninelezine sebekuna bil-imani ve la " +
+        "tedž'al fi kulubina gillen lillezine amenu, Rabbena inneke Reufun " +
+        "Rahim.",
       translation: "Gospodaru naš, oprosti nama i našoj braći koja su nas u vjeri pretekla i ne dopusti da u srcima našim bude zlobe prema vjernicima. Gospodaru naš, Ti si zaista blag i milostiv.",
       source: "Kur'an, 59:10"
     },
@@ -305,6 +402,10 @@
         "رَبَّنَا عَلَيْكَ تَوَكَّلْنَا وَإِلَيْكَ أَنَبْنَا وَإِلَيْكَ الْمَصِيرُ",
         "رَبَّنَا لَا تَجْعَلْنَا فِتْنَةً لِلَّذِينَ كَفَرُوا وَاغْفِرْ لَنَا رَبَّنَا ۖ إِنَّكَ أَنْتَ الْعَزِيزُ الْحَكِيمُ"
       ],
+      transliteration:
+        "Rabbena 'alejke tevekkelna ve ilejke enebna ve ilejkel-masir. " +
+        "Rabbena la tedž'alna fitneten lillezine keferu vagfir lena " +
+        "Rabbena, inneke Entel-'Azizul-Hakim.",
       translation: "Gospodaru naš, na Tebe se oslanjamo, Tebi se obraćamo i Tebi je povratak. Gospodaru naš, nemoj nas učiniti iskušenjem onima koji ne vjeruju i oprosti nam, Gospodaru naš. Zaista, Ti si Silni i Mudri.",
       source: "Kur'an, 60:4-5"
     },
@@ -317,6 +418,9 @@
       arabic: "سُبْحَانَ رَبِّكَ رَبِّ الْعِزَّةِ عَمَّا يَصِفُونَ ۝\n" +
               "وَسَلَامٌ عَلَى الْمُرْسَلِينَ ۝\n" +
               "وَالْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ ۝",
+      transliteration:
+        "Subhane Rabbike Rabbil-'izzeti 'amma jesifun. Ve selamun " +
+        "'alel-murselin. Vel-hamdu lillahi Rabbil-'alemin.",
       translation: "Slavljen neka je tvoj Gospodar, Gospodar moći, i čist je od onoga što oni o Njemu govore. Mir poslanicima i hvala Allahu, Gospodaru svjetova.",
       source: "Kur'an, 37:180-182"
     },
@@ -328,6 +432,9 @@
               "وَيَسِّرْ لِي أَمْرِي ۝\n" +
               "وَاحْلُلْ عُقْدَةً مِنْ لِسَانِي ۝\n" +
               "يَفْقَهُوا قَوْلِي ۝",
+      transliteration:
+        "Rabbišrah li sadri. Ve jessir li emri. Vahlul 'ukdeten min lisani. " +
+        "Jefkahu kavli.",
       translation: "Gospodaru moj, učini prostranim moja prsa, olakšaj mi moj zadatak, razveži uzao s mog jezika da bi razumjeli moj govor.",
       source: "Kur'an, 20:25-28"
     },
@@ -336,6 +443,9 @@
       title: "#31",
       type: "dua",
       arabic: "اللَّهُمَّ لَا سَهْلَ إِلَّا مَا جَعَلْتَهُ سَهْلًا، وَأَنْتَ تَجْعَلُ الْحَزْنَ إِذَا شِئْتَ سَهْلًا",
+      transliteration:
+        "Allahumme la sehle illa ma dže'altehu sehla, ve Ente " +
+        "tedž'alul-hazne iza ši'te sehla.",
       translation: "Allahu, nema ništa lahko osim onoga što Ti učiniš lahkim, a Ti možeš i teškoću, ako hoćeš, učiniti lahkom.",
       source: "Hadis — Sahih Ibn Hibban, 974"
     },
@@ -345,7 +455,7 @@
       type: "dua",
       arabic: "بِسْمِ اللَّهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ، وَهُوَ السَّمِيعُ الْعَلِيمُ",
       transliteration:
-        "Bismillahillezi la jedurru me'asmihi šej'un fil-erdi ve la fissemā'i, " +
+        "Bismillahillezi la jedurru me'asmihi šej'un fil-erdi ve la fissema'i, " +
         "ve Huves-Semi'ul-'Alim.",
       translation: "U ime Allaha, s čijim imenom ništa na Zemlji ni na nebu ne može nauditi, a On sve čuje i sve zna.",
       source: "Hadis — Sunan Abi Dawud, 5088"
@@ -355,6 +465,8 @@
       title: "#35",
       type: "dua",
       arabic: "رَبِّ إِنِّي لِمَا أَنْزَلْتَ إِلَيَّ مِنْ خَيْرٍ فَقِيرٌ",
+      transliteration:
+        "Rabbi inni lima enzelte ilejje min hajrin fekir.",
       translation: "Gospodaru moj, meni je zaista potrebna svaka blagodat koju mi Ti pošalješ.",
       source: "Kur'an, 28:24"
     },
@@ -363,6 +475,8 @@
       title: "#36",
       type: "dua",
       arabic: "رَبِّ أَنْزِلْنِي مُنْزَلًا مُبَارَكًا وَأَنْتَ خَيْرُ الْمُنْزِلِينَ",
+      transliteration:
+        "Rabbi enzilni munzelen mubareken ve Ente hajrul-munzilin.",
       translation: "Gospodaru moj, spusti me na blagoslovljeno mjesto, a Ti si najbolji od onih koji daju utočište.",
       source: "Kur'an, 23:29"
     }
@@ -392,11 +506,11 @@
     },
     {
       id: "navecer-sejjidul-istigfar",
-      title: "Allahume Ente Rabbi...",
+      title: "Allahumme Ente Rabbi...",
       type: "dua",
       arabic: "اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَٰهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ، وَأَنَا عَلَىٰ عَهْدِكَ وَوَعْدِكَ مَا اسْتَطَعْتُ، أَعُوذُ بِكَ مِنْ شَرِّ مَا صَنَعْتُ، أَبُوءُ لَكَ بِنِعْمَتِكَ عَلَيَّ، وَأَبُوءُ لَكَ بِذَنْبِي، فَاغْفِرْ لِي، فَإِنَّهُ لَا يَغْفِرُ الذُّنُوبَ إِلَّا أَنْتَ",
       transliteration:
-        "Allahume Ente Rabbi, la ilahe illa Ente, halakteni ve ene 'abduke, " +
+        "Allahumme Ente Rabbi, la ilahe illa Ente, halakteni ve ene 'abduke, " +
         "ve ene 'ala 'ahdike ve va'dike mesteta'tu. E'uzu bike min šerri ma sana'tu, " +
         "ebu'u leke bi ni'metike 'alejje, ve ebu'u bi zenbi, fagfir li, " +
         "fe innehu la jagfiruz-zunube illa Ente.",
@@ -409,7 +523,7 @@
       type: "dua",
       arabic: "بِسْمِ اللَّهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ، وَهُوَ السَّمِيعُ الْعَلِيمُ",
       transliteration:
-        "Bismillahillezi la jedurru me'asmihi šej'un fil-erdi ve la fissemā'i, " +
+        "Bismillahillezi la jedurru me'asmihi šej'un fil-erdi ve la fissema'i, " +
         "ve Huves-Semi'ul-'Alim.",
       translation: "U ime Allaha, s čijim imenom ništa na Zemlji ni na nebu ne može nauditi, a On sve čuje i sve zna.",
       source: "Hadis — Sunan Abi Dawud, 5088"
@@ -422,6 +536,12 @@
         "سَمِعْنَا وَأَطَعْنَا ۖ غُفْرَانَكَ رَبَّنَا وَإِلَيْكَ الْمَصِيرُ",
         "رَبَّنَا لَا تُؤَاخِذْنَا إِنْ نَسِينَا أَوْ أَخْطَأْنَا ۚ رَبَّنَا وَلَا تَحْمِلْ عَلَيْنَا إِصْرًا كَمَا حَمَلْتَهُ عَلَى الَّذِينَ مِنْ قَبْلِنَا ۚ رَبَّنَا وَلَا تُحَمِّلْنَا مَا لَا طَاقَةَ لَنَا بِهِ ۖ وَاعْفُ عَنَّا وَاغْفِرْ لَنَا وَارْحَمْنَا ۚ أَنْتَ مَوْلَانَا فَانْصُرْنَا عَلَى الْقَوْمِ الْكَافِرِينَ"
       ],
+      transliteration:
+        "Semi'na ve eta'na, gufraneke Rabbena ve ilejkel-masir. Rabbena la " +
+        "tuahizna in nesina ev ahta'na, Rabbena ve la tahmil 'alejna isren " +
+        "kema hameltehu 'alellezine min kablina, Rabbena ve la tuhammilna " +
+        "ma la takate lena bih, va'fu 'anna vagfir lena verhamna, Ente " +
+        "Mevlana fensurna 'alel-kavmil-kafirin.",
       translation: "Čuli smo i pokorili smo se. Oprosti nam, Gospodaru naš, i Tebi je povratak. Gospodaru naš, nemoj nas kazniti ako zaboravimo ili pogriješimo. Gospodaru naš, ne natovari na nas teret kao što si ga natovario na one prije nas. Gospodaru naš, ne optereti nas onim što ne možemo podnijeti. Oprosti nam, grijehe nam pokrij i smiluj nam se. Ti si naš Gospodar, pa nam pomozi protiv naroda nevjerničkog.",
       source: "Kur'an, 2:285-286"
     },
@@ -469,7 +589,7 @@
      postoji svaki dan, pa se postojeće četiri ne diraju. Filtriranje radi
      `sectionsForDate()` ispod — i aplikacija i server idu kroz njega. */
   const sections = [
-    { id: "petak",   title: "Petak",   icon: "mosque", kind: "list", items: petak, days: [5] },
+    { id: "petak",   title: "Petak",   icon: "mosque", kind: "list", items: petak, days: [5], optional: true },
     { id: "quran",   title: "Kur'an",  icon: "book",   kind: "quran" },
     { id: "zikr",    title: "Zikr",    icon: "loop",   kind: "list", items: zikr },
     { id: "dove",    title: "Dove",    icon: "hands",  kind: "list", items: dove },
@@ -494,14 +614,33 @@
 
      Prima ISTI ključ datuma pod kojim se pamti čekirano (dateKey u
      aplikaciji, now.date na serveru), pa se sekcija, spisak čekiranog i
-     podsjetnik prebacuju u novi dan u istom trenutku. */
-  function sectionsForDate(dateKey) {
+     podsjetnik prebacuju u novi dan u istom trenutku.
+
+     `prefs` je config korisnika, { idSekcije: bool }, i gasi SAMO sekcije
+     označene sa `optional`. Nepoznat ili nepostojeći config ne gasi ništa —
+     ugašeno mora biti izričito `false`, inače bi svaki poziv bez configa
+     (stari kod, uređaj bez imena) tiho pobrisao pola spiska.
+
+     Server prosljeđuje config vlasnika baze, pa "petak ugašen" znači isto na
+     ekranu i u odluci o podsjetniku: sekcije nema, njen podsjetnik ima total
+     0 i sam ućuti. */
+  function sectionsForDate(dateKey, prefs) {
     var wd = weekdayFromKey(dateKey);
     return sections.filter(function (section) {
-      return !section.days || section.days.indexOf(wd) !== -1;
+      if (section.days && section.days.indexOf(wd) === -1) { return false; }
+      if (section.optional && prefs && prefs[section.id] === false) { return false; }
+      return true;
     });
   }
   
+  /* Sekcije koje korisnik smije ugasiti — jedini spisak po kojem se gradi
+     config i po kojem ga server validira. Ime prekidača u drawer-u je naslov
+     sekcije, pa nova `optional` sekcija u nizu gore sama dobije svoj prekidač
+     i ne mora se dopisivati ni u jednom drugom fajlu. */
+  function optionalSections() {
+    return sections.filter(function (section) { return !!section.optional; });
+  }
+
   /* --------------------------------------------------------------------------
      KUR'AN
      Stranica se računa automatski: na QURAN_START_DATE je QURAN_START_PAGE,
@@ -528,6 +667,9 @@ if (typeof module !== "undefined" && module.exports) {
        stigao. Dvije stvari, namjerno razdvojene: kvačica napravljena u petak
        u 23:58 a poslana u subotu u 00:03 mora proći validaciju. */
     sectionsForDate: sectionsForDate,
+    /* Spisak sekcija koje config smije ugasiti — server po njemu odbacuje
+       sve ostalo iz poslanog configa. */
+    optionalSections: optionalSections,
     weekdayFromKey: weekdayFromKey
   };
 }

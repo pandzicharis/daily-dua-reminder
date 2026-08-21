@@ -172,72 +172,57 @@ h1, h2, h3, p {
 }
 
 /* --------------------------------------------------------------------------
-   5. Progress — prstenasti graf desno u headeru
-   -------------------------------------------------------------------------- */
-.progress-label {
-  margin-top: 2px;
-  font-size: 0.6875rem;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-}
+   5. Postavke — dugme desno u headeru
 
-.ring-wrap {
-  position: relative;
+   Na mjestu gdje je prije stajao prstenasti graf. Prsten je govorio isto što
+   i trake ispod, samo grublje (jedan postotak za cijeli dan), pa je uklonjen
+   a mjesto je dobila jedina kontrola koju aplikacija ima.
+   -------------------------------------------------------------------------- */
+.settings-btn {
   flex-shrink: 0;
-  width: 52px;
-  height: 52px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-family: inherit;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s ease, border-color 0.18s ease, transform 0.35s ease;
 }
 
-/* -90deg da se prsten puni od vrha, a ne od desne strane. */
-.ring {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
+.settings-icon {
+  width: 19px;
+  height: 19px;
 }
 
-.ring-track,
-.ring-fill {
-  fill: none;
-  stroke-width: 3.5;
+.settings-btn:hover {
+  color: var(--primary);
+  border-color: var(--accent-soft);
+  /* Zupčanik se okrene kad se pređe preko njega — sitno, jednom. */
+  transform: rotate(45deg);
 }
 
-.ring-track {
-  stroke: var(--background-alt);
+.settings-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.ring-fill {
-  stroke: var(--primary);
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;
-}
-
-.ring-label {
-  position: absolute;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--primary-soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.progress.is-complete .ring-fill {
-  stroke: var(--accent);
-}
-
-.progress.is-complete .ring-label {
-  color: var(--accent);
+@media (prefers-reduced-motion: reduce) {
+  .settings-btn:hover { transform: none; }
 }
 
 /* --------------------------------------------------------------------------
    5b. Trake po dobu dana — ispod naslovnog reda
 
-   Prsten iznad broji CIJELI dan, pa iz njega ne piše je li stao dnevni ili
-   večernji dio. Trake su ta razlika: po jedna za svaki podsjetnik koji tog
-   dana postoji ("Dan", "Navečer", petkom i "Petak"), pa se na prvi pogled
-   vidi da je dnevni zikr završen a da se večernji tek čeka.
+   Jedini prikaz napretka: po jedna traka za svaki podsjetnik koji tog dana
+   postoji ("Dan", "Navečer", petkom i "Petak"), pa se na prvi pogled vidi
+   da je dnevni zikr završen a da se večernji tek čeka.
 
    Namjerno tanko i bez okvira — traka je crta, ne kartica.
    -------------------------------------------------------------------------- */
@@ -544,6 +529,19 @@ main {
   overflow-wrap: break-word;
 }
 
+/* Transkripcija stoji NA MJESTU arapskog (config "transkripcija"), pa nosi
+   njegovu težinu i njegovu boju — samo latinicom i manja, jer latinica na
+   toj veličini razvuče karticu preko pola ekrana. Kurziv je da se na prvi
+   pogled razlikuje od prevoda ispod. */
+.transliteration {
+  font-size: clamp(1.0625rem, 3.6vw, 1.25rem);
+  line-height: 1.85;
+  font-style: italic;
+  color: var(--primary);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+
 .translation {
   margin-top: 16px;
   font-size: 0.9375rem;
@@ -832,17 +830,193 @@ main {
 }
 
 /* --------------------------------------------------------------------------
-   10. Podsjetnici — jedina nova kontrola, na dnu
+   10. Postavke — drawer
+
+   Samo dugme je u headeru (vidi 5); sve ostalo je ovdje. Drawer nastaje iz
+   settings.js i dijeli oblik sa "Vidi stranicu" — jedna ploča na dnu ekrana,
+   a ne dvije koje se raziđu.
    -------------------------------------------------------------------------- */
-.notify {
-  margin-top: 0px;
-  padding-bottom: 8px;
-  text-align: center;
+
+/* Postavke su kratak spisak redova, za razliku od stranice mushafa koja je
+   jedan dugačak tekst — otuda uža ploča i razmak između redova. */
+.drawer-settings .drawer-sheet {
+  max-width: 560px;
 }
 
-/* Sitno okruglo dugme sa zvonom — bez teksta, u mjeri sa dugmetom na dnu.
-   Stanje se čita sa same ikonice, pa nema ni naslova ni statusa. */
+.set-body {
+  padding-top: 8px;
+}
+
+/* Red: naslov i objašnjenje lijevo, kontrola desno. Isti raspored za
+   prekidače i za dugme podsjetnika, da drawer ima jednu liniju. */
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+.set-text {
+  min-width: 0;
+}
+
+.set-label {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.set-note {
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* Ime — jedino polje za unos u cijeloj aplikaciji. */
+.set-field {
+  padding: 4px 0 18px;
+}
+
+.set-input {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 14px;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.set-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(184, 146, 90, 0.16);
+}
+
+.set-hint {
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--muted);
+  min-height: 1.2em;
+}
+
+.set-hint.is-ok {
+  color: var(--primary-soft);
+}
+
+.set-hint.is-warn {
+  color: var(--accent);
+}
+
+/* Izlaz na dnu drawer-a. Isti oblik kao dugme na završnom ekranu — puna
+   pilula sa velikim razmakom slova — samo preko cijele širine, jer ovdje
+   nema ničega pored njega. */
+.set-back {
+  display: block;
+  width: 100%;
+  margin-top: 22px;
+  padding: 14px 24px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--surface);
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 99px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.set-back:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
+}
+
+.set-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- prekidač ------------------------------------------------------------ */
+/* Pravi checkbox razvučen preko trake i providan: klik, fokus i čitač
+   ekrana rade sami, a traka ispod je samo slika stanja. */
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-block;
+  width: 46px;
+  height: 28px;
+}
+
+.switch-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch-track {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: var(--line-strong);
+  border-radius: 999px;
+  transition: background 0.18s ease;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  background: var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(28, 28, 25, 0.28);
+  transition: transform 0.18s ease;
+}
+
+.switch-input:checked ~ .switch-track {
+  background: var(--primary);
+}
+
+.switch-input:checked ~ .switch-track .switch-knob {
+  transform: translateX(18px);
+}
+
+.switch-input:focus-visible ~ .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-knob {
+    transition: none;
+  }
+}
+
+/* --- podsjetnici (zvono u drawer-u) -------------------------------------- */
+/* Sitno okruglo dugme sa zvonom — bez teksta. Stanje se čita sa same
+   ikonice: precrtano zvono znači isključeno. */
 .notify-btn {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -892,17 +1066,21 @@ main {
 
 /* Stanje se vidi na dugmetu, pa se tekst ne ispisuje. Ostaje samo
    upozorenje — ono jedino kaže šta treba popraviti (npr. da su obavijesti
-   blokirane u postavkama telefona). */
+   blokirane u postavkama telefona). Stoji ispod cijelog reda, a ne pored
+   dugmeta: uputa za iOS je duga par redova i tamo ne bi stala. */
 .notify-status {
   display: none;
 }
 
 .notify-status.is-warn {
   display: block;
-  margin-top: 10px;
+  margin: 0 0 4px;
+  padding: 10px 12px;
   font-size: 0.75rem;
   line-height: 1.6;
   color: var(--accent);
+  background: var(--background-alt);
+  border-radius: var(--radius-sm);
 }
 
 /* --------------------------------------------------------------------------
@@ -1520,6 +1698,17 @@ body.has-fab {
   background: #2f4d3d;
   color: #b7e3c8;
   font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Ime korisnika iznad njegovih prozora — izvještaj je po korisniku, pa se
+   sa dva naloga na istoj bazi vidi čije je koje. */
+.devp-user {
+  margin-top: 14px;
+  color: #b9b3a2;
+  font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;

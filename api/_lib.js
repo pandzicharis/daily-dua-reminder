@@ -12,19 +12,62 @@ const SECTIONS = DATA.sections;
 /* Sekcije koje postoje na dati datum — jedini izvor istine za "šta se danas
    broji", isti koji vidi i aplikacija. */
 const sectionsForDate = DATA.sectionsForDate;
+/* Sekcije koje korisnik smije ugasiti — iz ovoga se gradi i validira config. */
+const optionalSections = DATA.optionalSections;
 const weekdayFromKey = DATA.weekdayFromKey;
 
 const TZ = "Europe/Sarajevo";
 
 /* ------------------------------------------------------------------------
-   Prostor = jedan zajednički spisak čekiranog, isti za sve uređaje.
+   Prostor = jedan zajednički spisak čekiranog, ali sada PO KORISNIKU.
 
-   Aplikacija nema login; ovo je lična aplikacija i namjerno je tako da
-   telefon i računar odmah vide isto stanje, bez uparivanja. Ako ikad
-   zatreba odvojiti dvije osobe, dovoljno je svakoj dati svoj ZIKR_SPACE
-   (i svoj deploy) — ostatak koda ne zna ni za šta drugo.
+   Do sada je postojao jedan jedini prostor (ZIKR_SPACE) i svi uređaji su
+   dijelili isti spisak — jer je korisnik bio jedan. Sada ime iz configa
+   određuje prostor: Haris i Leila imaju svaki svoj spisak, a svi Harisovi
+   uređaji i dalje vide isti. Dijeljenje kroz uređaje ostaje netaknuto,
+   samo mu je ključ ime umjesto konstante.
+
+   Ime NIJE lozinka. Nema logina, pa ko upiše "haris" vidi Harisov spisak —
+   to je i smisao: drugi uređaj iste osobe se prijavi istim imenom i odmah
+   je uparen. Zaštita od tuđeg pogleda nije dio ovoga i ne treba se
+   pretpostavljati.
+
+   ZIKR_SPACE ostaje SAMO kao zatečeni prostor: uređaj pretplaćen prije nego
+   je config postojao nema ime uz pretplatu, pa ga scheduler i dalje vodi
+   ovdje dok se aplikacija na njemu ne otvori i ne javi ime.
    ------------------------------------------------------------------------ */
 const SPACE = (process.env.ZIKR_SPACE || "zajedno").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "zajedno";
+
+/* Ime -> ključ prostora. Mora biti isto pravilo na svim uređajima, inače bi
+   "Haris" sa telefona i "haris " sa računara bila dva odvojena spiska.
+
+   Naša slova se svode na ASCII (č/ć→c, ž→z, š→s, đ→d) da ključ ostane
+   siguran za Redis i URL. Posljedica je namjerna: "Đenan" i "Denan" su isti
+   korisnik, pa se spisak nađe i kad se kuca bez kvačica.
+
+   Vraća "" za sve što nije upotrebljivo — pozivalac to tretira kao "nema
+   korisnika" i ne dira bazu. */
+function userKey(raw) {
+  const map = { "č": "c", "ć": "c", "ž": "z", "š": "s", "đ": "d" };
+  return String(raw || "")
+    .toLowerCase()
+    .replace(/[čćžšđ]/g, function (ch) { return map[ch]; })
+    /* razmak i tačka u imenu ("ummu abdullah") postaju crtica, ostalo pada */
+    .replace(/[\s._]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 32);
+}
+
+/* Ime dolazi u zaglavlju, a NE u query stringu: tako ne završi u logovima
+   servera ni u historiji zahtjeva. Body je rezerva za POST, query samo za
+   lokalni testni panel. Vraća "" kad imena nema — i to je ispravno stanje
+   (aplikacija bez imena radi lokalno i ne dira bazu). */
+function userFrom(req, body, query) {
+  const head = (req && req.headers && req.headers["x-zikr-user"]) || "";
+  return userKey(head || (body && body.user) || (query && query.user) || "");
+}
 
 /* Koliko dana čuvamo dnevne zapise. Treba nam samo današnji, ali par dana
    viška pokriva prelazak ponoći i zone. Sve ističe samo od sebe. */
@@ -62,8 +105,8 @@ function findTask(id) {
    filtriranja po danu bi `exceptSections` uvukao petačku sekciju i u utorak:
    `dan` nikad ne bi bio "done", pa bi zvonio do 23:00 svaki dan, a `navecer`
    (requires: ["dan"]) ne bi stigao nikad. */
-function sectionsFor(task, dateKey) {
-  const pool = sectionsForDate(dateKey || sarajevoNow().date);
+function sectionsFor(task, dateKey, prefs) {
+  const pool = sectionsForDate(dateKey || sarajevoNow().date, prefs);
   if (task.sections) {
     return pool.filter(function (section) {
       return task.sections.indexOf(section.id) !== -1;
@@ -104,14 +147,18 @@ function validItemId(id) {
      "partial"  nešto čekirano   -> podsjeti da se nastavi
      "done"     sve čekirano     -> do sutra ništa
 
-   `checked` je ono što vrati HGETALL nad KEYS.items(date), a `dateKey` je
-   datum tog istog zapisa — iz njega se zna koje sekcije tog dana postoje. */
-function taskStatus(task, checked, dateKey) {
+   `checked` je ono što vrati HGETALL nad KEYS.items(user, date), a `dateKey`
+   je datum tog istog zapisa — iz njega se zna koje sekcije tog dana postoje.
+
+   `prefs` je config TOG korisnika. Sekcija koju je ugasio ne ulazi u račun,
+   pa njen podsjetnik ima total 0 i vraća "done" — odatle tišina, bez ijednog
+   posebnog pravila u notification-tasks.js. */
+function taskStatus(task, checked, dateKey, prefs) {
   const map = checked || {};
   let total = 0;
   let done = 0;
 
-  sectionsFor(task, dateKey).forEach(function (section) {
+  sectionsFor(task, dateKey, prefs).forEach(function (section) {
     const ids = (section.kind === "quran")
       ? ["quran"]
       : (section.items || []).map(function (item) { return item.id; });
@@ -248,10 +295,21 @@ const KEYS = {
   all: "subs",                                        /* SET svih id-eva */
   sub: function (id) { return "sub:" + id; },         /* pretplata (JSON) */
 
-  /* Čekirano za jedan dan — HASH itemId -> "1", zajednički za sve uređaje.
-     Kur'an je isti takav zapis, pod poljem "quran". Odčekirano se BRIŠE iz
-     hash-a (HDEL), pa "nema polja" i "nije urađeno" znače isto. */
-  items: function (date) { return "items:" + SPACE + ":" + date; },
+  /* Svi poznati korisnici — SET ključeva imena. Ne služi odluci o slanju
+     nego samo tome da aplikacija može reći "ovo ime već postoji, spojićeš
+     se na njegov spisak". Spisak imena se NIKAD ne vraća van. */
+  users: "users",
+
+  /* Config jednog korisnika (JSON) — dijeli se kroz njegove uređaje, isto
+     kao i čekirano. Scheduler ga čita jer "petak ugašen" mijenja i odluku
+     o podsjetniku, ne samo ekran. */
+  cfg: function (user) { return "cfg:" + user; },
+
+  /* Čekirano za jedan dan — HASH itemId -> "1", zajednički za SVE uređaje
+     jednog korisnika. Kur'an je isti takav zapis, pod poljem "quran".
+     Odčekirano se BRIŠE iz hash-a (HDEL), pa "nema polja" i "nije urađeno"
+     znače isto. */
+  items: function (user, date) { return "items:" + user + ":" + date; },
 
   /* Zadnji poslani slot ostaje PO UREĐAJU — stanje se dijeli, ali svaki
      uređaj svoju obavijest dobija sam za sebe. */
@@ -260,9 +318,51 @@ const KEYS = {
   }
 };
 
-/* Identitet uređaja = sam endpoint pretplate. Nema logina ni korisnika. */
+/* Identitet uređaja = sam endpoint pretplate. Ime korisnika stoji UZ
+   pretplatu (polje `user`), ne u ovom id-u: isti telefon smije promijeniti
+   ime bez pravljenja nove pretplate. */
 function subId(endpoint) {
   return crypto.createHash("sha256").update(endpoint).digest("hex").slice(0, 32);
+}
+
+/* ------------------------------------------------------------------------
+   Config korisnika
+
+   Dva prekidača, oba podrazumijevano UKLJUČENA:
+
+     transkript   ekran pokazuje transliteraciju umjesto arapskog
+     petak        petačka sekcija postoji (i njen podsjetnik radi)
+
+   Prekidači sekcija se ne nabrajaju ovdje nego se čitaju iz data.js
+   (`optionalSections`), pa nova sekcija sa `optional: true` sama dobije
+   svoje mjesto u configu. Sve što nije na tom spisku se odbacuje — server
+   ne pamti polja koja ne razumije.
+   ------------------------------------------------------------------------ */
+const OPTIONAL_IDS = optionalSections().map(function (s) { return s.id; });
+
+function defaultPrefs() {
+  const out = { transkript: false };
+  OPTIONAL_IDS.forEach(function (id) { out[id] = true; });
+  return out;
+}
+
+/* Prihvata samo poznata polja i samo boolean vrijednosti. Ono što nije
+   poslano ostaje na podrazumijevanom — config je mali i uvijek cijeli. */
+function cleanPrefs(raw) {
+  const out = defaultPrefs();
+  if (!raw || typeof raw !== "object") { return out; }
+  if (typeof raw.transkript === "boolean") { out.transkript = raw.transkript; }
+  OPTIONAL_IDS.forEach(function (id) {
+    if (typeof raw[id] === "boolean") { out[id] = raw[id]; }
+  });
+  return out;
+}
+
+/* Config iz baze. Korisnik bez zapisa dobija podrazumijevani — nikad null,
+   da pozivalac ne mora svaki put provjeravati. */
+async function readPrefs(user) {
+  if (!user) { return defaultPrefs(); }
+  return cleanPrefs(await redis.get(KEYS.cfg(user)));
 }
 
 /* ------------------------------------------------------------------------
@@ -450,8 +550,10 @@ module.exports = {
   TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
   findTask, sectionsFor, taskStatus, blockedBy, lateFrom, validItemId,
-  quietFor, sectionsForDate, weekdayFromKey,
+  quietFor, sectionsForDate, optionalSections, weekdayFromKey,
   sarajevoNow, parseTime, subId, dueSlot, pushPayload,
   readJson, validSubscription, validDate,
-  removeSubscription, intervalMinutes, cronAuthorized, devUnlocked
+  removeSubscription, intervalMinutes, cronAuthorized, devUnlocked,
+  /* korisnik i njegov config */
+  userKey, userFrom, defaultPrefs, cleanPrefs, readPrefs
 };

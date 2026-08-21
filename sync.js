@@ -1,8 +1,16 @@
 /* ==========================================================================
    sync.js — zajedničko stanje čekiranog kroz uređaje
 
-   Telefon i računar rade nad ISTIM spiskom. Server (Upstash) je izvor
-   istine, a localStorage ostaje keš da aplikacija radi i bez interneta.
+   Telefon i računar rade nad ISTIM spiskom — spiskom onog korisnika čije
+   ime stoji u configu. Server (Upstash) je izvor istine, a localStorage
+   ostaje keš da aplikacija radi i bez interneta.
+
+   Ime ide u zaglavlju X-Zikr-User i uzima se iz settings.js pri SVAKOM
+   zahtjevu, nikad zapamćeno u varijabli: ime se može promijeniti usred rada,
+   a zahtjev u letu mora nositi ono koje vrijedi sada.
+
+   Bez imena se ne šalje ništa i ne povlači ništa — aplikacija radi lokalno.
+   Tako se prvo otvaranje (dok korisnik ne upiše ime) ne upiše u tuđi spisak.
 
    Šalju se SAMO PROMJENE, nikad cijelo stanje. Zato uređaj koji je bio
    offline ne vraća nazad ono što je drugi u međuvremenu odčekirao — pošalje
@@ -20,10 +28,27 @@
   "use strict";
 
   var PENDING_KEY = "moj-zikr-pending";        /* { datum: { itemId: bool } } */
-  var BOOTSTRAP_KEY = "moj-zikr-bootstrapped"; /* zadnji dan uparen sa serverom */
+  var BOOTSTRAP_KEY = "moj-zikr-bootstrapped"; /* "korisnik|dan" zadnjeg uparivanja */
 
   /* Postavlja ga script.js — njemu se javlja stanje koje je stiglo gore. */
   var onState = null;
+
+  /* ------------------------------------------------------------------------
+     Korisnik
+
+     Čita se iz settings.js pri svakom pozivu. Ako settings.js nije učitan
+     (npr. neki drugi HTML), vraća "" i sinhronizacija se tiho gasi — bolje
+     nego da se piše u proizvoljan prostor.
+     ------------------------------------------------------------------------ */
+  function user() {
+    return (window.mojZikrConfig && window.mojZikrConfig.korisnik()) || "";
+  }
+
+  function headers(extra) {
+    var head = extra || {};
+    head["X-Zikr-User"] = user();
+    return head;
+  }
 
   /* ------------------------------------------------------------------------
      Red neposlanih promjena
@@ -68,7 +93,7 @@
 
     return fetch("/api/state", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ date: date, items: queued })
     }).then(function (res) {
       if (!res.ok) { throw new Error("state " + res.status); }
@@ -87,7 +112,7 @@
 
   function get(date) {
     return fetch("/api/state?date=" + encodeURIComponent(date), {
-      headers: { "Accept": "application/json" }
+      headers: headers({ "Accept": "application/json" })
     }).then(function (res) {
       if (!res.ok) { throw new Error("state " + res.status); }
       return res.json();
@@ -99,6 +124,11 @@
   /* wantPull = i povuci stanje ako nema šta da se šalje. Poslije slanja se
      ne povlači posebno: POST već vrati stanje nakon upisa. */
   function sync(date, wantPull) {
+    /* Bez imena nema prostora na serveru — aplikacija ostaje na lokalnom
+       spisku. Provjerava se ovdje, na jednom mjestu kroz koje prolazi svaki
+       poziv, umjesto u svakoj ulaznoj funkciji posebno. */
+    if (!user()) { return Promise.resolve(); }
+
     chain = chain.then(function () {
       return send(date)
         .then(function (items) {
@@ -124,11 +154,18 @@
      checkmarke napravljene prije nego je dijeljenje uopšte postojalo.
      Šalju se samo čekirane stavke — ništa se ne skida, pa se ne može
      pregaziti ono što je drugi uređaj odčekirao.
+
+     Zapis nosi I KORISNIKA, ne samo dan. Zbog toga se uparivanje ponovi kad
+     se ime promijeni usred dana: ono što je čekirano prije upisa imena
+     (ili pod prethodnim imenom) ode u novi spisak umjesto da ostane samo na
+     ovom uređaju do sutra. Isto pokriva i prelazak sa zatečene verzije, gdje
+     imena još nije bilo.
      ------------------------------------------------------------------------ */
   function bootstrap(date, localItems) {
+    var mark = user() + "|" + date;
     var last = null;
     try { last = localStorage.getItem(BOOTSTRAP_KEY); } catch (e) { last = null; }
-    if (last === date) { return; }
+    if (last === mark) { return; }
 
     var map = readPending(date);
     Object.keys(localItems || {}).forEach(function (id) {
@@ -136,7 +173,7 @@
     });
     writePending(date, map);
 
-    try { localStorage.setItem(BOOTSTRAP_KEY, date); } catch (e) {}
+    try { localStorage.setItem(BOOTSTRAP_KEY, mark); } catch (e) {}
   }
 
   /* ------------------------------------------------------------------------
