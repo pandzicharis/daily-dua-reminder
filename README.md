@@ -35,6 +35,7 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `settings.js` | config korisnika (ime, transkripcija, spisak, izmjene stavki, vlastite stavke, redoslijed) + drawer u kojem se podešava |
 | `sync.js` | zajedničko stanje kroz uređaje: slanje promjena, povlačenje, offline red |
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
+| `badge.js` | broj na ikonici aplikacije: koliko je dova ostalo u podsjetnicima koji su nastupili |
 | `icons/*.png` | 96, 192, 512, maskable 192/512, apple-touch 180, favicon 32 |
 | `api/config.js` | `GET` → javni VAPID ključ |
 | `api/subscribe.js` | `POST` upiši pretplatu, `DELETE` obriši |
@@ -130,6 +131,77 @@ krug ponovnih učitavanja.
 
 Privatni ključ postoji samo kao env varijabla na serveru i ne pojavljuje se
 ni u jednom fajlu koji ide u browser.
+
+## 3b. Broj na ikonici (badge)
+
+Ikonica instalirane aplikacije nosi crveni krug sa brojem — koliko je dova
+ostalo za proučiti. Cijelo pravilo je jedna rečenica:
+
+> **broj = zbir neurađenih stavki svih podsjetnika čiji je `startTime` prošao**
+
+Iz toga slijedi sve, bez ijednog posebnog slučaja:
+
+| Kada | Šta stoji na ikonici |
+|---|---|
+| 00:00–07:59 | ništa — nijedan podsjetnik još nije nastupio, dan je čist |
+| 08:00–18:59 | koliko je ostalo **dnevnih** |
+| petkom od 08:00 | dnevne **+ petačke** (i petački podsjetnik je nastupio) |
+| od 19:00 | dnevne **+ večernje** — dva broja se saberu |
+| sve urađeno | ništa, krug nestaje |
+
+Gleda se **samo početak** prozora, nikad kraj. Petački podsjetnik prestaje
+zvoniti u 12:59, a dnevni u ponoć — ali neurađeno neurađeno ostaje: kraj
+prozora gasi **obavijesti**, ne broj. Nepročitano se tako gomila do kraja
+dana, a poslije ponoći je nov dan i broj sam pada na nulu.
+
+Ne gledaju se ni `requires` ni `quietFor`. Oni postoje da se dvije obavijesti
+ne poklope u istoj minuti; broj je jedan jedini, pa se nema šta poklopiti.
+
+Satnica se čita iz `notification-tasks.js`, iz **istog** spiska po kojem stižu
+obavijesti — pomjeri `startTime` i broj na ikonici se pomjeri zajedno sa
+podsjetnikom.
+
+### Tri mjesta, jedno pravilo
+
+Broj mora biti tačan i kad aplikacija radi i kad je zatvorena, a to su dva
+različita svijeta:
+
+| Ko postavlja | Kada | Odakle mu broj |
+|---|---|---|
+| `badge.js` | dok je aplikacija otvorena | `script.js` mu javi iste grupe iz kojih se crtaju trake napretka |
+| `service-worker.js` | kad stigne push | polje `badge` u push poruci |
+| `api/_lib.js` (`badgeCount()`) | pri svakom ciklusu crona | spisak čekiranog TOG korisnika iz Redisa |
+
+Zato broj na ikonici nikad ne može reći nešto drugo od onoga što na trakama
+u headeru piše kao neurađeno — to nisu dva računa nego jedan.
+
+Broj ide **uz obavijest**, a ne posebnim pushem: `userVisibleOnly` traži
+vidljiv odgovor na svaki push, pa "tihi push samo da se osvježi brojka" nije
+opcija. Ovako brojka stiže besplatno, uz podsjetnik koji ionako ide.
+
+Dvije posljedice toga, obje svjesne:
+
+- Ako je aplikacija zatvorena preko ponoći, jučerašnji broj stoji na ikonici
+  do prve jutarnje obavijesti (08:00) ili do otvaranja aplikacije — što prije
+  dođe. Nema načina da se ikonica dirne bez pusha, a push bez obavijesti nije
+  dozvoljen.
+- `npm run test-push` **ne** šalje `badge`, pa proba izgleda obavijesti ne
+  može ostaviti izmišljen broj za sobom.
+
+Otvorena aplikacija osvježava broj i sama od sebe, jednom u minuti i pri
+svakom povratku u aplikaciju — inače u 19:00 večernje ne bi ušle u zbir dok
+se nešto ne dodirne.
+
+### Kako se provjerava
+
+Testni panel (samo localhost) uz svaki ispis pokazuje red **ikonica**: broj
+koji bi u tom odglumljenom trenutku stajao na ikonici. Isto vraća i `curl`:
+
+```bash
+curl -H "x-cron-secret: $CRON_SECRET" "localhost:3000/api/cron?dry=1&at=19:00" | jq '.users'
+```
+
+---
 
 ## 4. Kako se stanje dijeli kroz uređaje
 
@@ -838,6 +910,14 @@ namjerno čista da se može testirati bez ijednog vanjskog poziva.
   aplikacije — onu iz `manifest.webmanifest`. Chrome koristi `icon` koji
   postavlja `service-worker.js`; oba puta je to `/icons/icon-192.png`, i
   keširana je već pri instalaciji service workera da radi i offline.
+
+  (To `badge` polje je slika u obavijesti i **nema veze** sa brojem na
+  ikonici aplikacije iz odjeljka 3b — tamo je riječ o Badging API-ju
+  `navigator.setAppBadge()`, koji je nešto sasvim drugo.)
+- **Broj na ikonici** (`navigator.setAppBadge()`) na iOS-u traži dvoje: da je
+  aplikacija dodana na početni ekran **i** da su obavijesti dozvoljene. Bez
+  dozvole poziv tiho propada, pa ko ne želi obavijesti neće imati ni broj —
+  ostatak aplikacije radi kao i prije. Firefox Badging API još nema.
 - **Zvuk** pušta sam OS, svojim podrazumijevanim tonom za obavijesti — web
   push ne može birati ton ni priložiti audio fajl. Odavde se može samo
   osigurati da obavijest nije nijema (`silent: false`) i da zamjena po

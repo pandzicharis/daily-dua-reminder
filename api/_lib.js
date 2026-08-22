@@ -166,7 +166,7 @@ function validItemId(id) {
    `prefs` je config TOG korisnika. Sekcija koju je ugasio ne ulazi u račun,
    pa njen podsjetnik ima total 0 i vraća "done" — odatle tišina, bez ijednog
    posebnog pravila u notification-tasks.js. */
-function taskStatus(task, checked, dateKey, prefs) {
+function taskTally(task, checked, dateKey, prefs) {
   const map = checked || {};
   let total = 0;
   let done = 0;
@@ -182,12 +182,58 @@ function taskStatus(task, checked, dateKey, prefs) {
     });
   });
 
+  return { done: done, total: total };
+}
+
+function taskStatus(task, checked, dateKey, prefs) {
+  const tally = taskTally(task, checked, dateKey, prefs);
+
   /* Prazan podsjetnik nema šta da podsjeti — tretira se kao gotov. Ovo je
      ujedno drugi sloj tišine za podsjetnik vezan za dan sedmice: kad njegove
      sekcije tog dana nema, total je 0 pa ćuti i bez `days`. */
-  if (total === 0) { return "done"; }
-  if (done === 0) { return "none"; }
-  return done >= total ? "done" : "partial";
+  if (tally.total === 0) { return "done"; }
+  if (tally.done === 0) { return "none"; }
+  return tally.done >= tally.total ? "done" : "partial";
+}
+
+/* Broj koji stoji na ikonici aplikacije — koliko je dova ostalo za proučiti
+   u podsjetnicima koji su VEĆ NASTUPILI:
+
+     broj = zbir neurađenih stavki svih podsjetnika čiji je `startTime` prošao
+
+   Pravilo je isto ono koje aplikacija primjenjuje na ekranu (badge.js); ovdje
+   postoji zato što aplikacija ne radi kad je zatvorena, a broj tada mora ipak
+   nekako doći do ikonice. Dolazi uz push (`pushPayload`), a postavlja ga
+   service worker. Puna priča o pravilu je u zaglavlju badge.js.
+
+   Gleda se SAMO početak prozora, nikad kraj: dnevni završava u ponoć, ali i
+   petački (do 12:59) ostaje u zbiru do kraja dana — kraj prozora gasi
+   OBAVIJESTI, ne broj. Neurađeno neurađeno ostaje dok se ne uradi ili dok ne
+   dođe novi dan.
+
+   Ne gleda se ni `requires` ni `quietFor`: oni postoje da se dvije obavijesti
+   ne poklope u istoj minuti, a broj je jedan jedini — nema se šta poklopiti.
+
+   `minutes` i `weekday` dolaze izvana (iz istog trenutka po Sarajevu iz kojeg
+   se donosi i odluka o slanju), da proba sa izmišljenim vremenom pokazuje
+   broj koji bi tada stvarno otišao. `startOverride` je isti onaj
+   REMINDER_START_TIME kojim lokalno testiranje pomjera sve zadatke da počnu
+   odmah — bez njega bi broj i tada čekao 08:00, pa bi proba lagala. */
+function badgeCount(checked, dateKey, prefs, minutes, weekday, startOverride) {
+  let ostalo = 0;
+
+  TASKS.forEach(function (task) {
+    if (task.enabled === false) { return; }
+    if (task.days && task.days.indexOf(weekday) === -1) { return; }
+
+    const start = parseTime(startOverride || task.startTime);
+    if (start === null || minutes < start) { return; }
+
+    const tally = taskTally(task, checked, dateKey, prefs);
+    ostalo += tally.total - tally.done;
+  });
+
+  return ostalo;
 }
 
 /* `requires` NIKAD ne smije pokazivati na podsjetnik ograničen `days`-om:
@@ -431,7 +477,7 @@ const DEFAULT_END_TIME = "22:00";
    `url` je ono što service worker otvori na klik: podsjetnik koji pokriva
    jednu sekciju vodi pravo na nju, a dnevni pokriva više njih pa vodi na
    vrh aplikacije. */
-function pushPayload(task, status, late) {
+function pushPayload(task, status, late, badge) {
   const one = (task.sections && task.sections.length === 1)
     ? task.sections[0]
     : null;
@@ -453,13 +499,26 @@ function pushPayload(task, status, late) {
     body = task.messageLate;
   }
 
-  return JSON.stringify({
+  const payload = {
     title: title,
     body: body,
     tag: task.id,
     taskId: task.id,
     url: one ? "/#sec-" + one : "/"
-  });
+  };
+
+  /* Broj za ikonicu ide uz obavijest, a ne posebnim pushem: `userVisibleOnly`
+     traži vidljiv odgovor na svaki push, pa "tihi push samo da se osvježi
+     brojka" nije opcija. Ovako brojka stiže besplatno, uz podsjetnik koji
+     ionako ide.
+
+     Izostavlja se kad je pozivalac ne pošalje (proba izgleda obavijesti,
+     `npm run test-push`) — tada service worker ikonicu ne dira. */
+  if (typeof badge === "number" && isFinite(badge)) {
+    payload.badge = Math.max(0, Math.round(badge));
+  }
+
+  return JSON.stringify(payload);
 }
 
 /* ------------------------------------------------------------------------
@@ -557,7 +616,8 @@ function cronAuthorized(req) {
 module.exports = {
   TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
-  findTask, sectionsFor, taskStatus, blockedBy, lateFrom, validItemId,
+  findTask, sectionsFor, taskTally, taskStatus, badgeCount,
+  blockedBy, lateFrom, validItemId,
   quietFor, sectionsForDate, weekdayFromKey,
   sarajevoNow, parseTime, subId, dueSlot, pushPayload,
   readJson, validSubscription, validDate,

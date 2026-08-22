@@ -201,6 +201,13 @@
         why.appendChild(node("dd", null,
           u.windows[id] + "   ·   " + ((u.status || {})[id] || "?")));
       });
+      /* Broj koji bi u tom trenutku stajao na ikonici aplikacije. Ne prati
+         obavijesti nego prozore: zbir neurađenog iz svih podsjetnika čiji je
+         startTime prošao, pa se vidi i kad je sve ostalo tiho. */
+      why.appendChild(node("dt", null, "ikonica"));
+      why.appendChild(node("dd", null,
+        u.badge ? String(u.badge) : "bez broja"));
+
       if (u.quiet && u.quiet.length) {
         why.appendChild(node("dt", null, "ćuti"));
         why.appendChild(node("dd", null, u.quiet.join(", ")));

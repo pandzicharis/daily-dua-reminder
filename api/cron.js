@@ -81,7 +81,7 @@ const webpush = require("web-push");
 const {
   redis, KEYS, TASKS, DAY_TTL,
   sarajevoNow, dueSlot, pushPayload, removeSubscription,
-  intervalMinutes, cronAuthorized, taskStatus, blockedBy, lateFrom,
+  intervalMinutes, cronAuthorized, taskStatus, badgeCount, blockedBy, lateFrom,
   quietFor, weekdayFromKey, parseTime, DEFAULT_END_TIME, validDate, validItemId,
   SPACE, userKey, readPrefs, sectionsFor
 } = require("./_lib.js");
@@ -231,6 +231,14 @@ module.exports = async function handler(req, res) {
         status[task.id] = taskStatus(task, checked, now.date, prefs);
       });
 
+      /* Broj za ikonicu aplikacije: koliko je ostalo u svim podsjetnicima
+         čiji je prozor već počeo. Ne zavisi od uređaja (spisak je
+         zajednički), pa se računa jednom po korisniku i ide uz SVAKI push
+         tog ciklusa — koja god obavijest stigne, nosi tačan broj. */
+      const badge = badgeCount(
+        checked, now.date, prefs, now.minutes, weekday, startOverride
+      );
+
       /* Koji podsjetnici ćute jer ih drugi zaklanja, i koji su "late" —
          prozor zaklonjenog je otvoren, pa dnevni nosi tekst za oboje. Ne
          zavisi od uređaja, pa se računa jednom po korisniku. */
@@ -266,6 +274,7 @@ module.exports = async function handler(req, res) {
         devices: devices.length,
         prefs: prefs,
         status: status,
+        badge: badge,
         windows: windows,
         quiet: TASKS
           .filter(function (task) { return quiet[task.id]; })
@@ -333,7 +342,7 @@ module.exports = async function handler(req, res) {
           /* Tekst se pravi ovdje, jednom, pa ide i u izvještaj — tako se u
              izvještaju vidi TAČNO ono što je uređaj dobio, bez ponavljanja
              pravila o tekstu na drugom mjestu. */
-          const payload = pushPayload(task, status[task.id], late[task.id]);
+          const payload = pushPayload(task, status[task.id], late[task.id], badge);
           const shown = JSON.parse(payload);
 
           /* Proba samo javlja šta BI otišlo — ni jedan upis, ni jedan push. */
@@ -341,7 +350,7 @@ module.exports = async function handler(req, res) {
             report.sent.push({
               user: user, device: id.slice(0, 8), task: task.id, slot: slot,
               status: status[task.id], late: !!late[task.id],
-              title: shown.title, body: shown.body, dry: true
+              title: shown.title, body: shown.body, badge: badge, dry: true
             });
             continue;
           }
@@ -357,7 +366,7 @@ module.exports = async function handler(req, res) {
             report.sent.push({
               user: user, device: id.slice(0, 8), task: task.id, slot: slot,
               status: status[task.id], late: !!late[task.id],
-              title: shown.title, body: shown.body
+              title: shown.title, body: shown.body, badge: badge
             });
           } catch (err) {
             const code = err && err.statusCode;

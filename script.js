@@ -1480,6 +1480,29 @@
     });
   }
 
+  /* Broj na ikonici aplikacije (badge.js).
+
+     Računa se iz ISTIH grupa iz kojih se crtaju trake, pa broj na ikonici ne
+     može reći nešto drugo od onoga što na trakama piše kao neurađeno — nisu
+     dva računa nego jedan. Koje grupe se u tom trenutku broje odlučuje
+     badge.js, iz `startTime`-a u notification-tasks.js.
+
+     Grupa sa `total: 0` se ovdje NE odbacuje (za razliku od traka, gdje se
+     prazna traka ne crta): u zbir ionako donosi nulu, a badge.js tako vidi
+     cijeli dan onakav kakav jeste.
+
+     Proba drugog dana ne dira ikonicu. Ona pripada današnjem danu, a proba
+     je alat sa localhosta — bez ovoga bi "pogledaj petak" ostavilo petački
+     broj na ikonici do sljedećeg osvježavanja. */
+  function updateBadge() {
+    if (!window.mojZikrBadge || isPreview()) { return; }
+
+    window.mojZikrBadge.osvjezi(progressGroups().map(function (group) {
+      var tally = countGroup(group.sections);
+      return { id: group.id, done: tally.done, total: tally.total };
+    }));
+  }
+
   /* ------------------------------------------------------------------------
      11b. Progress — ukupno (brojke po sekcijama i završen dan)
      ------------------------------------------------------------------------ */
@@ -1522,6 +1545,7 @@
        jedan postotak nikad nije govorio. Zbir se i dalje računa jer o njemu
        zavisi završni ekran. */
     updateGroupBars();
+    updateBadge();
 
     /* Dan je završen — "Elhamdulillah" preko cijelog ekrana. Ako dan više
        nije završen (odčekirano, ili je prešla ponoć), ekran se sam skloni.

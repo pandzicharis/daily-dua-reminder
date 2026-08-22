@@ -1,16 +1,17 @@
 /* ==========================================================================
    service-worker.js
    --------------------------------------------------------------------------
-   Service worker radi SAMO tri stvari:
+   Service worker radi SAMO četiri stvari:
      1. prima push poruku i prikazuje obavijest
-     2. obrađuje klik na obavijest (otvara / fokusira aplikaciju)
-     3. drži offline kopiju statičkih fajlova
+     2. postavlja broj na ikonici aplikacije (broj stiže uz push)
+     3. obrađuje klik na obavijest (otvara / fokusira aplikaciju)
+     4. drži offline kopiju statičkih fajlova
 
    NIKAKVO zakazivanje se ne dešava ovdje. Kad je PWA zatvorena, service
    worker ne radi — zakazivanje je isključivo na serveru (Vercel Cron).
    ========================================================================== */
 
-var CACHE = "moj-zikr-v3";
+var CACHE = "moj-zikr-v4";
 
 /* Ikonice obavijesti se keširaju već pri instalaciji. Push može doći kad
    uređaj nema mreže, a obavijest bez ikonice ne izgleda kao da je iz
@@ -74,6 +75,31 @@ self.addEventListener("fetch", function (event) {
 });
 
 /* ------------------------------------------------------------------------
+   Broj na ikonici — kad je aplikacija zatvorena, ovo je jedino mjesto koje
+   ga može promijeniti.
+
+   Pravilo se ovdje NE računa: server ga je već izračunao (`badgeCount()` u
+   api/_lib.js) i poslao uz podsjetnik, jer je on jedini koji zna šta je
+   čekirano dok aplikacija ne radi. Ovdje se broj samo postavi.
+
+   Isto pravilo, pisano na tri mjesta jer su tri svijeta (ekran, server,
+   service worker), stoji u zaglavlju badge.js.
+
+   Push bez `badge` polja (npr. `npm run test-push`) NE dira ikonicu —
+   proba izgleda obavijesti ne smije ostaviti izmišljen broj za sobom.
+   ------------------------------------------------------------------------ */
+function postaviBroj(n) {
+  if (n === null) { return Promise.resolve(); }
+  if (!self.navigator || typeof self.navigator.setAppBadge !== "function") {
+    return Promise.resolve();
+  }
+
+  var p = n > 0 ? self.navigator.setAppBadge(n) : self.navigator.clearAppBadge();
+  /* Bez dozvole za obavijesti iOS odbije poziv — nema se šta popraviti. */
+  return Promise.resolve(p).catch(function () {});
+}
+
+/* ------------------------------------------------------------------------
    Push — server je odlučio da treba podsjetnik, ovdje se samo prikazuje
 
    Osim kad je sesija U TOKU: tada spisak već stoji pred korisnikom i
@@ -135,11 +161,23 @@ self.addEventListener("push", function (event) {
     data: { url: data.url || "/", taskId: data.taskId || null }
   };
 
+  /* Broj za ikonicu. Stiže kao obično polje u push poruci; sve što nije
+     valjan broj znači "ne diraj ikonicu". */
+  var badge = (typeof data.badge === "number" && isFinite(data.badge))
+    ? Math.max(0, Math.round(data.badge))
+    : null;
+
   event.waitUntil(
-    sessionInProgress().then(function (aktivna) {
-      if (aktivna) { return; }
-      return self.registration.showNotification(title, options);
-    })
+    Promise.all([
+      /* Ikonica se postavlja UVIJEK, i kad se obavijest preskoči zbog
+         aktivne sesije: tada je aplikacija otvorena pa će svoj broj
+         svejedno prepisati, a kad nije — ovo je jedini put do ikonice. */
+      postaviBroj(badge),
+      sessionInProgress().then(function (aktivna) {
+        if (aktivna) { return; }
+        return self.registration.showNotification(title, options);
+      })
+    ])
   );
 });
 

@@ -86,8 +86,12 @@
          koje ime da zapamti uz pretplatu. Uz to pravi drawer u koji
          notifications.js ubaci svoje dugme.
        sync.js prije script.js: script.js se pri učitavanju odmah uparuje sa
-         zajedničkim stanjem, pa mu API mora već postojati. -->
+         zajedničkim stanjem, pa mu API mora već postojati.
+       badge.js prije script.js iz istog razloga: script.js javi broj za
+         ikonicu već pri prvom iscrtavanju. Sam badge.js čita satnicu iz
+         notification-tasks.js, pa ide poslije njega. -->
   <script src="settings.js"></script>
+  <script src="badge.js"></script>
   <script src="sync.js"></script>
   <script src="script.js"></script>
   <script src="notifications.js"></script>
