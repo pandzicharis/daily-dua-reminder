@@ -145,13 +145,32 @@
      2. Kur'an — automatsko računanje stranice
      ------------------------------------------------------------------------ */
 
-  /* Stranica za dati datum: start stranica + broj dana od start datuma.
-     Nakon 604. stranice kreće ispočetka. */
-  function getQuranPage(dateKey) {
-    var page = QURAN_START_PAGE + daysBetween(QURAN_START_DATE, dateKey);
+  /* Koliko se stranica uči u jednom danu — iz configa korisnika. Zatečeno je
+     jedna, kao i prije nego je ta postavka postojala. */
+  function quranPerDay() {
+    var n = prefs().stranice;
+    return (typeof n === "number" && n >= 1) ? Math.floor(n) : 1;
+  }
+
+  /* Stranice za dati datum: start stranica + broj dana od start datuma, s tim
+     da svaki dan nosi `perDay` stranica umjesto jedne. Nakon 604. kreće
+     ispočetka.
+
+     Cijela dnevna porcija je JEDNA stavka sa jednom kvačicom — isto kao i
+     dosad, samo što je porcija sada može biti duža od jedne stranice. Zato se
+     na serveru ništa ne mijenja: polje je i dalje "quran". */
+  function getQuranPages(dateKey) {
+    var perDay = quranPerDay();
     var total = QURAN_TOTAL_PAGES;
-    /* modulo koji radi i za datume prije početnog */
-    return ((((page - 1) % total) + total) % total) + 1;
+    var first = QURAN_START_PAGE + daysBetween(QURAN_START_DATE, dateKey) * perDay;
+    var out = [];
+
+    for (var i = 0; i < perDay; i++) {
+      /* modulo koji radi i za datume prije početnog */
+      out.push(((((first + i - 1) % total) + total) % total) + 1);
+    }
+
+    return out;
   }
 
   /* ------------------------------------------------------------------------
@@ -259,10 +278,11 @@
     state.items = next;
     state.quran = quran;
 
-    /* Stavka koja je gore dobila kvačicu ne nosi više nedovršeno brojanje:
-       kvačica je konačno stanje, a brojka bi ostala visiti pod njom i
-       ponovo se pojavila kad se stavka odčekira. */
-    Object.keys(next).forEach(function (id) { delete state.counts[id]; });
+    /* Stavka koja je gore dobila kvačicu je izbrojana do kraja — brojka ide
+       na njen cilj. Isto pravilo vrijedi i za klik ovdje: kvačica i puna
+       brojka su jedno stanje, pa se odčekiravanjem brojanje ne gubi ni kad
+       je kvačica došla sa drugog uređaja. */
+    Object.keys(next).forEach(function (id) { markCounted(id); });
 
     saveDayState();
     renderSections();
@@ -397,6 +417,15 @@
      checkbox označi stavku odmah, kao i svaku drugu. Zbog toga za ovo nema
      prekidača u postavkama — obje navike prolaze kroz istu karticu.
 
+     Brojanje se NE GUBI odčekiravanjem. Ko je jednom izbrojao trideset
+     salavata pa slučajno (ili namjerno) skinuo kvačicu, sljedećim klikom je
+     vraća — brojka je ostala puna i ne kreće se ispočetka. Zato `counts`
+     pamti i dovršeno brojanje, a ne samo ono u toku.
+
+     Novo brojanje se traži izričito: DRŽANJEM prsta na brojci. Kratak klik
+     to ne može biti — on je već zauzet za "jedno ponavljanje više", a taj se
+     u ovoj kartici pritisne trideset puta zaredom.
+
      Nedovršeno brojanje je LOKALNO (`counts` u localStorage-u) i NE ide na
      server. Server pamti samo urađeno/nije, u hash-u `items:<ime>:<datum>`
      gdje SVAKA vrijednost znači "urađeno" (vidi api/state.js) — upisano "12"
@@ -413,19 +442,42 @@
     return (typeof n === "number" && n > 1) ? n : 0;
   }
 
-  /* Dokle je stavka izbrojana. Završena vraća cijeli cilj (30 / 30) iako u
-     `counts` nema ništa: urađeno je zapisano kvačicom u `items`, pa isto
-     stanje nema dva zapisa koja se mogu razići. Nedovršeno je uvijek unutar
-     [0, cilj), pa pokvaren ili zastario zapis ne može prikazati "31 / 30". */
+  /* Dokle je stavka izbrojana. Označena vraća cijeli cilj (30 / 30) bez
+     obzira na zapis: urađeno je zapisano kvačicom u `items` i to je jače od
+     brojke. Rezultat je uvijek unutar [0, cilj], pa pokvaren ili zastario
+     zapis ne može prikazati "31 / 30".
+
+     Gornja granica je CILJ, a ne cilj minus jedan: izbrojana a odčekirana
+     stavka postoji i mora se moći prikazati kao puna. */
   function tapCount(id, target) {
     if (state.items[id]) { return target; }
     var n = state.counts[id];
     if (typeof n !== "number" || !(n > 0)) { return 0; }
-    return Math.min(Math.floor(n), target - 1);
+    return Math.min(Math.floor(n), target);
   }
 
   function setTapCount(id, n) {
     if (n > 0) { state.counts[id] = n; } else { delete state.counts[id]; }
+  }
+
+  /* Stavka po id-u, iz onoga što se danas prikazuje. Treba samo za brojku:
+     kad kvačica stigne sa drugog uređaja, ovdje se mora znati koliki joj je
+     cilj da brojka sjedne na njega. */
+  function itemById(id) {
+    var found = null;
+    visible.forEach(function (section) {
+      (section.items || []).forEach(function (item) {
+        if (item.id === id) { found = item; }
+      });
+    });
+    return found;
+  }
+
+  /* Stavka je označena — brojka ide na cilj. Obična (nebrojana) nema šta
+     pamtiti, pa joj se zapis briše. */
+  function markCounted(id) {
+    var target = tapTarget(itemById(id));
+    if (target) { state.counts[id] = target; } else { delete state.counts[id]; }
   }
 
   /* Sitan drhtaj na klik — tespih u ruci. Android ga ima, iOS ne podržava
@@ -441,9 +493,9 @@
   /* Brojač jedne stavke: brojka i traka ispod headera. `paint()` je JEDINO
      mjesto koje ih crta — brojka i traka se ne smiju razići.
 
-     Dugmeta za vraćanje pogrešnog klika NEMA namjerno: jedan klik viška se
-     ne mjeri, a ko zaista želi ispočetka klikne dvaput po checkboxu
-     (označi pa odčekira) i brojka padne na nulu. */
+     Dugmeta za vraćanje jednog pogrešnog klika nema namjerno: klik viška se
+     ne mjeri. Novo brojanje od nule traži se DRŽANJEM prsta na brojci —
+     izričito, jer kratki klik ovdje znači "još jedno ponavljanje". */
   function makeCounter(title, target) {
     var chip = document.createElement("button");
     chip.type = "button";
@@ -459,12 +511,20 @@
     function paint(count, done) {
       var shown = done ? target : count;
 
+      var full = done || shown >= target;
+
       chip.textContent = shown + " / " + target;
       chip.setAttribute("aria-label", title + ": " + shown + " od " + target +
-        (done ? " — završeno, klikom se vraća na nulu" : " — dodaj jedan"));
-      chip.classList.toggle("is-full", done);
+        (full
+          ? " — izbrojano; drži pritisnuto za novo brojanje"
+          : " — dodaj jedan"));
+      chip.title = full ? "Drži pritisnuto za novo brojanje" : "";
+      chip.classList.toggle("is-full", full);
 
       fill.style.transform = "scaleX(" + (shown / target) + ")";
+      /* Traka nije potomak brojke, pa boju "gotovo" ne može naslijediti
+         selektorom — dobija svoju klasu. */
+      fill.classList.toggle("is-full", full);
     }
 
     /* Kratak skok brojke na svaki klik. Klasa se prvo skida i tjera se
@@ -569,7 +629,10 @@
       var was = !!state.items[item.id];
 
       state.items[item.id] = done;
-      if (target) { setTapCount(item.id, done ? 0 : count); }
+      /* Brojka se pamti i kad je stavka označena (tada je puna) — vidi 5b.
+         Prije se pri označavanju brisala, pa je odčekiravanje značilo novo
+         brojanje od nule. */
+      if (target) { setTapCount(item.id, count); }
       saveDayState();
 
       /* Prvi klik znači da dalje skrol vodi čovjek (vidi openScrollPending). */
@@ -585,13 +648,26 @@
       if (done) { focusNext(article); }
     }
 
-    /* Klik po brojanoj kartici: jedno ponavljanje više. Završena se istim
-       klikom vraća na nulu — kao što se i obična kvačica skida klikom po
-       kartici, samo što ovdje pada i brojka. */
-    function tap() {
-      if (state.items[item.id]) { commit(false, 0); return; }
+    /* Klik po brojanoj kartici: jedno ponavljanje više.
 
-      var next = tapCount(item.id, target) + 1;
+       Označena se istim klikom odčekira — kao i svaka druga kartica — ali
+       brojka OSTAJE puna, pa je sljedeći klik vrati odmah. Ko je danas već
+       izbrojao trideset salavata ne mora ih brojati drugi put zato što je
+       omaškom dodirnuo karticu. Novo brojanje se traži držanjem prsta na
+       brojci (`resetTap`). */
+    function tap() {
+      if (state.items[item.id]) { commit(false, target); return; }
+
+      var izbrojano = tapCount(item.id, target);
+
+      /* Izbrojano do kraja, a bez kvačice — jedan klik je vraća. */
+      if (izbrojano >= target) {
+        commit(true, target);
+        buzz([14, 40, 22]);
+        return;
+      }
+
+      var next = izbrojano + 1;
       if (next >= target) {
         commit(true, target);
         buzz([14, 40, 22]);
@@ -601,6 +677,16 @@
       commit(false, next);
       counter.pulse();
       buzz(8);
+    }
+
+    /* Brojanje ispočetka. Namjerno nije ni na jednom kratkom kliku: klik po
+       kartici i klik po brojci već znače "još jedno ponavljanje", a treći
+       kratki gest na istoj kartici bi se pogađao. Dug drhtaj kaže da je
+       primljeno, jer se na ekranu vrati nula. */
+    function resetTap() {
+      if (!tapCount(item.id, target)) { return; }
+      commit(false, 0);
+      buzz([30, 40, 30]);
     }
 
     /* Klik bilo gdje po kartici. Klik na sam checkbox preskačemo jer ga
@@ -613,18 +699,53 @@
     });
 
     /* Checkbox ostaje "urađeno / nije urađeno" i na brojanoj stavci: njime
-       se označava zikr izbrojan na tespihu, a odčekiravanjem brojka pada na
-       nulu. Prima i klik i tastaturu, pa ide preko `change`, ne `click`. */
+       se označava zikr izbrojan na tespihu, pa brojka odmah ide na cilj.
+       Odčekiravanjem ostaje gdje jeste — isto pravilo kao za klik po
+       kartici. Prima i klik i tastaturu, pa ide preko `change`, ne `click`. */
     input.addEventListener("change", function () {
-      commit(input.checked, 0);
+      commit(input.checked, input.checked ? target : tapCount(item.id, target));
     });
 
     /* Brojka je dugme (da se do brojanja može i tastaturom), pa njen klik
        ne smije ići dalje: kartica bi ga uhvatila drugi put i dodala dva
-       ponavljanja na jedan klik. */
+       ponavljanja na jedan klik.
+
+       Dugo držanje po njoj vraća brojanje na nulu. Nakon njega dolazi i
+       običan `click` (prst se digao) — zato `drzano`, inače bi reset odmah
+       bio poništen jednim ponavljanjem. */
     if (counter) {
+      var drzanje = null;
+      var drzano = false;
+
+      function pocniDrzanje() {
+        prekiniDrzanje();
+        drzano = false;
+        drzanje = setTimeout(function () {
+          drzanje = null;
+          drzano = true;
+          resetTap();
+        }, 550);
+      }
+
+      function prekiniDrzanje() {
+        if (drzanje) { clearTimeout(drzanje); drzanje = null; }
+      }
+
+      counter.chip.addEventListener("pointerdown", pocniDrzanje);
+      ["pointerup", "pointerleave", "pointercancel"].forEach(function (name) {
+        counter.chip.addEventListener(name, prekiniDrzanje);
+      });
+
+      /* Dugo držanje na telefonu inače otvori sistemski meni ("kopiraj"),
+         pa gest ne bi ni došao do nas. */
+      counter.chip.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+      });
+
       counter.chip.addEventListener("click", function (e) {
         e.stopPropagation();
+        prekiniDrzanje();
+        if (drzano) { drzano = false; return; }
         tap();
       });
     }
@@ -804,37 +925,72 @@
      8. Kur'an kartica
      ------------------------------------------------------------------------ */
 
+  /* Naslov porcije: "Stranica 86" ili "Stranice 86–88". Kod prelaska preko
+     604. porcija se prelama (603, 604, 1) — tada se stranice nabroje, jer
+     "603–1" ne bi značilo ništa. */
+  function quranNaslov(pages) {
+    if (pages.length === 1) { return "Stranica " + pages[0]; }
+    var prelom = pages[pages.length - 1] < pages[0];
+    return "Stranice " + (prelom ? pages.join(", ") : pages[0] + "–" + pages[pages.length - 1]);
+  }
+
+  /* Sure kroz cijelu porciju, bez ponavljanja: duga sura se prostire preko
+     više stranica, pa bi se inače njeno ime ispisalo pet puta. */
+  function quranSure(pages) {
+    var vidjeno = {};
+    var out = [];
+    pages.forEach(function (page) {
+      var info = quranPages[page];
+      if (!info) { return; }
+      info.suras.forEach(function (sura) {
+        if (vidjeno[sura.name]) { return; }
+        vidjeno[sura.name] = true;
+        out.push(sura.name);
+      });
+    });
+    return out;
+  }
+
   function renderQuranCard() {
-    var page = getQuranPage(dateKey);
-    var info = quranPages[page];
+    var pages = getQuranPages(dateKey);
+    var first = pages[0];
+    var last = pages[pages.length - 1];
+    /* Ono što se ispisuje na kartici dolazi sa PRVE stranice porcije: džuz,
+       prvi ajet. Postotak mushafa ide po zadnjoj — to je dokle si stigao. */
+    var info = quranPages[first];
 
     var card = document.createElement("article");
     card.className = "quran-card" + (state.quran ? " is-done" : "");
 
-    var input = makeCheckbox("Današnja stranica proučena", state.quran, "quran-check");
+    var input = makeCheckbox(
+      pages.length > 1 ? "Današnje stranice proučene" : "Današnja stranica proučena",
+      state.quran,
+      "quran-check"
+    );
 
-    /* Header: checkbox + stranica, pa džuz · sura · dokle si u mushafu. */
-    /* U headeru ostaje samo broj stranice uz checkbox. */
+    /* U headeru ostaje samo broj stranice (ili raspon) uz checkbox. */
     var headText = document.createElement("div");
     headText.className = "quran-head-text";
-    headText.appendChild(makeParagraph("quran-page", "Stranica " + page));
+    headText.appendChild(makeParagraph("quran-page", quranNaslov(pages)));
 
     var head = document.createElement("div");
     head.className = "quran-head";
     head.appendChild(input);
     head.appendChild(headText);
 
-    /* Dugme za otvaranje cijele stranice — desni ugao headera. */
+    /* Dugme za otvaranje cijele porcije — desni ugao headera. */
     if (info) {
       var viewBtn = document.createElement("button");
       viewBtn.type = "button";
       viewBtn.className = "view-page-btn";
       viewBtn.appendChild(makeSectionIcon("pages", "btn-icon"));
-      viewBtn.appendChild(document.createTextNode("Vidi stranicu"));
+      viewBtn.appendChild(document.createTextNode(
+        pages.length > 1 ? "Vidi stranice" : "Vidi stranicu"
+      ));
       viewBtn.addEventListener("click", function (e) {
         /* da klik ne prebaci checkbox kartice */
         e.stopPropagation();
-        openPageView(page, info);
+        openPageView(pages);
       });
       head.appendChild(viewBtn);
     }
@@ -852,18 +1008,19 @@
     if (info) {
       meta.appendChild(document.createTextNode("Džuz " + info.juz + " · "));
       /* Imena sura su arapska, doslovno iz quran_by_pages.json. */
-      info.suras.forEach(function (sura, i) {
+      quranSure(pages).forEach(function (name, i) {
         if (i) { meta.appendChild(document.createTextNode(" · ")); }
         var span = document.createElement("span");
         span.className = "sura-name";
         span.setAttribute("dir", "rtl");
         span.setAttribute("lang", "ar");
-        span.textContent = sura.name;
+        span.textContent = name;
         meta.appendChild(span);
       });
-      /* Koliko si prešao od cijelog mushafa — stranica u odnosu na 604. */
+      /* Koliko si prešao od cijelog mushafa — zadnja stranica porcije u
+         odnosu na 604. */
       meta.appendChild(document.createTextNode(
-        " · " + Math.round((page / QURAN_TOTAL_PAGES) * 100) + "% mushafa"
+        " · " + Math.round((last / QURAN_TOTAL_PAGES) * 100) + "% mushafa"
       ));
     } else {
       meta.textContent = "Podaci za ovu stranicu još nisu dodani.";
@@ -871,7 +1028,7 @@
 
     top.appendChild(meta);
 
-    /* Samo prvi ajet te stranice. */
+    /* Samo prvi ajet prve stranice — kartica je najava porcije, ne porcija. */
     if (info && info.text) {
       top.appendChild(makeArabic(info.text, "quran-arabic"));
       /* ayah = 0 je bismilla kojom sura počinje, nije numerisan ajet */
@@ -949,41 +1106,59 @@
     document.body.appendChild(drawer);
   }
 
-  function openPageView(page, info) {
+  /* Prima CIJELU dnevnu porciju, ne jednu stranicu: od kad se u postavkama
+     smije tražiti više stranica dnevno, "vidi stranicu" mora pokazati sve
+     što je za taj dan, a ne samo prvu. */
+  function openPageView(pages) {
     if (!drawer) { buildDrawer(); }
 
-    drawer.querySelector(".drawer-title").textContent = "Stranica " + page;
+    var prva = quranPages[pages[0]];
+    var zadnja = pages[pages.length - 1];
+
+    drawer.querySelector(".drawer-title").textContent = quranNaslov(pages);
     drawer.querySelector(".drawer-sub").textContent =
-      "Džuz " + info.juz + " · " +
-      Math.round((page / QURAN_TOTAL_PAGES) * 100) + "% mushafa";
+      "Džuz " + (prva ? prva.juz : "?") + " · " +
+      Math.round((zadnja / QURAN_TOTAL_PAGES) * 100) + "% mushafa";
 
     var body = drawer.querySelector(".drawer-body");
     body.textContent = "";
 
-    info.suras.forEach(function (sura) {
-      body.appendChild(makeArabic(sura.name, "drawer-sura"));
+    pages.forEach(function (page) {
+      var info = quranPages[page];
+      if (!info) { return; }
 
-      /* Ajeti teku jedan za drugim u jednom obostrano poravnatom bloku —
-         kao na pravoj stranici mushafa, a ne kao spisak redova.
-         Iza svakog ajeta ide njegov broj u krugu. */
-      var block = document.createElement("p");
-      block.className = "drawer-text";
-      block.setAttribute("dir", "rtl");
-      block.setAttribute("lang", "ar");
+      /* Granica stranice se ispisuje samo kad ih ima više — inače je naslov
+         drawer-a već rekao koja je. Bez nje bi se u porciji od pet stranica
+         izgubilo gdje jedna prestaje a druga počinje. */
+      if (pages.length > 1) {
+        body.appendChild(makeParagraph("drawer-page", "Stranica " + page));
+      }
 
-      sura.verses.forEach(function (v) {
-        block.appendChild(document.createTextNode(v.t + " "));
-        /* n = 0 je bismilla kojom sura počinje — nema svoj broj */
-        if (v.n) {
-          var mark = document.createElement("span");
-          mark.className = "ayah-mark";
-          mark.textContent = v.n;
-          block.appendChild(mark);
-          block.appendChild(document.createTextNode(" "));
-        }
+      info.suras.forEach(function (sura) {
+        body.appendChild(makeArabic(sura.name, "drawer-sura"));
+
+        /* Ajeti teku jedan za drugim u jednom obostrano poravnatom bloku —
+           kao na pravoj stranici mushafa, a ne kao spisak redova.
+           Iza svakog ajeta ide njegov broj u krugu. */
+        var block = document.createElement("p");
+        block.className = "drawer-text";
+        block.setAttribute("dir", "rtl");
+        block.setAttribute("lang", "ar");
+
+        sura.verses.forEach(function (v) {
+          block.appendChild(document.createTextNode(v.t + " "));
+          /* n = 0 je bismilla kojom sura počinje — nema svoj broj */
+          if (v.n) {
+            var mark = document.createElement("span");
+            mark.className = "ayah-mark";
+            mark.textContent = v.n;
+            block.appendChild(mark);
+            block.appendChild(document.createTextNode(" "));
+          }
+        });
+
+        body.appendChild(block);
       });
-
-      body.appendChild(block);
     });
 
     drawer.hidden = false;
@@ -1059,12 +1234,26 @@
       heading.appendChild(document.createTextNode(section.title));
       head.appendChild(heading);
 
-      if (section.items) {
-        var count = document.createElement("span");
-        count.className = "section-count";
-        count.dataset.section = section.id;
-        head.appendChild(count);
-      }
+      /* Brojka sekcije, i zelena kvačica uz nju kad je sekcija gotova.
+         Kvačica postoji uvijek, a CSS je pokazuje tek uz `is-done` — tako
+         `updateProgress()` mijenja samo jednu klasu i jedan tekst, bez
+         pravljenja i brisanja čvorova pri svakoj kvačici.
+
+         Kur'anska sekcija ide istim putem iako nema `items`: njena brojka
+         ostaje prazna (jedna je stavka, "1 / 1" ne govori ništa), pa se od
+         cijelog reda vidi samo kvačica kad je stranica proučena. */
+      var count = document.createElement("span");
+      count.className = "section-count";
+      count.dataset.section = section.id;
+
+      var tick = makeSectionIcon("check", "done-icon");
+      if (tick) { count.appendChild(tick); }
+
+      var countNum = document.createElement("span");
+      countNum.className = "section-count-num";
+      count.appendChild(countNum);
+
+      head.appendChild(count);
 
       wrapper.appendChild(head);
 
@@ -1079,7 +1268,7 @@
            data.js, ne brojač ovdje: ona ide preko CIJELOG spiska sekcije, pa
            dova sakrivena u postavkama ne prenumeriše one ispod sebe i u
            postavkama i na ekranu piše isti broj. */
-        var titles = itemTitles(section.id);
+        var titles = itemTitles(section.id, prefs());
         section.items.forEach(function (item) {
           list.appendChild(renderItem(item, titles[item.id] || item.title));
         });
@@ -1212,8 +1401,17 @@
       label.className = "pgroup-label";
       label.textContent = group.label;
 
+      /* Ista zelena kvačica kao uz završenu sekciju — završeno izgleda isto
+         gdje god stoji. CSS je pokazuje tek uz `is-done` na traci. */
       var count = document.createElement("span");
       count.className = "pgroup-count";
+
+      var tick = makeSectionIcon("check", "done-icon");
+      if (tick) { count.appendChild(tick); }
+
+      var countNum = document.createElement("span");
+      countNum.className = "pgroup-count-num";
+      count.appendChild(countNum);
 
       head.appendChild(label);
       head.appendChild(count);
@@ -1236,7 +1434,7 @@
         group: group,
         node: wrapper,
         track: track,
-        count: count,
+        count: countNum,
         fill: fill
       };
     });
@@ -1299,11 +1497,24 @@
     visible.forEach(function (section) {
       var node = el.root.querySelector('[data-section="' + section.id + '"]');
       if (!node) { return; }
+
+      var num = node.querySelector(".section-count-num");
+
+      /* Kur'an je jedna stavka i nema `items` — brojka mu ostaje prazna, a
+         gotov je onda kad je stranica proučena. */
+      if (section.kind === "quran") {
+        if (num) { num.textContent = ""; }
+        node.classList.toggle("is-done", state.quran);
+        return;
+      }
+
       var list = section.items || [];
       var secDone = list.reduce(function (sum, item) {
         return sum + (state.items[item.id] ? 1 : 0);
       }, 0);
-      node.textContent = secDone + " / " + list.length;
+
+      if (num) { num.textContent = secDone + " / " + list.length; }
+      node.classList.toggle("is-done", list.length > 0 && secDone === list.length);
     });
 
     /* Ukupan napredak se vidi iz traka po dobu dana — prstena u headeru
@@ -1680,6 +1891,190 @@
 
   /* Mreža se vratila — pošalji što je čekalo i pokupi tuđe promjene. */
   window.addEventListener("online", refreshShared);
+
+  /* ------------------------------------------------------------------------
+     Povlačenje prsta nadole — osvježavanje u instaliranoj aplikaciji
+
+     U browseru ovo već postoji: povuci stranu nadole i ona se ponovo učita.
+     Instalirana PWA nema ni adresnu traku ni to povlačenje, pa je jedini
+     način da se pokupi ono što je urađeno na drugom telefonu bio izaći iz
+     aplikacije i vratiti se u nju. Zato se gest pravi ovdje, i SAMO tamo
+     gdje ga nema — u browseru se ne dira ništa, da se dva povlačenja ne
+     otimaju o isti prst.
+
+     Ne radi ono što radi browserovo osvježavanje, i to je namjerno. Ponovno
+     učitavanje bi zbog par redova sa servera bacilo i skrol i sve što je u
+     memoriji, uz bijeli treptaj. Umjesto toga se povuče stanje (sync.js) i
+     config (settings.js), a ekran se sam iscrta tamo gdje se nešto stvarno
+     promijenilo.
+
+     Jedini razlog za pravo ponovno učitavanje je NOVA VERZIJA aplikacije.
+     Nju traži service worker (`novaVerzija()`): instalirana aplikacija se u
+     praksi nikad ne zatvara, pa bi inače znala danima ostati na staroj.
+     ------------------------------------------------------------------------ */
+
+  /* Aplikacija pokrenuta sa početnog ekrana, bez browserovog okvira.
+     `navigator.standalone` je iOS-ova vlastita oznaka — Safari nema
+     `display-mode: standalone` u svim verzijama. */
+  function isStandalone() {
+    try {
+      if (window.matchMedia("(display-mode: standalone)").matches) { return true; }
+      if (window.matchMedia("(display-mode: fullscreen)").matches) { return true; }
+      if (window.matchMedia("(display-mode: minimal-ui)").matches) { return true; }
+    } catch (e) {
+      /* staro okruženje bez matchMedia — ostaje iOS-ova oznaka ispod */
+    }
+    return navigator.standalone === true;
+  }
+
+  /* Koliko treba povući da se osvježavanje pusti, i dokle prst uopšte može
+     odvući oznaku. Ispod granice se oznaka vrati i ništa se ne desi. */
+  var PULL_TRIGGER = 66;
+  var PULL_MAX = 92;
+
+  var pullNode = null;
+  var pullStart = null;   /* y na kojem je prst spušten; null = ne povlači se */
+  var pullY = 0;
+  var pullBusy = false;
+
+  function buildPull() {
+    pullNode = document.createElement("div");
+    pullNode.className = "pull";
+    pullNode.setAttribute("aria-hidden", "true");
+
+    var ring = document.createElement("span");
+    ring.className = "pull-ring";
+    pullNode.appendChild(ring);
+
+    var tick = makeSectionIcon("check", "pull-check");
+    if (tick) { pullNode.appendChild(tick); }
+
+    document.body.appendChild(pullNode);
+  }
+
+  function pullSet(y) {
+    pullY = y;
+    pullNode.style.transform = "translate3d(-50%, " + y + "px, 0)";
+    pullNode.style.opacity = String(Math.min(1, y / 34));
+    pullNode.classList.toggle("is-ready", y >= PULL_TRIGGER);
+  }
+
+  /* Gest se ne prima dok je preko ekrana drawer ili završni ekran (`no-scroll`)
+     i dok prethodno osvježavanje traje. */
+  function pullBlocked() {
+    return pullBusy || document.body.classList.contains("no-scroll");
+  }
+
+  /* Ima li nova verzija aplikacije. `installing` ili `waiting` znači da je
+     service worker na serveru drugačiji od instaliranog. Kad se ništa nije
+     promijenilo, oba su prazna — pa se ovo ne može zavrtjeti u krug
+     ponovnih učitavanja. */
+  function novaVerzija() {
+    if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistration) {
+      return Promise.resolve(false);
+    }
+    return navigator.serviceWorker.getRegistration()
+      .then(function (reg) {
+        if (!reg) { return false; }
+        return Promise.resolve(reg.update()).then(function () {
+          return !!(reg.installing || reg.waiting);
+        });
+      })
+      .catch(function () { return false; });
+  }
+
+  function endPull() {
+    pullNode.classList.remove("is-busy");
+    pullNode.classList.add("is-ok");
+    setTimeout(function () {
+      pullSet(0);
+      pullNode.classList.remove("is-ok");
+      pullNode.classList.remove("is-ready");
+      pullBusy = false;
+    }, 480);
+  }
+
+  function runPull() {
+    pullBusy = true;
+    pullNode.classList.add("is-busy");
+    pullSet(PULL_TRIGGER);
+
+    var svjeza = novaVerzija();
+
+    var poslovi = [
+      window.mojZikrSync && !isPreview()
+        ? window.mojZikrSync.refresh(todayKey)
+        : null,
+      window.mojZikrConfig && window.mojZikrConfig.osvjezi
+        ? window.mojZikrConfig.osvjezi()
+        : null,
+      svjeza,
+      /* Najmanje pola sekunde: gest koji se završi prije nego se oko snađe
+         izgleda kao da nije ni primljen, pa i kad je sve prošlo. */
+      new Promise(function (r) { setTimeout(r, 520); })
+    ];
+
+    Promise.all(poslovi.map(function (p) {
+      return Promise.resolve(p).catch(function () { return null; });
+    })).then(function () {
+      return svjeza;
+    }).then(function (ima) {
+      /* Nova verzija je stigla dolje — od ovog trenutka ponovno učitavanje
+         nije gubitak nego jedini način da se vidi. */
+      if (ima) { window.location.reload(); return; }
+      endPull();
+    }).catch(endPull);
+  }
+
+  if (isStandalone()) {
+    /* Klasa gasi rubber-band odskok strane, da povlačenje bude naše a ne
+       sistemsko. Stoji na <html>, jer `overscroll-behavior` sa <body> ne
+       dopire do viewporta u svim browserima. */
+    document.documentElement.classList.add("is-standalone");
+    buildPull();
+
+    document.addEventListener("touchstart", function (e) {
+      /* Gest kreće samo sa VRHA strane i samo jednim prstom — dva prsta su
+         zumiranje, a sredina strane je običan skrol. */
+      if (pullBlocked() || e.touches.length !== 1 || window.pageYOffset > 0) {
+        pullStart = null;
+        return;
+      }
+      pullStart = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener("touchmove", function (e) {
+      if (pullStart === null) { return; }
+
+      var dy = e.touches[0].clientY - pullStart;
+
+      /* Prst je krenuo nagore, ili je strana u međuvremenu otišla nadole —
+         ovo je običan skrol i povlačenje se otkazuje. */
+      if (dy <= 0 || window.pageYOffset > 0) {
+        pullStart = null;
+        if (pullY) { pullSet(0); }
+        return;
+      }
+
+      /* Otpor: oznaka ide sporije od prsta, pa se povlačenje "osjeti" i ne
+         okine slučajno pri običnom skrolanju nagore. */
+      var y = Math.min(PULL_MAX, dy * 0.45);
+
+      /* Tek kad je jasno da se povlači — inače bi prvi piksel skrola
+         nagore ostao zarobljen. `cancelable` je false kad je browser već
+         odlučio da je gest njegov. */
+      if (y > 2 && e.cancelable) { e.preventDefault(); }
+      pullSet(y);
+    }, { passive: false });
+
+    ["touchend", "touchcancel"].forEach(function (name) {
+      document.addEventListener(name, function () {
+        if (pullStart === null) { return; }
+        pullStart = null;
+        if (pullY >= PULL_TRIGGER) { runPull(); } else { pullSet(0); }
+      }, { passive: true });
+    });
+  }
 
   /* ------------------------------------------------------------------------
      Testni panel (dev-panel.js) — SAMO localhost.

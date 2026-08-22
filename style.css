@@ -20,6 +20,13 @@
   --primary-soft: #37624f;
   --accent: #b8925a;
   --accent-soft: #e3d3b6;
+
+  /* Zelena je boja ZAVRŠENOG — kvačica, gotova sekcija, puna traka. Odvojena
+     je od --primary (tamnozelena, boja teksta i dugmadi) da se "gotovo" vidi
+     kao stanje, a ne kao još jedan element sučelja. Zlatna (--accent) ostaje
+     naglasak: naslovi sekcija, fokus, djelimično urađeno. */
+  --done: #2f7a55;
+  --done-soft: #e0efe6;
   --text: #1c1c19;
   --muted: #7a746a;
   --line: #e7e0d2;
@@ -346,12 +353,24 @@ h1, h2, h3, p {
 
 /* Završeno — zlatno, isto kao prsten na 100%. Brojka ostaje (11/11). */
 .pgroup.is-done .pgroup-fill {
-  background: var(--accent);
+  background: var(--done);
 }
 
 .pgroup.is-done .pgroup-label,
 .pgroup.is-done .pgroup-count {
-  color: var(--accent);
+  color: var(--done);
+}
+
+/* Brojka trake dijeli oblik sa brojkom sekcije: kvačica lijevo, broj desno. */
+.pgroup-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pgroup-count .done-icon {
+  width: 12px;
+  height: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -403,10 +422,44 @@ main {
   margin-right: -2px;
 }
 
+/* Brojka sekcije, i zelena kvačica lijevo od nje. Kvačica je u DOM-u uvijek,
+   a vidi se tek kad je sekcija završena — tako se pri svakoj kvačici mijenja
+   samo klasa, bez pravljenja i brisanja čvorova. */
 .section-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.75rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  transition: color 0.2s ease;
+}
+
+.section-count.is-done {
+  color: var(--done);
+  font-weight: 600;
+}
+
+/* Znak "gotovo". Deblji potez od ostalih ikonica jer je sitan i mora se
+   pročitati na prvi pogled; `stroke-width` iz CSS-a gazi onaj iz atributa. */
+.done-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.6;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.is-done .done-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .done-icon { transition: opacity 0.15s ease; transform: none; }
+  .is-done .done-icon { transform: none; }
 }
 
 .list {
@@ -543,10 +596,12 @@ main {
   transition: background 0.18s ease, color 0.18s ease;
 }
 
-/* Izbrojano do kraja — zlatna pilula, isto kao završena traka napretka. */
+/* Izbrojano do kraja — zelena pilula, ista zelena kao svako drugo "gotovo".
+   Nosi je i stavka bez kvačice: brojanje se odčekiravanjem ne gubi, pa
+   "30 / 30" bez kvačice znači "izbrojano, samo nije označeno". */
 .count-chip.is-full {
-  color: var(--primary);
-  background: var(--accent-soft);
+  color: var(--done);
+  background: var(--done-soft);
 }
 
 .count-chip:focus-visible {
@@ -584,8 +639,11 @@ main {
   transition: transform 0.22s ease, background 0.3s ease;
 }
 
-.item.is-done .count-fill {
-  background: var(--accent);
+/* Puna traka je zelena i kad kvačice nema: brojanje se odčekiravanjem ne
+   gubi, pa "30 / 30" bez kvačice i dalje znači izbrojano. */
+.item.is-done .count-fill,
+.count-fill.is-full {
+  background: var(--done);
 }
 
 /* Izvor dove (Kur'an / hadis) — desni ćošak headera, u istom redu sa
@@ -637,8 +695,8 @@ main {
 }
 
 .check:checked {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--done);
+  border-color: var(--done);
 }
 
 .check:checked::after {
@@ -696,7 +754,7 @@ main {
 /* Označena stavka — sadržaj ostaje čitljiv */
 .item.is-done {
   background: var(--background-alt);
-  border-color: var(--accent-soft);
+  border-color: var(--done-soft);
 }
 
 .item.is-done .item-title {
@@ -827,12 +885,110 @@ main {
 
 .quran-card.is-done {
   background: var(--background-alt);
-  border-color: var(--accent-soft);
+  border-color: var(--done-soft);
 }
 
 .quran-card.is-done .quran-page,
 .quran-card.is-done .quran-arabic {
   opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   8b. Povlačenje prsta nadole — samo u instaliranoj aplikaciji
+
+   Browser ovo već ima; ovdje je za PWA sa početnog ekrana, koja nema ni
+   adresnu traku ni povlačenje. Vidi "Povlačenje prsta nadole" u script.js.
+   -------------------------------------------------------------------------- */
+
+/* Odskok strane na vrhu (rubber-band) bi se otimao sa našim gestom, pa se
+   gasi — ali SAMO u instaliranoj aplikaciji, da se u browseru ne pokvari
+   njegovo vlastito povlačenje. Klasu postavlja script.js. */
+.is-standalone,
+.is-standalone body {
+  overscroll-behavior-y: contain;
+}
+
+/* Oznaka visi iznad vrha strane i spušta se s prstom. `translate3d` je zbog
+   telefona: pomjeranje bez sopstvenog sloja zna zapinjati usred gesta. */
+.pull {
+  position: fixed;
+  top: calc(-40px + max(12px, env(safe-area-inset-top)));
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 10px rgba(30, 68, 56, 0.12);
+  opacity: 0;
+  transform: translate3d(-50%, 0, 0);
+  pointer-events: none;
+}
+
+/* Prst je pušten ili se vraća — oznaka klizi sama. Dok prst vuče, pomjeraj
+   ide iz JS-a frejm po frejm i prijelaz bi ga usporio. */
+.pull:not(.is-ready):not(.is-busy) {
+  transition: transform 0.24s ease, opacity 0.24s ease;
+}
+
+/* Povučeno dovoljno — puštanje sada osvježava. Boja to kaže prije nego se
+   prst digne. */
+.pull.is-ready {
+  color: var(--accent);
+  border-color: var(--accent-soft);
+}
+
+.pull-ring {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  /* otvoren krug: dok se vrti, vidi se da se vrti */
+  border-top-color: transparent;
+  border-radius: 50%;
+}
+
+.pull.is-busy {
+  color: var(--accent);
+}
+
+.pull.is-busy .pull-ring {
+  animation: pull-turn 0.7s linear infinite;
+}
+
+/* Gotovo — prsten ustupa mjesto zelenoj kvačici, istoj kao svugdje drugdje. */
+.pull-check {
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.6;
+  color: var(--done);
+  opacity: 0;
+}
+
+.pull.is-ok {
+  color: var(--done);
+  border-color: var(--done-soft);
+}
+
+.pull.is-ok .pull-ring {
+  opacity: 0;
+}
+
+.pull.is-ok .pull-check {
+  opacity: 1;
+}
+
+@keyframes pull-turn {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pull.is-busy .pull-ring { animation-duration: 2s; }
 }
 
 /* --------------------------------------------------------------------------
@@ -924,6 +1080,26 @@ main {
 }
 
 /* Ime sure — ostaje zalijepljeno na vrh dok se čita njen tekst. */
+/* Granica između dvije stranice unutar iste porcije. Sitno i verzalom, kao
+   ostale oznake — ne smije se takmičiti sa imenom sure ispod. */
+.drawer-page {
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--muted);
+}
+
+.drawer-body > .drawer-page:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .drawer-sura {
   position: sticky;
   top: 0;
@@ -1173,15 +1349,6 @@ main {
   outline-offset: 2px;
 }
 
-/* Sekcija sa jednom stavkom (Kur'an) — nema šta rasklopiti, pa nema ni dugme
-   ni šiljak: naslov i brojka na istoj liniji sa prekidačem, kao obični red. */
-
-/* Brojka ispod naslova — isti font kao "x / x" kod ostalih sekcija. */
-.set-acc.is-solo .set-acc-count {
-  display: block;
-  margin-top: 2px;
-}
-
 .set-acc-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -1263,45 +1430,34 @@ main {
   padding-bottom: 12px;
 }
 
-/* „Označi sve / Odznači sve“ — 34 kvačice se ne prolaze jedna po jedna kad se
-   hoće sve isto. Prekidač u zaglavlju radi isto, ali je gore i gasi sekciju u
-   cjelini; ovo stoji tu gdje se i bira. */
-.set-acc-all {
-  display: inline-block;
-  margin: 0 0 10px;
-  padding: 6px 13px;
-  font-family: inherit;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  background: var(--background-alt);
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  cursor: pointer;
+/* Red spiska: kvačica i tekst u <label> lijevo, alatke desno.
+
+   Labela je samo oko kvačice i teksta, a ne oko cijelog reda — polje za broj
+   ponavljanja i olovka stoje izvan nje, pa klik po njima ne znači "sakrij
+   ovu dovu". */
+.set-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   -webkit-tap-highlight-color: transparent;
 }
 
-.set-acc-all:hover {
-  color: var(--text);
-  border-color: var(--line-strong);
-}
-
-.set-acc-all:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* Red spiska: kvačica lijevo, naslov i početak prevoda desno. Cijeli red je
-   <label>, pa klik bilo gdje po njemu prebacuje kvačicu. */
-.set-pick {
+.set-pick-main {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: flex-start;
   gap: 12px;
   padding: 8px 0;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+}
+
+.set-pick-tools {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
 }
 
 .set-pick .check {
@@ -1344,6 +1500,68 @@ main {
   color: var(--text);
 }
 
+/* Oznaka u redu: broj ponavljanja ("30×") ili dnevna porcija mushafa.
+   Samo za čitanje — mijenja se iza olovke, kao i sve ostalo na stavci.
+   Zlatna kaže da je stavka dirana (vlastita ili izmijenjena). */
+.set-pick-meta {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--background-alt);
+  border-radius: 99px;
+  padding: 3px 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.set-pick-meta.is-custom {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Izmijenjena dova nema šta brojati, pa umjesto oznake nosi tačku — inače se
+   iz spiska od 34 reda ne bi vidjelo šta je dirano. */
+.set-pick-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Olovka — na SVAKOM redu, i uz stavku iz data.js i uz vlastitu. Iza nje je
+   sve što se na stavci može promijeniti, brisanje uključivo, pa se ne mora
+   pamtiti šta gdje stoji. */
+.set-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+
+.set-edit:hover {
+  color: var(--primary);
+  border-color: var(--line-strong);
+}
+
+.set-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.set-edit-icon {
+  width: 15px;
+  height: 15px;
+}
+
 /* Početak prevoda — naslov dove je samo broj, po njemu se ne zna koja je. */
 .set-pick-note {
   display: block;
@@ -1351,6 +1569,315 @@ main {
   font-size: 0.75rem;
   line-height: 1.45;
   color: var(--muted);
+}
+
+/* --- „Dodaj svoju stavku“ i forma ---------------------------------------- */
+/* Podnožje spiska: dugme, a kad se ono pritisne — forma na njegovom mjestu.
+   Forma je TU, unutar akordeona, a ne kao novi drawer: drawer preko drawera
+   na telefonu nema gdje stati, a ovako se odmah vidi u koju sekciju stavka
+   ide. */
+.set-acc-foot {
+  padding-top: 6px;
+}
+
+.set-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  /* Isprekidan rub: mjesto koje TEK treba popuniti, za razliku od redova
+     iznad koji su već tu. */
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.set-add:hover {
+  color: var(--primary);
+  border-color: var(--accent);
+  background: var(--background-alt);
+}
+
+.set-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.set-add-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.set-new {
+  /* Forma se otvara i u podnožju spiska (nova stavka) i NA MJESTU reda
+     (izmjena) — otuda razmak: u oba slučaja mora biti odvojena od redova
+     iznad i ispod, da se vidi da je to sad jedna stvar, a ne red. */
+  margin: 8px 0;
+  padding: 14px;
+  background: var(--background-alt);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.set-new-head {
+  margin-bottom: 12px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Tri oblika stavke — tri dugmeta, jer je tako odmah jasno šta se pravi.
+   Padajući spisak bi krio dva od tri. */
+.set-new-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.set-new-tab {
+  flex: 1;
+  padding: 8px 6px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.set-new-tab.is-on {
+  color: var(--surface);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.set-new-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.set-new-field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.set-new-field[hidden] {
+  display: none;
+}
+
+.set-new-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Polja forme dijele izgled sa poljem za ime (.set-input), samo bez mjesta
+   za oznaku stanja u desnom rubu. */
+.set-new .set-input {
+  padding: 10px 12px;
+  font-size: 0.9375rem;
+}
+
+.set-area {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* Arapski se u polju piše arapskim fontom i zdesna — inače se ne vidi šta se
+   unosi dok se ne sačuva. Selektor nosi i `.set-new` da bude specifičniji od
+   `.set-new .set-input` iznad, koji svim poljima forme daje istu veličinu. */
+.set-new .set-area-ar {
+  font-family: var(--font-ar);
+  font-size: 1.25rem;
+  line-height: 2;
+  text-align: right;
+}
+
+/* --- broj: klizač + kutija ----------------------------------------------- */
+/* Klizač daje grubu vrijednost jednim potezom, kutija tačnu. Sami klizač ne
+   pogađa 33 iz prve, a sama kutija ne govori koliko je to u odnosu na
+   uobičajeno. */
+.set-slide {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.set-slide-range {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* Traka i dugme se stiliziraju odvojeno za WebKit i za Firefox — zajednička
+   pravila ne postoje, a prefiksirani selektor u istom bloku obara cijelo
+   pravilo, pa moraju biti razdvojeni. */
+.set-slide-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 99px;
+  background: var(--line);
+}
+
+.set-slide-range::-moz-range-track {
+  height: 4px;
+  border-radius: 99px;
+  background: var(--line);
+}
+
+.set-slide-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  /* (visina trake − visina dugmeta) / 2 — da dugme sjedne na sredinu trake */
+  margin-top: -8px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 1px 3px rgba(30, 68, 56, 0.28);
+}
+
+.set-slide-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 1px 3px rgba(30, 68, 56, 0.28);
+}
+
+.set-slide-num {
+  flex-shrink: 0;
+  width: 4.6em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Strelice browsera bi u ovako uskoj kutiji pojele pola cifre. */
+.set-slide-num::-webkit-outer-spin-button,
+.set-slide-num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.set-slide-num {
+  -moz-appearance: textfield;
+}
+
+/* Šta se dešava sa stavkom koja nije korisnikova — piše umjesto da se
+   pretvara da brisanje briše. */
+.set-new-note {
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.set-new-note[hidden] {
+  display: none;
+}
+
+.set-new-error {
+  margin-bottom: 10px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #9a3b2f;
+}
+
+.set-new-error[hidden] {
+  display: none;
+}
+
+/* Dvije grupe: lijevo brisanje/vraćanje, desno odustani/sačuvaj. Kad ih ima
+   četiri i ekran je uzak, desna grupa se prelomi ispod cijela. */
+.set-new-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.set-new-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Desna grupa uz desnu ivicu i kad se prelomi u svoj red. */
+.set-new-group:last-child {
+  margin-left: auto;
+}
+
+.set-new-btn {
+  padding: 9px 16px;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.set-new-btn.is-primary {
+  color: var(--surface);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.set-new-btn.is-danger {
+  color: #9a3b2f;
+  border-color: #e3c3bd;
+}
+
+/* „Vrati na zadano“ — postoji samo dok ima šta vratiti, pa ne smije nositi
+   težinu kao dvije radnje pored sebe. */
+.set-new-btn.is-quiet {
+  padding: 9px 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+.set-new-btn.is-quiet:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+
+.set-new-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* --- prekidač ------------------------------------------------------------ */
@@ -1404,6 +1931,13 @@ main {
   transform: translateX(18px);
 }
 
+
+/* Sekcija bez ijedne stavke (samo vlastite, pa sve obrisane) nema šta
+   upaliti — prekidač se ne dira dok se u nju nešto ne doda. */
+.switch-input:disabled ~ .switch-track {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .switch-input:focus-visible ~ .switch-track {
   outline: 2px solid var(--accent);

@@ -13,6 +13,14 @@ const SECTIONS = DATA.sections;
    broji", isti koji vidi i aplikacija. */
 const sectionsForDate = DATA.sectionsForDate;
 const weekdayFromKey = DATA.weekdayFromKey;
+/* Config se čisti u data.js, ne ovdje — kroz ista pravila prolazi i ono što
+   browser upiše u localStorage i ono što stigne u tijelu zahtjeva. Prije je
+   bilo prepisano na oba mjesta i moglo se raziće. */
+const defaultPrefs = DATA.defaultPrefs;
+const cleanPrefs = DATA.cleanPrefs;
+/* Vlastita stavka korisnika nema svoj id u data.js — prepoznaje se po
+   obliku. Vidi `validItemId()` ispod. */
+const CUSTOM_ITEM_ID = DATA.CUSTOM_ITEM_ID;
 
 const TZ = "Europe/Sarajevo";
 
@@ -134,8 +142,15 @@ const ITEM_IDS = (function () {
   return set;
 })();
 
+/* Vlastita stavka (config, polje `dodatno`) nema svoj id u data.js, pa se
+   pušta po OBLIKU, ne po spisku. Tako se ovdje ne mora čitati config
+   korisnika pri svakom upisu kvačice — a šteta ne postoji: id je vezan za
+   njegov vlastiti hash, broj polja u jednom zahtjevu je ograničen, a zapis
+   ionako ističe za par dana. Stavka koju je u međuvremenu obrisao otpada iz
+   računa jer je nema u `sectionsForDate()`. */
 function validItemId(id) {
-  return typeof id === "string" && ITEM_IDS.has(id);
+  if (typeof id !== "string") { return false; }
+  return ITEM_IDS.has(id) || CUSTOM_ITEM_ID.test(id);
 }
 
 /* Koliko je od jednog podsjetnika urađeno — jedina osnova za odluku o
@@ -326,10 +341,14 @@ function subId(endpoint) {
 /* ------------------------------------------------------------------------
    Config korisnika
 
-   Dva polja:
+   Četiri polja:
 
      transkript   ekran pokazuje transliteraciju umjesto arapskog
      skriveno     spisak id-eva stavki koje korisnik ne želi vidjeti
+     izmjene      korisnikove izmjene stavki iz data.js (naslov, tekstovi,
+                  broj ponavljanja) — pamti se samo ono što se razlikuje
+     stranice     dnevna porcija mushafa
+     dodatno      vlastite stavke korisnika, po sekciji
 
    `skriveno` se vodi kao spisak ISKLJUČENIH, a ne prikazanih, jer je
    podrazumijevano "sve se prikazuje": nova dova u data.js tako sama uđe u
@@ -340,38 +359,12 @@ function subId(endpoint) {
    `sectionsForDate()`, njen podsjetnik dobije total 0 i ućuti. Zapis iz tog
    vremena (`petak: false`) prolazi kroz `cleanPrefs()` i otpada kao svako
    drugo nepoznato polje.
+
+   Sam `cleanPrefs()` je u data.js — i vlastite stavke i izmjene mijenjaju
+   ono što se broji, pa server i aplikacija moraju sijati kroz isto sito.
+   Odatle i ovo: podsjetnik računa i korisnikove vlastite stavke, jer
+   `sectionsForDate()` ih vrati kao i sve ostale.
    ------------------------------------------------------------------------ */
-
-function defaultPrefs() {
-  return { transkript: false, skriveno: [] };
-}
-
-/* Prihvata samo poznata polja. Ono što nije poslano ostaje na
-   podrazumijevanom — config je mali i uvijek cijeli. */
-function cleanPrefs(raw) {
-  const out = defaultPrefs();
-  if (!raw || typeof raw !== "object") { return out; }
-  if (typeof raw.transkript === "boolean") { out.transkript = raw.transkript; }
-
-  /* Sakrivene stavke: samo POZNATI id-evi, bez duplikata, uvijek sortirano.
-     Sortiranje nije kozmetika — aplikacija svoj config poredi sa onim sa
-     servera preko JSON.stringify, pa bi drugačiji redoslijed istog spiska
-     izgledao kao promjena i ponovo iscrtao cijeli ekran.
-
-     `slice` prije `filter` je granica posla: tijelo zahtjeva može nositi
-     spisak od sto hiljada elemenata, a ispravnih id-eva ima nekoliko
-     desetina. */
-  if (Array.isArray(raw.skriveno)) {
-    const seen = Object.create(null);
-    out.skriveno = raw.skriveno.slice(0, 1000).filter(function (id) {
-      if (!validItemId(id) || seen[id]) { return false; }
-      seen[id] = true;
-      return true;
-    }).sort();
-  }
-
-  return out;
-}
 
 /* Config iz baze. Korisnik bez zapisa dobija podrazumijevani — nikad null,
    da pozivalac ne mora svaki put provjeravati. */

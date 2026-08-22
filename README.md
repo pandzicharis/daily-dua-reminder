@@ -32,7 +32,7 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `manifest.webmanifest` | ime, boje, ikonice, `display: standalone` |
 | `service-worker.js` | prima push, prikazuje obavijest, obrađuje klik, offline keš |
 | `notifications.js` | dozvola, pretplata, uključi/isključi |
-| `settings.js` | config korisnika (ime, transkripcija, petak) + drawer u kojem se podešava |
+| `settings.js` | config korisnika (ime, transkripcija, spisak, izmjene stavki, vlastite stavke) + drawer u kojem se podešava |
 | `sync.js` | zajedničko stanje kroz uređaje: slanje promjena, povlačenje, offline red |
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
 | `icons/*.png` | 96, 192, 512, maskable 192/512, apple-touch 180, favicon 32 |
@@ -76,6 +76,30 @@ Service worker se registruje pri svakom otvaranju (`notifications.js`), ne
 tek kad se uključe podsjetnici — tako i offline radi. Keširanje je
 **network-first**: uvijek se prvo ide na mrežu, a keš služi samo kad nema
 interneta, pa se nikad ne servira zastarjeli sadržaj.
+
+### Povlačenje prsta nadole
+
+Browser već ima svoje osvježavanje; instalirana PWA nema ni adresnu traku ni
+taj gest, pa je jedini način da se pokupi ono što je urađeno na drugom
+telefonu bio izaći iz aplikacije i vratiti se. Gest se zato pravi u
+`script.js`, i **samo** kad je aplikacija pokrenuta sa početnog ekrana
+(`display-mode: standalone` ili `navigator.standalone`) — u browseru se ne
+dira ništa, da se dva povlačenja ne otimaju o isti prst.
+
+Ne radi ono što radi browserovo osvježavanje, i to je namjerno:
+
+1. povuče se zajedničko stanje (`sync.js`) i config (`settings.js`), a ekran
+   se sam iscrta tamo gdje se nešto stvarno promijenilo — bez bijelog
+   treptaja i bez gubitka skrola;
+2. usput se pita service worker ima li **nova verzija** aplikacije. Ako je
+   nađe (`installing` ili `waiting`), tek tada slijedi pravo ponovno
+   učitavanje. Instalirana aplikacija se u praksi nikad ne zatvara, pa bi
+   inače znala danima ostati na staroj verziji.
+
+Kad se ništa nije promijenilo, oba su prazna — pa se ovo ne može zavrtjeti u
+krug ponovnih učitavanja.
+
+---
 
 ## 3. Kako rade push obavijesti
 
@@ -153,19 +177,28 @@ ono što je drugi uređaj odčekirao.
 
 ## 4b. Config korisnika
 
-Zupčanik u headeru otvara drawer sa dna (`settings.js`). U njemu su tri
-stvari i ništa više:
+Zupčanik u headeru otvara drawer sa dna (`settings.js`):
 
-| | šta radi |
-|---|---|
-| **Ime** | određuje čiji je spisak. Isto ime na dva uređaja = jedan spisak. |
-| **Transkripcija** | umjesto arapskog teksta prikazuje transliteraciju iz `data.js`. Zamjena, ne dodatak — prevod ostaje ispod. |
-| **Šta se prikazuje** | kvačica po stavci, u akordeonu po sekciji, plus prekidač za cijelu sekciju u zaglavlju akordeona. Isključena dova nestaje i sa ekrana i iz računa podsjetnika. |
+| | polje u configu | šta radi |
+|---|---|---|
+| **Ime** | *(samo localStorage)* | određuje čiji je spisak. Isto ime na dva uređaja = jedan spisak. |
+| **Transkripcija** | `transkript` | umjesto arapskog teksta prikazuje transliteraciju iz `data.js`. Zamjena, ne dodatak — prevod ostaje ispod. |
+| **Šta se prikazuje** | `skriveno` | kvačica po stavci, u akordeonu po sekciji, plus prekidač za cijelu sekciju u zaglavlju akordeona. Isključena dova nestaje i sa ekrana i iz računa podsjetnika. |
+| **Uredi stavku** | `izmjene` | **svaka** stavka, i ona iz `data.js`: naslov, tekstovi, izvor, broj ponavljanja. |
+| **Stranica dnevno** | `stranice` | koliko se stranica mushafa uči u jednom danu (1–20) — iza olovke na kur'anskoj stavci. |
+| **Vlastite stavke** | `dodatno` | svoja dova ili svoj zikr, u bilo koju sekciju osim kur'anske, bez deploya. |
 
 Uz njih je i dugme za podsjetnike (zvono), preseljeno iz glavnog ekrana.
 
 Config se čuva pod `cfg:<ime>` i dijeli kroz uređaje istog korisnika, isto
 kao i čekirano.
+
+**Čišćenje configa je u `data.js` (`cleanPrefs()`), na jednom mjestu.** Kroz
+njega prolazi i ono što browser upiše u localStorage i ono što server primi u
+tijelu zahtjeva — `settings.js` i `api/_lib.js` ga samo pozovu. Prije je isto
+pravilo stajalo prepisano na oba mjesta; od kad config nosi i sadržaj (svoje
+dove), razlika između ta dva sita ne bi bila kozmetička nego bi značila da
+stavka postoji na ekranu a ne postoji u računu podsjetnika.
 
 **Isključene stavke.** Config nosi polje `skriveno` — spisak id-eva — i vodi
 se kao spisak **isključenih**, a ne prikazanih: podrazumijevano je "sve se
@@ -217,6 +250,116 @@ postoji — spojen si na njegov spisak". Spisak svih imena se ne vraća nikad.
 napravljena prije configa nema ime uz sebe, pa je scheduler vodi tamo dok se
 aplikacija na tom uređaju ne otvori i ne javi ime (`notifications.js` to radi
 sam, pri prvom otvaranju).
+
+### Brojana stavka — brojanje se ne gubi
+
+Zikr sa `repetitions` se ne označava jednim klikom nego se **izbroji**: svaki
+klik po kartici je jedno ponavljanje, brojka i traka se pune, a kvačica padne
+sama na tridesetom. Nedovršeno brojanje je lokalno (`counts` u localStorage-u)
+i ne ide na server — tamo svaka vrijednost znači „urađeno", pa bi upisano `12`
+na drugom telefonu izgledalo kao završen zikr.
+
+**Odčekiravanje ne briše brojanje.** Ko je izbrojao trideset salavata pa
+omaškom dodirnuo karticu, sljedećim klikom vraća kvačicu — brojka je ostala
+puna (`30 / 30`, zelena pilula i bez kvačice). Isto vrijedi i kad kvačica
+stigne sa drugog uređaja: `applyRemoteState()` tada postavi brojku na cilj
+umjesto da je obriše.
+
+Novo brojanje od nule traži se **držanjem prsta na brojci** (~0,5 s). Nije ni
+na jednom kratkom kliku namjerno: i klik po kartici i klik po brojci već znače
+„još jedno ponavljanje", pa bi se treći kratki gest na istoj kartici pogađao.
+
+### Redovi spiska su svi isti
+
+Nema dvije vrste reda. Stavka iz `data.js` i vlastita stavka izgledaju i rade
+isto:
+
+```
+[✓]  Naslov                          30×   ✎
+     detalj (prevod dove ili izvor)
+```
+
+| dio | šta je |
+|---|---|
+| kvačica | prikaži / sakrij (`skriveno`) — jedini reverzibilni prekidač |
+| detalj | dova: početak prevoda (naslov joj je samo broj); ostalo: izvor |
+| oznaka | broj ponavljanja (`30×`) ili dnevna porcija (`3 stranice`); **zlatna** = dirano |
+| ✎ | sve ostalo: izmjena i brisanje |
+
+Prije je stavka iz `data.js` imala polje za broj pravo u redu, a vlastita
+olovku — redovi su tako izgledali kao dvije različite stvari iako stoje jedan
+do drugog, a sadržaj dove se nije mogao ni vidjeti ni popraviti.
+
+Kur'anska sekcija je isti takav akordeon sa jednom stavkom; iza njene olovke
+je broj stranica umjesto broja ponavljanja.
+
+### Uređivanje stavke (`izmjene`)
+
+`{ "zikr-salavat-50": { "repetitions": 100 } }` — izmjene stavki **iz
+`data.js`**. Forma se otvara **popunjena pravim sadržajem** (arapski,
+transkripcija, prevod, izvor, broj), pa se dova popravlja u mjestu.
+
+Pamti se **samo ono što se razlikuje** od zatečenog. To nije štednja nego
+jedini način da ispravka u `data.js` i dalje stigne do korisnika koji je toj
+dovi promijenio samo broj ponavljanja — netaknuto polje nema svoj zapis, pa
+uvijek dolazi iz fajla.
+
+Prazno polje znači „obriši mi ovaj dio" (npr. izvor) i pamti se kao prazan
+string. Put nazad je dugme **„Vrati na zadano"**, koje postoji samo dok ima
+šta vratiti.
+
+Brojevi se ne kucaju nego **povlače**: klizač plus kutija uz njega. Klizačem
+se do tačno 33 na telefonu ne stiže iz prve, a kutija sama ne govori koliko je
+to u odnosu na uobičajeno. Gornja granica klizača je 100; kutija prima i više
+(do 999) i klizaču tada podigne granicu, pa se već upisana veća vrijednost ne
+kljašti.
+
+`repetitions: 1` znači „bez brojača" — jedno ponavljanje i nije brojanje.
+
+**Brisanje.** Vlastita stavka nestaje zauvijek. Stavka iz `data.js` se skida
+sa spiska (`skriveno`) i gube joj se izmjene — obrisati je zauvijek nije
+moguće jer nije korisnikova, pa forma to i kaže umjesto da se pravi da jeste.
+Kvačica pored nje je vraća, i to zatečenu, a ne ono što je nekad promijenio
+pa obrisao.
+
+`izmjene` važi **samo** za stavke iz `data.js`. Vlastita stavka svoj sadržaj
+nosi u `dodatno`, pa bi zapis na dva mjesta značio dva izvora istine za istu
+karticu.
+
+### Vlastite stavke (`dodatno`)
+
+Spisak zapisa oblika `{ id, sekcija, type, ... }`. `id` je uvijek
+`custom-` + 4–32 mala slova i cifre (`CUSTOM_ITEM_ID` u `data.js`), pa se ne
+može sudariti sa id-em iz `data.js`. Tri oblika:
+
+| tip u formi | zapis | kartica na ekranu |
+|---|---|---|
+| Zikr sa brojem | `type: "count"`, `repetitions: n` | naslov + brojač koji se izbroji klikovima |
+| Dova | `type: "dua"`, `arabic`, `transliteration`, `translation`, `source` | kao svaka dova; numeriše se zajedno sa ostalima ("DOVA #35") |
+| Stavka | `type: "count"`, bez `repetitions` | samo naslov i kvačica (kao *Higijena* petkom) |
+
+Sve dalje **ne zna** da je stavka korisnikova: `sectionsForDate()` je vrati
+kao i svaku drugu, pa ulazi u trake napretka, u završni ekran i u račun
+podsjetnika. Kur'anska sekcija je jedini izuzetak — ona nema `items` (jedna je
+stavka), pa se u nju ne može dopisati.
+
+Server prima kvačicu na vlastitoj stavci tako što `validItemId()` pušta id po
+**obliku**, a ne po spisku iz `data.js`. Config korisnika se pri upisu kvačice
+time ne mora čitati; stavka koju je u međuvremenu obrisao svejedno otpada iz
+računa, jer je nema u `sectionsForDate()`.
+
+### Dnevna porcija mushafa (`stranice`)
+
+`stranice: 3` znači da dan nosi tri stranice umjesto jedne: prva se računa
+kao i dosad (`start + dana × stranica`), ostale su one koje slijede. Kartica
+tada piše *Stranice 101–103*, a „Vidi stranice" otvara sve tri, razdvojene
+oznakom stranice.
+
+Cijela porcija je i dalje **jedna stavka sa jednom kvačicom** — polje u bazi
+ostaje `quran`, pa se na serveru ne mijenja ništa.
+
+U postavkama je kur'anska sekcija akordeon kao i svaka druga, sa jednom
+stavkom u sebi; broj stranica se podešava iza njene olovke, klizačem 1–20.
 
 ## 5. Kako radi satna logika
 

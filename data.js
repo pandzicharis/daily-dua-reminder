@@ -608,7 +608,9 @@
     /* kupola sa špicem — sekcija vezana za poseban dan (petak) */
     mosque: "M4 20h16M6 20v-6a6 6 0 0 1 12 0v6M12 4v4",
     /* list papira — dugme "Vidi stranicu" */
-    pages: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6"
+    pages: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6",
+    /* kvačica — zeleni znak "gotovo" uz završenu sekciju i završenu traku */
+    check: "M4.5 12.5l5 5 10-11"
   };
 
   /* Vraća <svg> za dati ključ, ili null ako ga u registru nema. Klasa se daje
@@ -659,6 +661,322 @@
     return isNaN(d.getTime()) ? -1 : d.getUTCDay();
   }
 
+  /* --------------------------------------------------------------------------
+     CONFIG KORISNIKA
+
+     Config je jedini način da se spisak promijeni bez deploya, pa je i jedino
+     mjesto na kojem sadržaj nije u ovom fajlu. Četiri polja:
+
+       transkript   ekran pokazuje transliteraciju umjesto arapskog
+       skriveno     spisak id-eva stavki koje korisnik ne želi vidjeti
+       izmjene      { idStavke: { polje: vrijednost } } — korisnikove izmjene
+                    stavki IZ OVOG FAJLA. Pamti se samo ono što je stvarno
+                    promijenio; sve ostalo i dalje dolazi odavde, pa ispravka
+                    prevoda u data.js stigne i do onoga ko je toj dovi
+                    promijenio samo broj ponavljanja.
+       stranice     koliko se stranica mushafa uči u jednom danu (1 = zatečeno)
+       dodatno      vlastite stavke korisnika, po sekciji
+
+     Čišćenje configa stoji OVDJE, a ne u settings.js i u api/_lib.js — kroz
+     istu funkciju prolazi i ono što browser upiše u localStorage i ono što
+     server primi u tijelu zahtjeva, pa se dva pravila ne mogu razići. Prije
+     je bilo prepisano na oba mjesta.
+
+     Sve što nije prepoznato otpada. To nije sitnica nego zaštita: config sa
+     servera crta ekran i ulazi u račun podsjetnika, pa nepoznato polje ne
+     smije proći dalje.
+     -------------------------------------------------------------------------- */
+
+  /* Vlastita stavka nosi id koji se ne može sudariti sa id-em iz ovog fajla.
+     Isti izraz koristi i server (api/_lib.js) da takav id pusti u bazu —
+     inače bi svaka kvačica na vlastitoj dovi bila odbačena kao nepoznata. */
+  var CUSTOM_ITEM_ID = /^custom-[a-z0-9]{4,32}$/;
+
+  /* Granice postoje da tijelo zahtjeva ne može biti proizvoljno veliko.
+     Šezdeset vlastitih stavki je daleko iznad svake stvarne upotrebe. */
+  var MAX_CUSTOM = 60;
+  var MAX_REPS = 999;
+
+  /* Gornja granica dnevne porcije mushafa — jedan džuz. Nije zabrana nego
+     mjera: cijela porcija stoji na JEDNOJ kartici sa jednom kvačicom, pa
+     preko toga kartica prestaje biti kartica. */
+  var MAX_STRANICA = 20;
+
+  /* Broj ponavljanja iz configa. Vraća 0 za sve što nije broj — pozivalac to
+     čita kao "nema zapisa", pa vrijedi ono što piše u ovom fajlu. */
+  function cleanBroj(raw) {
+    var n = (typeof raw === "number") ? raw : parseInt(raw, 10);
+    if (!isFinite(n)) { return 0; }
+    n = Math.floor(n);
+    if (n < 1) { return 0; }
+    return Math.min(n, MAX_REPS);
+  }
+
+  function cleanText(raw, max) {
+    if (typeof raw !== "string") { return ""; }
+    return raw.trim().slice(0, max);
+  }
+
+  /* Sekcije u koje vlastita stavka SMIJE ući. Kur'anska ne može: ona nije
+     lista nego jedna stavka (vidi `sectionItems()`), pa nema gdje dopisati. */
+  function customSectionIds() {
+    var out = Object.create(null);
+    sections.forEach(function (section) {
+      if (section.kind !== "quran") { out[section.id] = true; }
+    });
+    return out;
+  }
+
+  /* Vlastite stavke — samo one koje su cijele i smislene.
+
+     Stavka bez naslova (ili dova bez ijednog teksta) se ne pamti: na ekranu
+     bi bila prazna kartica koju korisnik ne bi znao ni prepoznati ni
+     obrisati. Bolje da upis ne prođe nego da ostane duh u spisku. */
+  function cleanCustom(raw) {
+    if (!Array.isArray(raw)) { return []; }
+
+    var dozvoljene = customSectionIds();
+    var vidjeno = Object.create(null);
+    var out = [];
+
+    raw.slice(0, MAX_CUSTOM * 4).forEach(function (item) {
+      if (out.length >= MAX_CUSTOM) { return; }
+      if (!item || typeof item !== "object") { return; }
+
+      var id = (typeof item.id === "string") ? item.id : "";
+      if (!CUSTOM_ITEM_ID.test(id) || vidjeno[id]) { return; }
+      if (!dozvoljene[item.sekcija]) { return; }
+
+      var entry = { id: id, sekcija: item.sekcija, type: "count" };
+
+      if (item.type === "dua") {
+        entry.type = "dua";
+        entry.arabic = cleanText(item.arabic, 2000);
+        entry.transliteration = cleanText(item.transliteration, 2000);
+        entry.translation = cleanText(item.translation, 2000);
+        entry.source = cleanText(item.source, 120);
+        /* Naslova nema namjerno — dove se numerišu same (`itemTitles()`), pa
+           bi vlastita dova sa imenom ispala iz reda ostalih. */
+        if (!entry.arabic && !entry.transliteration && !entry.translation) { return; }
+      } else {
+        entry.title = cleanText(item.title, 80);
+        if (!entry.title) { return; }
+        var n = cleanBroj(item.repetitions);
+        /* 1 ponavljanje nije brojač nego obična kvačica — ne pamti se. */
+        if (n > 1) { entry.repetitions = n; }
+      }
+
+      vidjeno[id] = true;
+      out.push(entry);
+    });
+
+    return out;
+  }
+
+  /* Svi id-evi koje config smije spominjati: stavke iz ovog fajla (uz
+     "quran", koji nije u `items`) plus vlastite stavke TOG korisnika. Po
+     ovome otpada zastario zapis — dova obrisana iz data.js, ili vlastita
+     stavka koja je u međuvremenu obrisana. */
+  function knownItemIds(custom) {
+    var out = Object.create(null);
+    sections.forEach(function (section) {
+      if (section.kind === "quran") { out.quran = true; return; }
+      (section.items || []).forEach(function (item) { out[item.id] = true; });
+    });
+    (custom || []).forEach(function (item) { out[item.id] = true; });
+    return out;
+  }
+
+  /* Polja stavke koja korisnik smije promijeniti, i granica dužine svakog.
+     Ono čega ovdje nema (id, type, sekcija) se ne mijenja: izmjena tipa bi od
+     Fatihe napravila brojani zikr, a izmjena id-a bi pobrisala sve dosad
+     čekirano. */
+  var IZMJENJIVA = {
+    title: 80,
+    arabic: 2000,
+    transliteration: 2000,
+    translation: 2000,
+    source: 120
+  };
+
+  /* Izmjene jedne stavke iz ovog fajla. Pamti se SAMO ono što je poslano —
+     stavka bez upisanog prevoda i dalje uzima prevod odavde, pa ispravka u
+     data.js stigne i do onoga ko je toj dovi promijenio samo broj.
+
+     Prazan string je valjana vrijednost i znači "obriši mi ovaj dio" (npr.
+     izvor). Zato se razlikuje od polja kojeg u zapisu uopšte nema. */
+  function cleanIzmjena(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) { return null; }
+
+    var out = {};
+    var ima = false;
+
+    Object.keys(IZMJENJIVA).sort().forEach(function (key) {
+      if (typeof raw[key] !== "string") { return; }
+      out[key] = cleanText(raw[key], IZMJENJIVA[key]);
+      ima = true;
+    });
+
+    var n = cleanBroj(raw.repetitions);
+    if (n) { out.repetitions = n; ima = true; }
+
+    return ima ? out : null;
+  }
+
+  /* Ključevi se sortiraju iz istog razloga iz kojeg i `skriveno`: aplikacija
+     poredi svoj config sa onim sa servera preko JSON.stringify, pa bi isti
+     zapis u drugom redoslijedu prošao kao promjena i ponovo iscrtao ekran.
+
+     Samo stavke IZ OVOG FAJLA: vlastita stavka svoj sadržaj nosi u `dodatno`,
+     pa bi zapis na dva mjesta značio dva izvora istine za istu karticu. */
+  function cleanIzmjene(raw, known) {
+    var out = {};
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) { return out; }
+
+    Object.keys(raw).slice(0, 500).sort().forEach(function (id) {
+      if (!known[id]) { return; }
+      var izmjena = cleanIzmjena(raw[id]);
+      if (izmjena) { out[id] = izmjena; }
+    });
+
+    return out;
+  }
+
+  /* Koliko se stranica uči dnevno. Sve što nije upotrebljiv broj pada na 1 —
+     zatečeno ponašanje, jedna stranica dnevno. */
+  function cleanStranice(raw) {
+    var n = (typeof raw === "number") ? raw : parseInt(raw, 10);
+    if (!isFinite(n)) { return 1; }
+    n = Math.floor(n);
+    if (n < 1) { return 1; }
+    return Math.min(n, MAX_STRANICA);
+  }
+
+  function defaultPrefs() {
+    return {
+      transkript: false, skriveno: [], izmjene: {}, stranice: 1, dodatno: []
+    };
+  }
+
+  /* Config kakav se smije zapamtiti i poslati. Redoslijed poslova nije
+     proizvoljan: `dodatno` ide prvo jer tek iz njega izlazi spisak poznatih
+     id-eva, po kojem se onda čisti `skriveno`. Obrnutim redom bi kvačica na
+     vlastitoj dovi otpala kao "nepoznat id". */
+  function cleanPrefs(raw) {
+    var out = defaultPrefs();
+    if (!raw || typeof raw !== "object") { return out; }
+
+    if (typeof raw.transkript === "boolean") { out.transkript = raw.transkript; }
+
+    out.dodatno = cleanCustom(raw.dodatno);
+    var known = knownItemIds(out.dodatno);
+
+    if (Array.isArray(raw.skriveno)) {
+      var vidjeno = Object.create(null);
+      out.skriveno = raw.skriveno.slice(0, 1000).filter(function (id) {
+        if (typeof id !== "string" || !known[id] || vidjeno[id]) { return false; }
+        vidjeno[id] = true;
+        return true;
+      }).sort();
+    }
+
+    /* `izmjene` idu SAMO nad stavkama iz ovog fajla, pa im spisak nije
+       `known` (koji nosi i vlastite) nego goli spisak odavde. */
+    out.izmjene = cleanIzmjene(raw.izmjene, knownItemIds([]));
+    out.stranice = cleanStranice(raw.stranice);
+
+    return out;
+  }
+
+  /* --------------------------------------------------------------------------
+     Config -> sekcije
+
+     Vlastite stavke i korisnikove izmjene se NE gledaju nigdje osim ovdje.
+     Sve dalje (ekran, postavke, podsjetnici) radi sa običnim sekcijama i ne
+     zna da li stavka dolazi iz ovog fajla ili iz korisnikovog configa.
+     -------------------------------------------------------------------------- */
+
+  /* Vlastite stavke jedne sekcije, u obliku obične stavke iz ovog fajla.
+     Nose `custom: true` — po tome postavke znaju kojoj se stavci nudi
+     olovka za izmjenu, a ekran to polje uopšte ne gleda. */
+  function customFor(prefs, sectionId) {
+    var list = (prefs && Array.isArray(prefs.dodatno)) ? prefs.dodatno : [];
+
+    return list.filter(function (c) {
+      return c && c.sekcija === sectionId && typeof c.id === "string";
+    }).map(function (c) {
+      var item = { id: c.id, custom: true };
+
+      if (c.type === "dua") {
+        item.type = "dua";
+        item.title = "";
+        item.arabic = c.arabic || "";
+        item.transliteration = c.transliteration || "";
+        item.translation = c.translation || "";
+        if (c.source) { item.source = c.source; }
+      } else {
+        item.type = "count";
+        item.title = c.title || "";
+        if (c.repetitions) { item.repetitions = c.repetitions; }
+      }
+
+      return item;
+    });
+  }
+
+  /* Sekcija sa dopisanim vlastitim stavkama i primijenjenim izmjenama.
+
+     KOPIJA, nikad izmjena zatečenog objekta: `sections` je jedan zajednički
+     niz, a na serveru kroz istu (toplu) instancu prolaze configi više
+     korisnika — izmjena na mjestu bi Harisov spisak nakalemila Leili. Kad
+     korisnik nije ništa promijenio, vraća se zatečena sekcija i kopije nema. */
+  function withConfig(section, prefs) {
+    if (section.kind === "quran") { return section; }
+
+    var extra = customFor(prefs, section.id);
+    var izmjene = (prefs && prefs.izmjene && typeof prefs.izmjene === "object")
+      ? prefs.izmjene : {};
+    var promjena = extra.length > 0;
+
+    var items = (section.items || []).concat(extra).map(function (item) {
+      var izmjena = izmjene[item.id];
+      if (!izmjena) { return item; }
+      promjena = true;
+      var copy = {};
+      Object.keys(item).forEach(function (k) { copy[k] = item[k]; });
+      Object.keys(izmjena).forEach(function (k) { copy[k] = izmjena[k]; });
+      return copy;
+    });
+
+    if (!promjena) { return section; }
+
+    var out = {};
+    Object.keys(section).forEach(function (k) { out[k] = section[k]; });
+    out.items = items;
+    return out;
+  }
+
+  /* SVE sekcije onako kako ih taj korisnik ima — sa svojim stavkama i svojim
+     izmjenama, ali BEZ sakrivanja i bez filtriranja po danu. Iz ovoga se
+     grade postavke i numeracija dova; ekran i podsjetnici idu kroz
+     `sectionsForDate()` ispod, koji ovo dodatno prosije. */
+  function fullSections(prefs) {
+    return sections.map(function (section) { return withConfig(section, prefs); });
+  }
+
+  /* Stavka tačno onako kako je u ovom fajlu, bez ijedne korisnikove izmjene.
+     Postavkama treba da bi u polju za broj mogle pokazati šta vrijedi kad se
+     polje isprazni. Vraća null za vlastitu stavku — nje u fajlu i nema. */
+  function baseItem(id) {
+    var found = null;
+    sections.forEach(function (section) {
+      (section.items || []).forEach(function (item) {
+        if (item.id === id) { found = item; }
+      });
+    });
+    return found;
+  }
+
   /* JEDINI izvor istine za "koje sekcije postoje tog dana" — koriste ga i
      aplikacija (script.js) i server (api/_lib.js), pa se pravilo ne vodi na
      dva mjesta koja se mogu razići.
@@ -667,9 +985,10 @@
      aplikaciji, now.date na serveru), pa se sekcija, spisak čekiranog i
      podsjetnik prebacuju u novi dan u istom trenutku.
 
-     `prefs` je config korisnika i iz njega se čita samo `skriveno` — spisak
-     id-eva stavki koje je isključio. Nepoznat ili nepostojeći config ne gasi
-     ništa: ugašeno mora biti izričito na tom spisku, inače bi svaki poziv bez
+     `prefs` je config korisnika. Iz njega dolaze i vlastite stavke i vlastiti
+     izmjene (`fullSections()` iznad), a ovdje se dodatno odbacuje ono što je
+     na spisku `skriveno`. Nepoznat ili nepostojeći config ne gasi ništa:
+     ugašeno mora biti izričito na tom spisku, inače bi svaki poziv bez
      configa (stari kod, uređaj bez imena) tiho pobrisao pola spiska.
 
      Server prosljeđuje config vlasnika baze, pa isključena stavka znači isto
@@ -679,7 +998,7 @@
     var wd = weekdayFromKey(dateKey);
     var skriveno = (prefs && Array.isArray(prefs.skriveno)) ? prefs.skriveno : [];
 
-    return sections.filter(function (section) {
+    return fullSections(prefs).filter(function (section) {
       if (section.days && section.days.indexOf(wd) === -1) { return false; }
       /* Kur'anska sekcija nema `items` pa je ne može isprazniti filter ispod —
          gasi je njena jedina stavka, pod id-em "quran". */
@@ -693,9 +1012,7 @@
       });
       if (kept.length === section.items.length) { return section; }
 
-      /* KOPIJA, ne izmjena zatečenog objekta: `sections` je jedan zajednički
-         niz, a na serveru kroz istu (toplu) instancu prolaze configi više
-         korisnika — izmjena na mjestu bi Harisov spisak nakalemila Leili. */
+      /* KOPIJA, ne izmjena zatečenog objekta — vidi `withConfig()`. */
       var copy = {};
       Object.keys(section).forEach(function (k) { copy[k] = section[k]; });
       copy.items = kept;
@@ -716,7 +1033,11 @@
      `items` joj se namjerno NE dodaje u nizu `sections` gore — ušla bi u svaki
      račun koji ide preko `section.items` (a svi oni Kur'an već broje posebno,
      preko `kind === "quran"`), pa bi se stranica računala dvaput. */
-  var QURAN_ITEM = { id: "quran", title: "Današnja stranica", type: "count" };
+  /* Tip "quran" postoji samo ovdje i samo za postavke: nije ni dova ni
+     brojani zikr, pa se ne smije predstaviti kao "count" — forma bi joj tada
+     ponudila broj ponavljanja umjesto broja stranica. Ekran ovu stavku ne
+     crta kroz `renderItem()` nego kroz `renderQuranCard()`. */
+  var QURAN_ITEM = { id: "quran", title: "Današnja stranica", type: "quran" };
 
   function sectionItems(section) {
     if (!section) { return []; }
@@ -725,10 +1046,13 @@
   }
 
   /* Sekcije čije se POJEDINAČNE stavke smiju isključiti — sve. Iz ovoga se
-     gradi spisak kvačica u postavkama i po njemu server odbacuje nepoznate
-     id-eve iz `skriveno`. */
-  function pickableSections() {
-    return sections.slice();
+     gradi spisak kvačica u postavkama.
+
+     Prima config jer u spisku moraju stajati i vlastite stavke: one se u
+     postavkama i prave, i sakrivaju, i brišu. Bez configa vraća goli spisak
+     iz ovog fajla. */
+  function pickableSections(prefs) {
+    return fullSections(prefs);
   }
 
   /* Naslovi kakve korisnik vidi: { idStavke: "DOVA #7" }.
@@ -738,11 +1062,14 @@
      ona koju vrati `sectionsForDate()`. Bez toga bi sakrivanje jedne dove
      prenumerisalo sve ispod nje, pa se u postavkama i na ekranu ista dova ne
      bi zvala isto. Ovako "DOVA #7" ostane #7, a u spisku se vidi rupa —
-     tačan opis stanja, jer je ta dova stvarno isključena. */
-  function itemTitles(sectionId) {
+     tačan opis stanja, jer je ta dova stvarno isključena.
+
+     Config se prima iz istog razloga: vlastita dova se numeriše zajedno sa
+     ostalima ("DOVA #35"), pa mora biti u spisku po kojem se broji. */
+  function itemTitles(sectionId, prefs) {
     var out = {};
     var found = null;
-    sections.forEach(function (s) { if (s.id === sectionId) { found = s; } });
+    fullSections(prefs).forEach(function (s) { if (s.id === sectionId) { found = s; } });
     if (!found) { return out; }
 
     var duaNo = 0;
@@ -788,6 +1115,15 @@ if (typeof module !== "undefined" && module.exports) {
     pickableSections: pickableSections,
     sectionItems: sectionItems,
     itemTitles: itemTitles,
-    weekdayFromKey: weekdayFromKey
+    weekdayFromKey: weekdayFromKey,
+    /* Config: čišćenje stoji ovdje, pa isti zapis prolazi kroz ista pravila
+       i u browseru (settings.js) i na serveru (api/_lib.js). */
+    defaultPrefs: defaultPrefs,
+    cleanPrefs: cleanPrefs,
+    /* Stavka bez ijedne korisnikove izmjene — iz nje postavke pune formu. */
+    baseItem: baseItem,
+    /* Izraz po kojem se prepoznaje id vlastite stavke — server ga pušta u
+       bazu iako ga nema u data.js. */
+    CUSTOM_ITEM_ID: CUSTOM_ITEM_ID
   };
 }
