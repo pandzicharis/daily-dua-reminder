@@ -477,7 +477,7 @@ const DEFAULT_END_TIME = "22:00";
    `url` je ono što service worker otvori na klik: podsjetnik koji pokriva
    jednu sekciju vodi pravo na nju, a dnevni pokriva više njih pa vodi na
    vrh aplikacije. */
-function pushPayload(task, status, late, badge) {
+function pushPayload(task, status, late, ikonica) {
   const one = (task.sections && task.sections.length === 1)
     ? task.sections[0]
     : null;
@@ -512,10 +512,17 @@ function pushPayload(task, status, late, badge) {
      brojka" nije opcija. Ovako brojka stiže besplatno, uz podsjetnik koji
      ionako ide.
 
-     Izostavlja se kad je pozivalac ne pošalje (proba izgleda obavijesti,
-     `npm run test-push`) — tada service worker ikonicu ne dira. */
-  if (typeof badge === "number" && isFinite(badge)) {
-    payload.badge = Math.max(0, Math.round(badge));
+     Uz broj ide i DAN za koji je izbrojan. Push ima TTL od 55 minuta, pa onaj
+     poslan u 23:00 zna biti isporučen poslije ponoći — a tada jučerašnji broj
+     nije "malo star" nego pogrešan, jer novi dan počinje prazan. Service
+     worker po tom danu prepozna zakašnjelu poruku i ikonicu očisti umjesto da
+     je naslika.
+
+     Izostavlja se kad ga pozivalac ne pošalje (proba izgleda obavijesti,
+     `npm run test-push`) — tada service worker ikonicu uopšte ne dira. */
+  if (ikonica && typeof ikonica.broj === "number" && isFinite(ikonica.broj)) {
+    payload.badge = Math.max(0, Math.round(ikonica.broj));
+    payload.badgeDan = ikonica.dan;
   }
 
   return JSON.stringify(payload);

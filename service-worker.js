@@ -87,7 +87,28 @@ self.addEventListener("fetch", function (event) {
 
    Push bez `badge` polja (npr. `npm run test-push`) NE dira ikonicu —
    proba izgleda obavijesti ne smije ostaviti izmišljen broj za sobom.
+
+   SVAKI DAN JE NOV BROJAČ, pa uz broj stiže i dan za koji je izbrojan
+   (`badgeDan`). Push ima TTL od 55 minuta i APNs ga zna isporučiti sa
+   zakašnjenjem: onaj poslan u 23:00 može stići u 00:20, a tada jučerašnji
+   broj nije "malo star" nego pogrešan — novi dan počinje prazan. Takva
+   poruka zato ikonicu ČISTI umjesto da je naslika; nula je u tom trenutku
+   tačan odgovor, jer prvi podsjetnik novog dana tek slijedi.
    ------------------------------------------------------------------------ */
+
+/* "YYYY-MM-DD" po lokalnom vremenu uređaja — istim pravilom kojim aplikacija
+   računa svoj dan (`getLocalDateKey()` u script.js), da se ikonica i ekran ne
+   mogu raziće. Server računa po Sarajevu; za uređaj u drugoj zoni se ta dva
+   dana mogu razlikovati, i tada se ikonica jednom očisti bez potrebe —
+   bezopasno, jer je prvo otvaranje aplikacije ili prvi sljedeći podsjetnik
+   ionako prepišu. */
+function danasKey() {
+  var d = new Date();
+  return d.getFullYear() + "-" +
+         String(d.getMonth() + 1).padStart(2, "0") + "-" +
+         String(d.getDate()).padStart(2, "0");
+}
+
 function postaviBroj(n) {
   if (n === null) { return Promise.resolve(); }
   if (!self.navigator || typeof self.navigator.setAppBadge !== "function") {
@@ -166,6 +187,13 @@ self.addEventListener("push", function (event) {
   var badge = (typeof data.badge === "number" && isFinite(data.badge))
     ? Math.max(0, Math.round(data.badge))
     : null;
+
+  /* Zakašnjela poruka iz jučerašnjeg dana — očisti ikonicu umjesto da na nju
+     preneseš jučerašnji broj. Poruka bez `badgeDan` se ne dira: nju šalje
+     samo proba, koja broj ionako ne nosi. */
+  if (badge !== null && data.badgeDan && data.badgeDan !== danasKey()) {
+    badge = 0;
+  }
 
   event.waitUntil(
     Promise.all([

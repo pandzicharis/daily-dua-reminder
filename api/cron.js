@@ -342,7 +342,10 @@ module.exports = async function handler(req, res) {
           /* Tekst se pravi ovdje, jednom, pa ide i u izvještaj — tako se u
              izvještaju vidi TAČNO ono što je uređaj dobio, bez ponavljanja
              pravila o tekstu na drugom mjestu. */
-          const payload = pushPayload(task, status[task.id], late[task.id], badge);
+          const payload = pushPayload(
+            task, status[task.id], late[task.id],
+            { broj: badge, dan: now.date }
+          );
           const shown = JSON.parse(payload);
 
           /* Proba samo javlja šta BI otišlo — ni jedan upis, ni jedan push. */

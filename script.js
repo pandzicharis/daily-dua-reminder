@@ -1497,10 +1497,13 @@
   function updateBadge() {
     if (!window.mojZikrBadge || isPreview()) { return; }
 
+    /* Uz brojke ide i DAN za koji vrijede. Bez toga bi badge.js nastavio
+       primjenjivati jučerašnje brojke sve dok se ekran ponovo ne iscrta, a
+       brojač mora biti nov svaki dan. */
     window.mojZikrBadge.osvjezi(progressGroups().map(function (group) {
       var tally = countGroup(group.sections);
       return { id: group.id, done: tally.done, total: tally.total };
-    }));
+    }), dateKey);
   }
 
   /* ------------------------------------------------------------------------
@@ -1892,26 +1895,52 @@
     window.mojZikrSync.start(todayKey, checkedMap());
   }
 
-  /* Ako je kartica ostala otvorena preko ponoći, na povratku se sam
-     otvara novi dan sa čistim spiskom. */
+  /* ------------------------------------------------------------------------
+     Ponoć — nov dan, čist spisak
+
+     Aplikacija uvijek prikazuje SAMO današnji dan, pa u ponoć mora sama
+     preći na novi: prazan spisak, prazne trake, prazna ikonica. Ništa se ne
+     prenosi u sutra — ostane li večeras pet dova neurađeno, sutra se kreće
+     od nule, jer se sve računa iz spiska TOG dana.
+
+     U probi se ostaje na izabranom danu, samo se "natrag na danas" pomjerio.
+
+     Vraća `true` kad je dan zaista promijenjen, da pozivalac zna treba li i
+     povući zajedničko stanje za taj novi dan. */
+  function rolloverIfNewDay() {
+    if (getLocalDateKey() === todayKey) { return false; }
+
+    todayKey = getLocalDateKey();
+    if (!isPreview()) { dateKey = todayKey; }
+    render();
+    window.scrollTo(0, 0);
+    return true;
+  }
+
+  /* Povratak u aplikaciju. Na telefonu je ovo skoro uvijek trenutak u kojem
+     se ponoć i primijeti — PWA u pozadini je skrivena, pa se povratak desi. */
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { return; }
 
-    /* Ponoć je prešla dok je kartica bila otvorena. Ako se gledao današnji
-       dan, otvara se novi; u probi se ostaje na izabranom danu, samo se
-       "natrag na danas" pomjerio. */
-    if (getLocalDateKey() !== todayKey) {
-      todayKey = getLocalDateKey();
-      if (!isPreview()) { dateKey = todayKey; }
-      render();
-      window.scrollTo(0, 0);
-    }
+    rolloverIfNewDay();
 
     /* Povratak u aplikaciju je jedini trenutak kad se stanje sa drugog
        uređaja može vidjeti — tu se povlači. Ako je nešto ostalo neposlano
        (bio offline), prvo ode gore. */
     refreshShared();
   });
+
+  /* Ali prozor koji cijelu noć stoji otvoren i na ekranu nikad ne prijavi
+     povratak, pa bi do jutra pokazivao jučerašnji spisak sa jučerašnjim
+     kvačicama — i brojem na ikonici uz njega. Zato i sat, ne samo povratak.
+
+     Pola minute je dovoljno blizu ponoći da se ne primijeti, a provjera je
+     samo poređenje dva stringa. Ne računa se koliko ima do ponoći nekim
+     jednokratnim `setTimeout`-om: uspavan laptop, promjena zone i ljetno
+     vrijeme sve to pomjere, a poređenje dana ne mogu pokvariti. */
+  setInterval(function () {
+    if (rolloverIfNewDay()) { refreshShared(); }
+  }, 30 * 1000);
 
   /* Mreža se vratila — pošalji što je čekalo i pokupi tuđe promjene. */
   window.addEventListener("online", refreshShared);

@@ -152,7 +152,7 @@ Iz toga slijedi sve, bez ijednog posebnog slučaja:
 Gleda se **samo početak** prozora, nikad kraj. Petački podsjetnik prestaje
 zvoniti u 12:59, a dnevni u ponoć — ali neurađeno neurađeno ostaje: kraj
 prozora gasi **obavijesti**, ne broj. Nepročitano se tako gomila do kraja
-dana, a poslije ponoći je nov dan i broj sam pada na nulu.
+dana.
 
 Ne gledaju se ni `requires` ni `quietFor`. Oni postoje da se dvije obavijesti
 ne poklope u istoj minuti; broj je jedan jedini, pa se nema šta poklopiti.
@@ -160,6 +160,37 @@ ne poklope u istoj minuti; broj je jedan jedini, pa se nema šta poklopiti.
 Satnica se čita iz `notification-tasks.js`, iz **istog** spiska po kojem stižu
 obavijesti — pomjeri `startTime` i broj na ikonici se pomjeri zajedno sa
 podsjetnikom.
+
+### Svaki dan je nov brojač
+
+Ništa se ne prenosi u sutra. Ostane li večeras pet dova neurađeno, sutra se
+**ne** broji 5 + današnje nego se kreće od nule.
+
+To nije poseban korak koji nekad može izostati — broj se **uvijek** računa iz
+spiska tog dana, a spisak u ponoć postaje nov i prazan. Na serveru je to
+`items:<ime>:<datum>` (svaki dan svoj ključ), u aplikaciji `state` vezan za
+`dateKey`. Zbrajanja kroz dane nema jer ne postoji ništa što bi se zbrajalo.
+
+Ostaje samo pitanje **kada** ikonica to primijeti, a to zavisi od toga šta u
+tom trenutku uopšte radi:
+
+| Situacija u ponoć | Kad se krug ugasi |
+|---|---|
+| aplikacija otvorena (i u pozadini) | u ponoć, najkasnije 30 s poslije — `script.js` otvori nov dan satom, ne samo pri povratku |
+| aplikacija otvorena, niko je ne dira | u ponoć — `badge.js` odbaci jučerašnje brojke i sam očisti krug |
+| aplikacija zatvorena, pa otvorena ujutro | u trenutku otvaranja |
+| aplikacija zatvorena cijelu noć | **tek prvom jutarnjom obavijesti (08:00)** |
+
+Zadnji red je jedina rupa i **ne može se zatvoriti**: dok aplikacija ne radi,
+ikonicu može dirnuti samo push, a push bez vidljive obavijesti nije dozvoljen
+(`userVisibleOnly`). Budilnik u ponoć samo da se očisti brojka bio bi gori od
+zastarjelog broja.
+
+Uz broj zato ide i **dan za koji je izbrojan** (`badgeDan` u push poruci,
+`osvjezi(grupe, dan)` u aplikaciji). Push ima TTL od 55 minuta i APNs ga zna
+isporučiti sa zakašnjenjem — onaj poslan u 23:00 može stići u 00:20. Takva
+poruka ikonicu **čisti** umjesto da na nju prenese jučerašnji broj; nula je u
+tom trenutku tačan odgovor, jer novi dan počinje prazan.
 
 ### Tri mjesta, jedno pravilo
 
@@ -169,7 +200,7 @@ različita svijeta:
 | Ko postavlja | Kada | Odakle mu broj |
 |---|---|---|
 | `badge.js` | dok je aplikacija otvorena | `script.js` mu javi iste grupe iz kojih se crtaju trake napretka |
-| `service-worker.js` | kad stigne push | polje `badge` u push poruci |
+| `service-worker.js` | kad stigne push | polja `badge` i `badgeDan` u push poruci |
 | `api/_lib.js` (`badgeCount()`) | pri svakom ciklusu crona | spisak čekiranog TOG korisnika iz Redisa |
 
 Zato broj na ikonici nikad ne može reći nešto drugo od onoga što na trakama
@@ -179,18 +210,13 @@ Broj ide **uz obavijest**, a ne posebnim pushem: `userVisibleOnly` traži
 vidljiv odgovor na svaki push, pa "tihi push samo da se osvježi brojka" nije
 opcija. Ovako brojka stiže besplatno, uz podsjetnik koji ionako ide.
 
-Dvije posljedice toga, obje svjesne:
-
-- Ako je aplikacija zatvorena preko ponoći, jučerašnji broj stoji na ikonici
-  do prve jutarnje obavijesti (08:00) ili do otvaranja aplikacije — što prije
-  dođe. Nema načina da se ikonica dirne bez pusha, a push bez obavijesti nije
-  dozvoljen.
-- `npm run test-push` **ne** šalje `badge`, pa proba izgleda obavijesti ne
-  može ostaviti izmišljen broj za sobom.
+Posljedica toga je gornja tabela — dok aplikacija ne radi, sve ovisi o
+sljedećem pushu. Uz to: `npm run test-push` **ne** šalje `badge`, pa proba
+izgleda obavijesti ne može ostaviti izmišljen broj za sobom.
 
 Otvorena aplikacija osvježava broj i sama od sebe, jednom u minuti i pri
 svakom povratku u aplikaciju — inače u 19:00 večernje ne bi ušle u zbir dok
-se nešto ne dodirne.
+se nešto ne dodirne, a u ponoć krug ne bi nestao dok se nešto ne dodirne.
 
 ### Kako se provjerava
 
