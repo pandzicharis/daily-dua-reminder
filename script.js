@@ -181,12 +181,17 @@
   }
 
   /* State za jedan dan. Stari dani ostaju sačuvani u storage-u, ali se
-     nigdje ne prikazuju — sutra se otvara potpuno čist spisak. */
+     nigdje ne prikazuju — sutra se otvara potpuno čist spisak.
+
+     `counts` je nedovršeno brojanje klikova (vidi 5b) i stoji ODVOJENO od
+     `items`: `items` je urađeno/nije i to je ono što ide na server, a
+     `counts` je "dokle si stigao" i ostaje na ovom uređaju. */
   function getDayState(key) {
     var day = readStore()[key];
     if (!day || typeof day !== "object") { day = {}; }
     if (!day.items || typeof day.items !== "object") { day.items = {}; }
     if (typeof day.quran !== "boolean") { day.quran = false; }
+    if (!day.counts || typeof day.counts !== "object") { day.counts = {}; }
     return day;
   }
 
@@ -253,6 +258,12 @@
 
     state.items = next;
     state.quran = quran;
+
+    /* Stavka koja je gore dobila kvačicu ne nosi više nedovršeno brojanje:
+       kvačica je konačno stanje, a brojka bi ostala visiti pod njom i
+       ponovo se pojavila kad se stavka odčekira. */
+    Object.keys(next).forEach(function (id) { delete state.counts[id]; });
+
     saveDayState();
     renderSections();
     updateProgress();
@@ -374,22 +385,122 @@
   }
 
   /* ------------------------------------------------------------------------
+     5b. Brojanje klikom — stavka sa `repetitions`
+
+     Zikr koji se ponavlja (30 salavata) ne dobija kvačicu na prvi klik nego
+     na trideseti: svaki klik po kartici je jedno ponavljanje, kartica nosi
+     brojku "12 / 30" i traku koja se puni, a kvačica padne sama kad brojka
+     dođe do cilja. Aplikacija tako radi kao tespih i ne treba pamtiti dokle
+     si stigao.
+
+     Ko je izbrojao na tespihu ne mora klikati trideset puta: klik na SAM
+     checkbox označi stavku odmah, kao i svaku drugu. Zbog toga za ovo nema
+     prekidača u postavkama — obje navike prolaze kroz istu karticu.
+
+     Nedovršeno brojanje je LOKALNO (`counts` u localStorage-u) i NE ide na
+     server. Server pamti samo urađeno/nije, u hash-u `items:<ime>:<datum>`
+     gdje SVAKA vrijednost znači "urađeno" (vidi api/state.js) — upisano "12"
+     bi na drugom telefonu izgledalo kao završen zikr, a ne kao pola posla.
+     Zato brojanje ostaje na uređaju na kojem je počelo; kad dođe do kraja,
+     gore ide obična kvačica i sve dalje (podsjetnici, trake napretka) je ne
+     razlikuje od ostalih stavki.
+     ------------------------------------------------------------------------ */
+
+  /* Koliko klikova traži stavka; 0 = obična kvačica, na jedan klik.
+     `repetitions: 1` nije brojač — jedno ponavljanje je i tako jedan klik. */
+  function tapTarget(item) {
+    var n = item && item.repetitions;
+    return (typeof n === "number" && n > 1) ? n : 0;
+  }
+
+  /* Dokle je stavka izbrojana. Završena vraća cijeli cilj (30 / 30) iako u
+     `counts` nema ništa: urađeno je zapisano kvačicom u `items`, pa isto
+     stanje nema dva zapisa koja se mogu razići. Nedovršeno je uvijek unutar
+     [0, cilj), pa pokvaren ili zastario zapis ne može prikazati "31 / 30". */
+  function tapCount(id, target) {
+    if (state.items[id]) { return target; }
+    var n = state.counts[id];
+    if (typeof n !== "number" || !(n > 0)) { return 0; }
+    return Math.min(Math.floor(n), target - 1);
+  }
+
+  function setTapCount(id, n) {
+    if (n > 0) { state.counts[id] = n; } else { delete state.counts[id]; }
+  }
+
+  /* Sitan drhtaj na klik — tespih u ruci. Android ga ima, iOS ne podržava
+     `vibrate` pa tamo prosto nema ničega; oba slučaja su u redu. */
+  function buzz(pattern) {
+    try {
+      if (navigator.vibrate) { navigator.vibrate(pattern); }
+    } catch (e) {
+      /* uređaj ne dozvoljava vibraciju — brojanje radi i bez nje */
+    }
+  }
+
+  /* Brojač jedne stavke: brojka i traka ispod headera. `paint()` je JEDINO
+     mjesto koje ih crta — brojka i traka se ne smiju razići.
+
+     Dugmeta za vraćanje pogrešnog klika NEMA namjerno: jedan klik viška se
+     ne mjeri, a ko zaista želi ispočetka klikne dvaput po checkboxu
+     (označi pa odčekira) i brojka padne na nulu. */
+  function makeCounter(title, target) {
+    var chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "reps count-chip";
+
+    var track = document.createElement("div");
+    track.className = "count-track";
+
+    var fill = document.createElement("span");
+    fill.className = "count-fill";
+    track.appendChild(fill);
+
+    function paint(count, done) {
+      var shown = done ? target : count;
+
+      chip.textContent = shown + " / " + target;
+      chip.setAttribute("aria-label", title + ": " + shown + " od " + target +
+        (done ? " — završeno, klikom se vraća na nulu" : " — dodaj jedan"));
+      chip.classList.toggle("is-full", done);
+
+      fill.style.transform = "scaleX(" + (shown / target) + ")";
+    }
+
+    /* Kratak skok brojke na svaki klik. Klasa se prvo skida i tjera se
+       proračun rasporeda — bez toga browser ne vidi promjenu, pa se pri
+       brzom klikanju animacija ne pokrene drugi put. */
+    function pulse() {
+      chip.classList.remove("is-bump");
+      void chip.offsetWidth;
+      chip.classList.add("is-bump");
+    }
+
+    return { chip: chip, track: track, paint: paint, pulse: pulse };
+  }
+
+  /* ------------------------------------------------------------------------
      6. Stavka liste
      ------------------------------------------------------------------------ */
 
   /* displayTitle dolazi izvana jer se dove numerišu automatski ("DOVA #3"). */
   function renderItem(item, displayTitle) {
     var checked = !!state.items[item.id];
+    var target = tapTarget(item);
 
     var article = document.createElement("article");
-    article.className = "item" + (checked ? " is-done" : "");
+    article.className = "item" + (checked ? " is-done" : "") +
+                        (target ? " is-counted" : "");
 
     /* Namjerno <div>, ne <label>: cijela kartica ima svoj click handler,
        pa bi label toggle-ao dodatno i poništio ga. */
     var head = document.createElement("div");
     head.className = "item-head";
 
-    var input = makeCheckbox(displayTitle, checked);
+    var input = makeCheckbox(
+      target ? displayTitle + " — označi kao završeno" : displayTitle,
+      checked
+    );
 
     var title = document.createElement("span");
     title.className = "item-title";
@@ -398,12 +509,10 @@
     head.appendChild(input);
     head.appendChild(title);
 
-    if (item.repetitions && item.repetitions > 1) {
-      var reps = document.createElement("span");
-      reps.className = "reps";
-      reps.textContent = item.repetitions + "x";
-      head.appendChild(reps);
-    }
+    /* Brojana stavka nosi brojku umjesto nepromjenjive oznake "30x": broj
+       ponavljanja se sada vidi iz same brojke ("0 / 30"). */
+    var counter = target ? makeCounter(displayTitle, target) : null;
+    if (counter) { head.appendChild(counter.chip); }
 
     /* Izvor (Kur'an / hadis) — sitna oznaka u desnom ćošku headera,
        u istom redu sa brojem dove. */
@@ -415,6 +524,11 @@
     }
 
     article.appendChild(head);
+
+    if (counter) {
+      article.appendChild(counter.track);
+      counter.paint(tapCount(item.id, target), checked);
+    }
 
     /* "surah" i "count" -> samo checkbox + naslov, bez teksta.
        "dua" -> arapski u jednom toku, pa prevod ispod.
@@ -445,24 +559,75 @@
       if (body.childNodes.length) { article.appendChild(body); }
     }
 
-    /* Klik bilo gdje po kartici prebacuje checkbox — i za čekiranje i za
-       odčekiranje. Klik na sam checkbox preskačemo jer ga browser već
-       prebaci, pa bismo ga ovdje vratili nazad. */
+    /* Jedini put kojim se ova kartica mijenja — i klik po njoj, i "−", i
+       checkbox. `count` se gleda samo kod brojane stavke.
+
+       Server i napredak se dodiruju SAMO kad se promijenilo urađeno/nije:
+       brojanje je lokalno, pa dvadeset devet klikova ne pravi ni jedan
+       zahtjev ni jedno ponovno računanje traka. */
+    function commit(done, count) {
+      var was = !!state.items[item.id];
+
+      state.items[item.id] = done;
+      if (target) { setTapCount(item.id, done ? 0 : count); }
+      saveDayState();
+
+      /* Prvi klik znači da dalje skrol vodi čovjek (vidi openScrollPending). */
+      openScrollPending = false;
+
+      input.checked = done;
+      article.classList.toggle("is-done", done);
+      if (counter) { counter.paint(count, done); }
+
+      if (done === was) { return; }
+      pushChange(item.id, done);
+      updateProgress();
+      if (done) { focusNext(article); }
+    }
+
+    /* Klik po brojanoj kartici: jedno ponavljanje više. Završena se istim
+       klikom vraća na nulu — kao što se i obična kvačica skida klikom po
+       kartici, samo što ovdje pada i brojka. */
+    function tap() {
+      if (state.items[item.id]) { commit(false, 0); return; }
+
+      var next = tapCount(item.id, target) + 1;
+      if (next >= target) {
+        commit(true, target);
+        buzz([14, 40, 22]);
+        return;
+      }
+
+      commit(false, next);
+      counter.pulse();
+      buzz(8);
+    }
+
+    /* Klik bilo gdje po kartici. Klik na sam checkbox preskačemo jer ga
+       browser već prebaci, pa bi ga `commit` iz njegovog `change` i ovaj
+       poziv odradili dvaput. */
     article.addEventListener("click", function (e) {
       if (e.target === input) { return; }
-      input.checked = !input.checked;
-      input.dispatchEvent(new Event("change"));
+      if (target) { tap(); return; }
+      commit(!input.checked, 0);
     });
 
+    /* Checkbox ostaje "urađeno / nije urađeno" i na brojanoj stavci: njime
+       se označava zikr izbrojan na tespihu, a odčekiravanjem brojka pada na
+       nulu. Prima i klik i tastaturu, pa ide preko `change`, ne `click`. */
     input.addEventListener("change", function () {
-      openScrollPending = false;
-      state.items[item.id] = input.checked;
-      saveDayState();
-      pushChange(item.id, input.checked);
-      article.classList.toggle("is-done", input.checked);
-      updateProgress();
-      if (input.checked) { focusNext(article); }
+      commit(input.checked, 0);
     });
+
+    /* Brojka je dugme (da se do brojanja može i tastaturom), pa njen klik
+       ne smije ići dalje: kartica bi ga uhvatila drugi put i dodala dva
+       ponavljanja na jedan klik. */
+    if (counter) {
+      counter.chip.addEventListener("click", function (e) {
+        e.stopPropagation();
+        tap();
+      });
+    }
 
     return article;
   }

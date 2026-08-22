@@ -466,7 +466,12 @@ main {
 /* --------------------------------------------------------------------------
    7. Stavka
    -------------------------------------------------------------------------- */
-/* Cijela kartica je klikabilna — i za čekiranje i za odčekiranje. */
+/* Cijela kartica je klikabilna — i za čekiranje i za odčekiranje.
+
+   `touch-action: manipulation` je zbog brojanih stavki (7b): tamo ide
+   trideset klikova u nizu, a bez ovoga bi drugi klik na telefonu bio
+   "double-tap zoom" umjesto ponavljanja i svaki bi kasnio dok browser čeka
+   da vidi hoće li biti dupli. Pinch-zoom strane ostaje. */
 .item {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -475,6 +480,7 @@ main {
   overflow: hidden;
   cursor: pointer;
   user-select: none;
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
@@ -510,6 +516,76 @@ main {
   border-radius: 99px;
   padding: 3px 10px;
   font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   7b. Brojana stavka — "12 / 30"
+   Zikr sa `repetitions` se ne označava jednim klikom nego se izbroji: svaki
+   klik po kartici je jedno ponavljanje (vidi "5b. Brojanje klikom" u
+   script.js). Brojka je dugme, a ispod headera stoji traka koja se puni.
+   -------------------------------------------------------------------------- */
+
+/* Brojka je DUGME, ne oznaka: klik po njoj je isto što i klik po kartici
+   (+1), pa se do brojanja može i tastaturom. Nosi i klasu `.reps`, odatle
+   su mu pilula, boja i tabularne cifre. */
+.count-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: 1.5;
+  /* Fiksna širina da red ne poskakuje na "9 / 30" -> "10 / 30". */
+  min-width: 4.75em;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+/* Izbrojano do kraja — zlatna pilula, isto kao završena traka napretka. */
+.count-chip.is-full {
+  color: var(--primary);
+  background: var(--accent-soft);
+}
+
+.count-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Skok brojke na svaki klik — jedini znak da je klik primljen, jer se do
+   tridesetog ništa drugo na kartici ne mijenja osim trake. */
+@keyframes count-bump {
+  0%   { transform: scale(1); }
+  38%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+.count-chip.is-bump {
+  animation: count-bump 0.22s ease;
+}
+
+/* Traka ide uz DONJU ivicu kartice (brojana stavka nema tijela), pa se
+   puni preko cijele njene širine. Skalira se po X, kao trake u headeru —
+   jeftinije od animiranja širine i bez ponovnog rasporeda strane. */
+.count-track {
+  height: 3px;
+  background: var(--background-alt);
+  overflow: hidden;
+}
+
+.count-fill {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.22s ease, background 0.3s ease;
+}
+
+.item.is-done .count-fill {
+  background: var(--accent);
 }
 
 /* Izvor dove (Kur'an / hadis) — desni ćošak headera, u istom redu sa
@@ -1766,6 +1842,12 @@ body.has-fab {
   .celebrate,
   .celebrate *,
   .celebrate-fab {
+    animation: none !important;
+  }
+
+  /* Brojka se ne trza na klik. Sam broj se svejedno mijenja, pa se i dalje
+     vidi da je klik primljen. */
+  .count-chip.is-bump {
     animation: none !important;
   }
 }
