@@ -697,6 +697,11 @@
   var MAX_CUSTOM = 60;
   var MAX_REPS = 999;
 
+  /* Koliko id-eva stane u jedan zapis redoslijeda. Najduža sekcija ima
+     34 stavke, a vlastitih ih može biti još šezdeset — 300 je daleko iznad
+     svake stvarne upotrebe, a tijelo zahtjeva drži malim. */
+  var MAX_REDOSLIJED = 300;
+
   /* Gornja granica dnevne porcije mushafa — jedan džuz. Nije zabrana nego
      mjera: cijela porcija stoji na JEDNOJ kartici sa jednom kvačicom, pa
      preko toga kartica prestaje biti kartica. */
@@ -718,7 +723,10 @@
   }
 
   /* Sekcije u koje vlastita stavka SMIJE ući. Kur'anska ne može: ona nije
-     lista nego jedna stavka (vidi `sectionItems()`), pa nema gdje dopisati. */
+     lista nego jedna stavka (vidi `sectionItems()`), pa nema gdje dopisati.
+
+     Isti spisak vrijedi i za redoslijed (`cleanRedoslijed()`) — u sekciji sa
+     jednom stavkom nema šta prerasporediti. */
   function customSectionIds() {
     var out = Object.create(null);
     sections.forEach(function (section) {
@@ -852,9 +860,68 @@
     return Math.min(n, MAX_STRANICA);
   }
 
+  /* Korisnikov redoslijed stavki, po sekciji: `{ "<sekcija>": ["id", ...] }`.
+
+     Spisak NE mora biti potpun i ne mora se održavati: sve čega u njemu nema
+     — nova dova iz ovog fajla, tek dodana vlastita stavka — ostaje na svom
+     mjestu iza onoga što jeste (vidi `poredaj()`). Zato nova stavka ne traži
+     upis ni u čiji config, isto kao što ga ne traži ni `skriveno`.
+
+     Ključevi su iste sekcije u koje smije i vlastita stavka: kur'anska nije
+     lista nego jedna stavka, pa u njoj nema šta prerasporediti.
+
+     Ključevi se sortiraju iz istog razloga kao kod `izmjene`: config se sa
+     serverom poredi preko JSON.stringify, pa bi isti zapis u drugom
+     redoslijedu ključeva prošao kao promjena i ponovo iscrtao ekran. */
+  function cleanRedoslijed(raw, known) {
+    var out = {};
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) { return out; }
+
+    var dozvoljene = customSectionIds();
+
+    Object.keys(raw).slice(0, 50).sort().forEach(function (sekcija) {
+      if (!dozvoljene[sekcija]) { return; }
+      if (!Array.isArray(raw[sekcija])) { return; }
+
+      var vidjeno = Object.create(null);
+      var ids = raw[sekcija].slice(0, MAX_REDOSLIJED).filter(function (id) {
+        if (typeof id !== "string" || !known[id] || vidjeno[id]) { return false; }
+        vidjeno[id] = true;
+        return true;
+      });
+
+      /* Prazan spisak nije redoslijed — ne pamti se, pa sekcija ostaje na
+         zatečenom poretku umjesto da nosi zapis koji ništa ne kaže. */
+      if (ids.length) { out[sekcija] = ids; }
+    });
+
+    return out;
+  }
+
+  /* Stavke poređane po korisnikovom spisku. Ono čega u spisku nema ide IZA,
+     u zatečenom redoslijedu — tako nova dova iz ovog fajla ne nestane i ne
+     upadne nasumično u sredinu tuđeg poretka, nego se pojavi na dnu sekcije
+     gdje se i vidi da je nova. */
+  function poredaj(items, order) {
+    var mjesto = Object.create(null);
+    order.forEach(function (id, i) { mjesto[id] = i; });
+
+    var poznate = [];
+    var ostale = [];
+
+    items.forEach(function (item) {
+      if (mjesto[item.id] === undefined) { ostale.push(item); }
+      else { poznate.push(item); }
+    });
+
+    poznate.sort(function (a, b) { return mjesto[a.id] - mjesto[b.id]; });
+    return poznate.concat(ostale);
+  }
+
   function defaultPrefs() {
     return {
-      transkript: false, skriveno: [], izmjene: {}, stranice: 1, dodatno: []
+      transkript: false, skriveno: [], izmjene: {}, stranice: 1, dodatno: [],
+      redoslijed: {}
     };
   }
 
@@ -884,6 +951,9 @@
        `known` (koji nosi i vlastite) nego goli spisak odavde. */
     out.izmjene = cleanIzmjene(raw.izmjene, knownItemIds([]));
     out.stranice = cleanStranice(raw.stranice);
+    /* Redoslijed smije spominjati i vlastite stavke, pa ide nad `known` —
+       isto sito kroz koje je prošlo i `skriveno`. */
+    out.redoslijed = cleanRedoslijed(raw.redoslijed, known);
 
     return out;
   }
@@ -947,6 +1017,24 @@
       Object.keys(izmjena).forEach(function (k) { copy[k] = izmjena[k]; });
       return copy;
     });
+
+    /* Korisnikov redoslijed ide POSLIJE dopisivanja vlastitih stavki i
+       izmjena — u spisku moraju biti sve stavke koje sekcija ima, inače bi
+       vlastita dova uvijek završavala na dnu.
+
+       Sve dalje zavisi samo od poretka u `items`, pa se reda na jednom
+       mjestu: ekran, postavke i numeracija dova (`itemTitles()`) idu kroz
+       `fullSections()`, a podsjetnici kroz `sectionsForDate()` — i jedno i
+       drugo prolazi ovuda. Numeracija zato prati redoslijed: dova povučena na
+       vrh postane "DOVA #1" i u postavkama i na ekranu. */
+    var order = (prefs && prefs.redoslijed && typeof prefs.redoslijed === "object")
+      ? prefs.redoslijed[section.id] : null;
+
+    if (Array.isArray(order) && order.length) {
+      var poredane = poredaj(items, order);
+      var isto = poredane.every(function (item, i) { return items[i] === item; });
+      if (!isto) { items = poredane; promjena = true; }
+    }
 
     if (!promjena) { return section; }
 

@@ -32,7 +32,7 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `manifest.webmanifest` | ime, boje, ikonice, `display: standalone` |
 | `service-worker.js` | prima push, prikazuje obavijest, obrađuje klik, offline keš |
 | `notifications.js` | dozvola, pretplata, uključi/isključi |
-| `settings.js` | config korisnika (ime, transkripcija, spisak, izmjene stavki, vlastite stavke) + drawer u kojem se podešava |
+| `settings.js` | config korisnika (ime, transkripcija, spisak, izmjene stavki, vlastite stavke, redoslijed) + drawer u kojem se podešava |
 | `sync.js` | zajedničko stanje kroz uređaje: slanje promjena, povlačenje, offline red |
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
 | `icons/*.png` | 96, 192, 512, maskable 192/512, apple-touch 180, favicon 32 |
@@ -187,8 +187,16 @@ Zupčanik u headeru otvara drawer sa dna (`settings.js`):
 | **Uredi stavku** | `izmjene` | **svaka** stavka, i ona iz `data.js`: naslov, tekstovi, izvor, broj ponavljanja. |
 | **Stranica dnevno** | `stranice` | koliko se stranica mushafa uči u jednom danu (1–20) — iza olovke na kur'anskoj stavci. |
 | **Vlastite stavke** | `dodatno` | svoja dova ili svoj zikr, u bilo koju sekciju osim kur'anske, bez deploya. |
+| **Redoslijed** | `redoslijed` | red se povuče i spusti gdje treba; poredak vrijedi i na ekranu, i u postavkama, i u numeraciji dova. |
 
 Uz njih je i dugme za podsjetnike (zvono), preseljeno iz glavnog ekrana.
+
+**Sadržaj se sam dovede pred oči.** Rasklopljena sekcija i otvorena forma se
+skrolaju u vidno polje (`skrolujDo()`) — sekcija zaglavljem na vrh, forma
+cijela ako stane. Bez toga se akordeon na dnu drawer-a otvori ispod ruba i
+izgleda kao da se ništa nije desilo. Ne `scrollIntoView()`: ono skrola najbliži
+okvir koji se skrola — a to zna biti i stranica ispod drawer-a — i pomjeri i
+kad je element ionako na ekranu.
 
 Config se čuva pod `cfg:<ime>` i dijeli kroz uređaje istog korisnika, isto
 kao i čekirano.
@@ -213,7 +221,9 @@ ijednog posebnog pravila, samo iz brojanja.
 Numeraciju dova daje `itemTitles()` i ide preko **cijelog** spiska sekcije, ne
 preko prikazanog — zato "DOVA #7" ostane #7 kad se neka iznad nje isključi, a
 u spisku se vidi rupa. Bez toga se ista dova u postavkama i na ekranu ne bi
-zvala isto.
+zvala isto. Broj je pri tom **mjesto u spisku, a ne ime dove**: povučena na
+vrh, ista dova postane "DOVA #1" — i u postavkama i na ekranu, jer oboje ide
+kroz isti `fullSections()`.
 
 **Prekidač sekcije ima tri položaja** i **ne pamti ništa** — stanje uvijek
 izvodi iz kvačica ispod sebe:
@@ -275,16 +285,21 @@ Nema dvije vrste reda. Stavka iz `data.js` i vlastita stavka izgledaju i rade
 isto:
 
 ```
-[✓]  Naslov                          30×   ✎
-     detalj (prevod dove ili izvor)
+⠿  [✓]  Naslov                        30×   ✎
+        detalj (prevod dove ili izvor)
 ```
 
 | dio | šta je |
 |---|---|
+| ⠿ | znak da se red premješta — vuče se svejedno cijeli red (vidi ispod) |
 | kvačica | prikaži / sakrij (`skriveno`) — jedini reverzibilni prekidač |
 | detalj | dova: početak prevoda (naslov joj je samo broj); ostalo: izvor |
-| oznaka | broj ponavljanja (`30×`) ili dnevna porcija (`3 stranice`); **zlatna** = dirano |
+| oznaka | broj ponavljanja (`30×`) ili dnevna porcija (`3 stranice`) |
 | ✎ | sve ostalo: izmjena i brisanje |
+
+Oznaka je **uvijek iste boje**, i na stavci iz `data.js` i na vlastitoj: kaže
+koliko, a ne odakle stavka dolazi. (Nekad je bila zlatna kad je stavka dirana,
+pa je isti broj na dvije susjedne kartice značio dvije različite stvari.)
 
 Prije je stavka iz `data.js` imala polje za broj pravo u redu, a vlastita
 olovku — redovi su tako izgledali kao dvije različite stvari iako stoje jedan
@@ -292,6 +307,49 @@ do drugog, a sadržaj dove se nije mogao ni vidjeti ni popraviti.
 
 Kur'anska sekcija je isti takav akordeon sa jednom stavkom; iza njene olovke
 je broj stranica umjesto broja ponavljanja.
+
+### Redoslijed (`redoslijed`)
+
+`{ "dove": ["dove-fatiha", "dove-hemm-hazen", ...] }` — po sekciji, spisak
+id-eva onim redom kojim ih korisnik hoće vidjeti. Kur'anske sekcije nema: ona
+je jedna stavka, pa nema šta prerasporediti.
+
+Spisak **ne mora biti potpun i ne održava se**. Sve čega u njemu nema — nova
+dova u `data.js`, tek dodana vlastita stavka — ide iza onoga što jeste, u
+zatečenom redoslijedu. Zato nova dova ne traži upis ni u čiji config i ne može
+upasti nasumično u sredinu tuđeg poretka.
+
+Poretak se primjenjuje na jednom mjestu, u `withConfig()` — poslije
+dopisivanja vlastitih stavki i izmjena, jer i one moraju biti u spisku koji se
+reda. Sve dalje ide kroz `fullSections()` odnosno `sectionsForDate()`, pa isti
+poredak vrijedi za ekran, postavke, numeraciju dova i podsjetnike.
+
+**Kako se vuče.** Cijeli red, ne samo tačke lijevo — tačke su znak, a razlika
+je samo u tome koliko se čeka:
+
+| hvatanje | kad kreće |
+|---|---|
+| tačke (⠿) | odmah — imaju `touch-action: none`, pa prst na njima ne skrola |
+| miš po redu | čim se pređe 5px; kraći pokret je klik po kvačici |
+| prst po redu | nakon 260ms držanja u mjestu; pomjeri li se prije toga, to je skrol |
+| ↑ / ↓ na tačkama | jedan red gore ili dolje, bez povlačenja |
+
+Ne `draggable="true"`: HTML5 drag&drop na dodir ne radi uopšte, a aplikacija
+je prije svega telefonska. Prst i skrol se inače ne mogu razdvojiti — zato
+`touch-action: none` stoji samo na tačkama, a ostatak reda skrol zaustavlja
+tek kad povlačenje počne (`touchmove` sa `passive: false`, u trenutku kad prst
+još stoji pa preglednik skrol nije ni započeo). Klik koji dođe poslije
+prevlaka se guta, inače bi svako premještanje usput isključilo tu dovu.
+
+Dok se vuče, redovi se **ne premještaju u DOM-u** nego samo pomjeraju
+`transform`-om: mjere uzete na početku ostaju važeće do kraja, animacija ide
+na GPU, a kvačice i fokus ne odlete pod rukom. Prst u rubu spiska ga skrola
+sam, pa se dova iz sredine spiska od 34 reda može dovući na vrh. U DOM se
+upisuje tek na kraju, ponovnim crtanjem spiska — jer se sa poretkom mijenja i
+numeracija dova.
+
+**„Vrati zadani redoslijed“** stoji u podnožju sekcije dok ima šta vratiti,
+kao i „Vrati na zadano“ u formi: spisak od 34 dove se ne vraća red po red.
 
 ### Uređivanje stavke (`izmjene`)
 
@@ -316,7 +374,8 @@ kljašti.
 
 `repetitions: 1` znači „bez brojača" — jedno ponavljanje i nije brojanje.
 
-**Brisanje.** Vlastita stavka nestaje zauvijek. Stavka iz `data.js` se skida
+**Brisanje** (korpa lijevo u formi, odvojena od „Odustani“ i „Sačuvaj“ da se
+ne promaši). Vlastita stavka nestaje zauvijek. Stavka iz `data.js` se skida
 sa spiska (`skriveno`) i gube joj se izmjene — obrisati je zauvijek nije
 moguće jer nije korisnikova, pa forma to i kaže umjesto da se pravi da jeste.
 Kvačica pored nje je vraća, i to zatečenu, a ne ono što je nekad promijenio

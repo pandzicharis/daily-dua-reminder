@@ -1,7 +1,7 @@
 /* ==========================================================================
    settings.js — config korisnika i drawer u kojem se podešava.
 
-   Pet stvari:
+   Šest stvari:
 
      ime           određuje ČIJI je spisak. Svi uređaji sa istim imenom vide
                    isto čekirano; dva imena su dva odvojena spiska. Ime nije
@@ -29,6 +29,10 @@
      stavke        kur'anske, bez deploya. Tri oblika: zikr sa brojem, dova
                    (arapski, transkripcija, prevod, izvor) i obična stavka
                    sa samo naslovom i kvačicom.
+
+     redoslijed    red se povuče i spusti gdje treba. Poredak vrijedi svugdje
+                   — na ekranu, u postavkama i u numeraciji dova — jer se
+                   primjenjuje u data.js, kroz koji sve to prolazi.
 
    Redovi spiska su svi isti — vidi „Spisak stavki“ ispod.
 
@@ -245,6 +249,56 @@
     node.className = className;
     if (text !== undefined) { node.textContent = text; }
     return node;
+  }
+
+  /* Koliko se ostavi iznad onoga do čega se skrola — taman da se vidi kako
+     iznad ima još, a ne da element stoji zalijepljen za rub. */
+  var SKROL_RUB = 10;
+
+  function mirnijeAnimacije() {
+    return !!(window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  /* Skrola tijelo drawer-a taman toliko da se `node` vidi CIJEL.
+
+     Ne `scrollIntoView()`: ono skrola najbliži okvir koji se skrola — a to
+     zna biti i stranica ispod drawer-a — i pomjeri i kad je element ionako
+     na ekranu. Ovdje se pomak računa nad tijelom drawer-a, pa ako pomaka
+     nema, ništa se ne dešava.
+
+     Element viši od ekrana (rasklopljena sekcija od 34 reda) se poravna
+     vrhom; dalje se ionako skrola rukom. */
+  function skrolujDo(node) {
+    if (!el.body || !node) { return; }
+
+    /* Sadržaj se upravo promijenio — rasklopljen akordeon, umetnuta forma —
+       pa se mjeri tek kad ga preglednik složi. */
+    requestAnimationFrame(function () {
+      var okvir = el.body.getBoundingClientRect();
+      var meta = node.getBoundingClientRect();
+      var vrh = meta.top - okvir.top;
+      var dno = meta.bottom - okvir.top;
+      var pomak = 0;
+
+      if (dno > okvir.height - SKROL_RUB) {
+        pomak = Math.min(dno - okvir.height + SKROL_RUB, vrh - SKROL_RUB);
+      }
+      /* Iznad ruba je uvijek jače od svega: element se prvo mora vidjeti od
+         svog vrha, pa tek onda koliko ga stane. */
+      if (vrh < SKROL_RUB) { pomak = vrh - SKROL_RUB; }
+      if (Math.abs(pomak) < 2) { return; }
+
+      var cilj = el.body.scrollTop + pomak;
+      if (el.body.scrollTo) {
+        el.body.scrollTo({
+          top: cilj,
+          behavior: mirnijeAnimacije() ? "auto" : "smooth"
+        });
+      } else {
+        el.body.scrollTop = cilj;
+      }
+    });
   }
 
   /* Red sa prekidačem. `onChange` dobija novo stanje. */
@@ -510,9 +564,412 @@
     return btn;
   }
 
-  function redStavke(section, item, naslov) {
+  /* --- redoslijed: povlačenje reda ----------------------------------------- */
+  /* Spisak sekcije nije više onaj iz data.js nego korisnikov: red se uhvati i
+     spusti gdje treba. Zapis je `redoslijed` u configu (vidi
+     `cleanRedoslijed()` u data.js), pa novi poredak vrijedi i na drugom
+     uređaju, i na ekranu i u podsjetniku.
+
+     Zašto svoje povlačenje, a ne `draggable="true"`: HTML5 drag&drop na dodir
+     ne radi uopšte, a aplikacija je prije svega telefonska. Pointer događaji
+     rade i mišem i prstom, kroz isti kod.
+
+     Vuče se CIJELI red, ne samo hvatište. Tačke lijevo su tu da se vidi da se
+     red može premjestiti; hvatanje za njih kreće odmah, a hvatanje bilo gdje
+     drugdje po redu mora prvo pokazati namjeru — inače bi svaki dodir po
+     spisku bio početak premještanja:
+
+       hvatište     odmah, bez čekanja
+       miš          čim se pređe 5px — kraći pokret je klik po kvačici
+       prst         nakon 260ms držanja u mjestu; pomjeri li se prije toga,
+                    to je skrol spiska i povlačenja nema
+
+     Prst i skrol se inače ne mogu razdvojiti: `touch-action: none` po cijelom
+     redu bi ubio skrolanje spiska od 34 reda, pa stoji samo na hvatištu.
+     Ostatak reda skrol zaustavlja tek kad povlačenje počne, i to
+     zaustavljanjem `touchmove`-a — u tom trenutku prst još stoji, pa
+     preglednik skrol nije ni započeo.
+
+     Redovi se dok traje povlačenje NE premještaju u DOM-u nego samo pomjeraju
+     `transform`-om: mjerenja tada ostaju važeća od početka do kraja, animacija
+     ide na GPU, a otvorena kvačica ili fokus ne odlete pod rukom. U DOM se
+     upisuje tek na kraju, i to ponovnim crtanjem spiska — jer promjena
+     redoslijeda mijenja i numeraciju dova („DOVA #7“ postane „DOVA #1“). */
+
+  /* Aktivno povlačenje, jedno u cijeloj aplikaciji. */
+  var vuca = null;
+
+  /* Dodir ili pritisak koji JOŠ nije povlačenje — čeka se držanje ili pokret.
+     Vidi tabelu gore. */
+  var priprema = null;
+
+  var DRZANJE = 260;      /* ms držanja prstom prije nego red krene */
+  var PRAG_MIS = 5;       /* px pokreta mišem koji znače „ovo nije klik“ */
+  var PRAG_DODIR = 8;     /* px pokreta prstom koji znače „ovo je skrol“ */
+
+  /* Rub tijela drawer-a u kojem povlačenje samo skrola, i korak po kadru.
+     Bez toga se dova iz sredine spiska od 34 reda ne bi mogla dovući na vrh:
+     prst dođe do ivice ekrana i tu stane. */
+  var RUB_SKROLA = 64;
+  var KORAK_SKROLA = 14;
+
+  /* Šest tačaka — znak koji se na spiskovima čita kao „ovo se povlači“.
+     Krugovi, a ne potezi: tačka nacrtana potezom zavisi od `stroke-linecap`
+     i zna ispasti kao crtica. */
+  function ikonaHvat() {
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "set-grip-icon");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "currentColor");
+    svg.setAttribute("aria-hidden", "true");
+
+    [[9, 6], [15, 6], [9, 12], [15, 12], [9, 18], [15, 18]].forEach(function (t) {
+      var c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", String(t[0]));
+      c.setAttribute("cy", String(t[1]));
+      c.setAttribute("r", "1.6");
+      svg.appendChild(c);
+    });
+
+    return svg;
+  }
+
+  /* Hvatište je pravo dugme, ne samo ikona: tako ga dohvati i tastatura
+     (strelice gore/dolje pomjeraju red) i čitač ekrana dobije ime. Miš i prst
+     idu kroz `pointerdown` na cijelom redu, pa `click` na njemu ne znači
+     ništa. */
+  function dugmeHvat(naslov) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "set-grip";
+    btn.title = "Povuci za promjenu redoslijeda";
+    btn.setAttribute("aria-label", "Premjesti „" + naslov + "“");
+    btn.appendChild(ikonaHvat());
+
+    btn.addEventListener("click", function (e) { e.preventDefault(); });
+
+    btn.addEventListener("keydown", function (e) {
+      var smjer = e.key === "ArrowUp" ? -1 : (e.key === "ArrowDown" ? 1 : 0);
+      if (!smjer) { return; }
+      e.preventDefault();
+      pomjeriTipkom(btn, smjer);
+    });
+
+    return btn;
+  }
+
+  /* Spisak id-eva onako kako redovi stoje, pa zamjena dva mjesta. Kratko i
+     bez povlačenja — isto što uradi i prevlak, samo na strelicu. */
+  function pomjeriTipkom(btn, smjer) {
+    /* Otvorena forma stoji NA MJESTU jednog reda — tog reda tada nema u
+       spisku, pa bi novi poredak ispao bez njega. Isto pravilo kao u
+       `dodirRed()`. */
+    if (forma) { return; }
+
+    var red = btn.closest(".set-pick");
+    var body = red && red.parentNode;
+    if (!red || !body) { return; }
+
+    var redovi = redoviU(body);
+    var od = redovi.indexOf(red);
+    var na = od + smjer;
+    if (od === -1 || na < 0 || na >= redovi.length) { return; }
+
+    var ids = redovi.map(function (r) { return r.dataset.id; });
+    ids.splice(na, 0, ids.splice(od, 1)[0]);
+    primiRedoslijed(body.dataset.sekcija, ids, red.dataset.id);
+  }
+
+  function redoviU(body) {
+    return Array.prototype.slice.call(body.querySelectorAll(".set-pick"));
+  }
+
+  /* Novi redoslijed sekcije: zapamti, iscrtaj spisak iznova (zbog numeracije
+     dova), javi ekranu i pošalji odmah — kao i svaka druga izmjena stavke. */
+  function primiRedoslijed(sekcija, ids, fokus) {
+    if (!sekcija) { return; }
+    if (!config.redoslijed) { config.redoslijed = {}; }
+    config.redoslijed[sekcija] = ids;
+    spremiPromjenu(fokus);
+  }
+
+  /* --- od dodira do povlačenja --------------------------------------------- */
+
+  /* Dodir po redu. Odavde se ide ili u povlačenje ili u ništa — kvačicu i
+     olovku pušta da rade same. */
+  function dodirRed(e, red) {
+    /* Samo lijevi taster / prvi prst. */
+    if (e.button !== undefined && e.button > 0) { return; }
+    if (vuca || priprema) { return; }
+
+    /* Olovka je radnja za sebe: povlačenje sa nje bi značilo da se forma
+       otvori na kraju svakog promašenog prevlaka. */
+    if (e.target.closest && e.target.closest(".set-edit")) { return; }
+
+    /* Otvorena forma stoji NA MJESTU jednog reda, pa spisak tada nije spisak
+       redova i mjere ne bi valjale. */
+    if (forma) { return; }
+
+    var body = red.parentNode;
+    if (!body || redoviU(body).length < 2) { return; }
+
+    var hvatiste = !!(e.target.closest && e.target.closest(".set-grip"));
+
+    priprema = {
+      red: red,
+      pokazivac: e.pointerId,
+      dodir: e.pointerType !== "mouse",
+      x: e.clientX,
+      y: e.clientY,
+      tajmer: 0
+    };
+
+    if (hvatiste) {
+      /* Hvatište ima `touch-action: none`, pa prst na njemu ne skrola i nema
+         se šta čekati. */
+      e.preventDefault();
+      pocniVucu();
+      return;
+    }
+
+    if (priprema.dodir) {
+      priprema.tajmer = setTimeout(function () {
+        if (priprema) { pocniVucu(); }
+      }, DRZANJE);
+    }
+  }
+
+  function otkaziPripremu() {
+    if (!priprema) { return; }
+    if (priprema.tajmer) { clearTimeout(priprema.tajmer); }
+    priprema = null;
+  }
+
+  /* Skrol se zaustavlja tek dok povlačenje traje, i to ovdje: `touchmove` sa
+     `passive: false` je jedino što na telefonu zaustavi spisak pod prstom kad
+     `touch-action` nije none (a ne smije biti — vidi komentar na vrhu). */
+  function stopDodir(e) {
+    if (vuca) { e.preventDefault(); }
+  }
+
+  /* Klik koji dolazi poslije povlačenja se guta: bez toga bi svako
+     premještanje reda usput isključilo tu dovu, jer je red labela svoje
+     kvačice. */
+  function stopKlik(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function pocniVucu() {
+    var pr = priprema;
+    if (!pr || vuca) { return; }
+    if (pr.tajmer) { clearTimeout(pr.tajmer); }
+    priprema = null;
+
+    var red = pr.red;
+    var body = red.parentNode;
+    var redovi = redoviU(body);
+    var od = redovi.indexOf(red);
+    if (od === -1) { return; }
+
+    vuca = {
+      sekcija: body.dataset.sekcija,
+      redovi: redovi,
+      /* Zatečena mjesta i visine, izmjerena jednom. Redovi se dok traje
+         povlačenje samo pomjeraju `transform`-om, pa ostaju važeća. */
+      mjere: redovi.map(function (r) {
+        return { node: r, vrh: r.offsetTop, visina: r.offsetHeight };
+      }),
+      red: red, od: od, na: od,
+      pokazivac: pr.pokazivac,
+      pocetakY: pr.y,
+      pocetakSkrol: el.body ? el.body.scrollTop : 0,
+      zadnjiY: pr.y,
+      kadar: 0
+    };
+
+    /* Bez hvatanja pokazivača povlačenje stane čim prst izađe iz reda. */
+    try { red.setPointerCapture(pr.pokazivac); } catch (err) {}
+
+    document.addEventListener("touchmove", stopDodir, { passive: false });
+    document.addEventListener("click", stopKlik, true);
+
+    document.body.classList.add("is-vuce");
+    red.classList.add("is-dragging");
+    redovi.forEach(function (r) {
+      if (r !== red) { r.classList.add("is-glide"); }
+    });
+
+    pomjeriVucu();
+    vuca.kadar = requestAnimationFrame(skrolajRub);
+  }
+
+  /* Pomak se računa i iz prsta i iz skrola: kad spisak sam otklizi pod
+     prstom, red mora ostati tamo gdje ga prst drži. */
+  function pomjeriVucu() {
+    if (!vuca) { return; }
+
+    var skrol = el.body ? el.body.scrollTop : 0;
+    var pomak = (vuca.zadnjiY - vuca.pocetakY) + (skrol - vuca.pocetakSkrol);
+    var moja = vuca.mjere[vuca.od];
+
+    vuca.red.style.transform = "translateY(" + pomak + "px) scale(1.02)";
+
+    /* Novo mjesto = koliko OSTALIH redova ima svoju sredinu iznad sredine
+       povučenog. Preko sredina, a ne preko ivica, jer redovi nisu iste
+       visine — dova sa prevodom ispod naslova je viša od zikra. */
+    var sredina = moja.vrh + moja.visina / 2 + pomak;
+    var na = 0;
+
+    vuca.mjere.forEach(function (o, i) {
+      if (i === vuca.od) { return; }
+      if (o.vrh + o.visina / 2 < sredina) { na += 1; }
+    });
+
+    if (na !== vuca.na) { vuca.na = na; rasporediRedove(); }
+  }
+
+  /* Redovi između starog i novog mjesta se sklone za tačno jednu visinu
+     povučenog reda — otud i utisak da se rupa pomjera s njim. */
+  function rasporediRedove() {
+    var h = vuca.mjere[vuca.od].visina;
+
+    vuca.mjere.forEach(function (o, i) {
+      if (i === vuca.od) { return; }
+      var d = 0;
+      if (vuca.na > vuca.od && i > vuca.od && i <= vuca.na) { d = -h; }
+      else if (vuca.na < vuca.od && i >= vuca.na && i < vuca.od) { d = h; }
+      o.node.style.transform = d ? "translateY(" + d + "px)" : "";
+    });
+  }
+
+  /* Prst u rubu tijela drawer-a skrola spisak, brže što je bliže ivici. */
+  function skrolajRub() {
+    if (!vuca) { return; }
+
+    if (el.body) {
+      var okvir = el.body.getBoundingClientRect();
+      var korak = 0;
+
+      if (vuca.zadnjiY < okvir.top + RUB_SKROLA) {
+        korak = -KORAK_SKROLA *
+          Math.min(1, (okvir.top + RUB_SKROLA - vuca.zadnjiY) / RUB_SKROLA);
+      } else if (vuca.zadnjiY > okvir.bottom - RUB_SKROLA) {
+        korak = KORAK_SKROLA *
+          Math.min(1, (vuca.zadnjiY - (okvir.bottom - RUB_SKROLA)) / RUB_SKROLA);
+      }
+
+      if (korak) {
+        var prije = el.body.scrollTop;
+        el.body.scrollTop = prije + korak;
+        /* Na kraju spiska skrol više ne ide — tada se ništa i ne mijenja. */
+        if (el.body.scrollTop !== prije) { pomjeriVucu(); }
+      }
+    }
+
+    vuca.kadar = requestAnimationFrame(skrolajRub);
+  }
+
+  /* Spuštanje: red otklizi u svoju rupu, pa se tek onda spisak crta iznova.
+     Obrnutim redom bi se novi poredak pojavio prije nego se stari dovrši, i
+     red bi vidno preskočio. */
+  function zavrsiVucu(e) {
+    if (e && e.pointerId !== undefined && priprema &&
+        e.pointerId === priprema.pokazivac) {
+      otkaziPripremu();
+    }
+
+    if (!vuca) { return; }
+    if (e && e.pointerId !== undefined && e.pointerId !== vuca.pokazivac) { return; }
+
+    var v = vuca;
+    vuca = null;
+
+    if (v.kadar) { cancelAnimationFrame(v.kadar); }
+    try { v.red.releasePointerCapture(v.pokazivac); } catch (err) {}
+    document.removeEventListener("touchmove", stopDodir, { passive: false });
+    document.body.classList.remove("is-vuce");
+
+    /* Klik poslije prevlaka stiže tek na sljedeći krug petlje — osluškivač se
+       skida iza njega, ne odmah. */
+    setTimeout(function () {
+      document.removeEventListener("click", stopKlik, true);
+    }, 0);
+
+    /* Gdje je rupa: kad se red spušta, mjesto ispod njega se popelo za
+       njegovu visinu; kad se penje, mjesto je taman gdje je bio red na koji
+       je došao. */
+    var moja = v.mjere[v.od];
+    var cilj = v.mjere[v.na];
+    var kraj = (v.na > v.od)
+      ? cilj.vrh + cilj.visina - moja.visina
+      : cilj.vrh;
+    var pomak = kraj - moja.vrh;
+
+    v.red.classList.remove("is-dragging");
+    v.red.classList.add("is-glide");
+    v.red.style.transform = pomak ? "translateY(" + pomak + "px)" : "";
+
+    var pomjeren = v.na !== v.od;
+    var ids = v.redovi.map(function (r) { return r.dataset.id; });
+    if (pomjeren) { ids.splice(v.na, 0, ids.splice(v.od, 1)[0]); }
+
+    /* Trag se briše u svakom slučaju — i kad se red vratio odakle je krenuo,
+       jer i tada nosi `transform` i klase od povlačenja. */
+    setTimeout(function () {
+      v.redovi.forEach(function (r) {
+        r.classList.remove("is-glide");
+        r.style.transform = "";
+      });
+      if (pomjeren) { primiRedoslijed(v.sekcija, ids); }
+    }, mirnijeAnimacije() ? 0 : 200);
+  }
+
+  /* Pokazivač je uhvaćen na redu, ali događaji svejedno stižu dovde — jedan
+     par osluškivača za sva povlačenja, umjesto po jedan na svakom redu koji
+     se pri svakom crtanju spiska pravi iznova. */
+  document.addEventListener("pointermove", function (e) {
+    if (priprema && e.pointerId === priprema.pokazivac) {
+      var d = Math.abs(e.clientY - priprema.y) + Math.abs(e.clientX - priprema.x);
+      if (priprema.dodir) {
+        /* Prst se pomjerio prije nego je držanje isteklo — to je skrol. */
+        if (d > PRAG_DODIR) { otkaziPripremu(); }
+      } else if (d > PRAG_MIS) {
+        pocniVucu();
+      }
+    }
+
+    if (!vuca || e.pointerId !== vuca.pokazivac) { return; }
+    e.preventDefault();
+    vuca.zadnjiY = e.clientY;
+    pomjeriVucu();
+  }, { passive: false });
+
+  document.addEventListener("pointerup", zavrsiVucu);
+  document.addEventListener("pointercancel", zavrsiVucu);
+
+  /* Spisak se skrolao pod pripremljenim prstom (npr. inercijom) — namjera
+     više nije premještanje. */
+  document.addEventListener("scroll", function () {
+    if (priprema && priprema.dodir) { otkaziPripremu(); }
+  }, true);
+
+  function redStavke(section, item, naslov, redanje) {
     var row = document.createElement("div");
     row.className = "set-pick";
+    row.dataset.id = item.id;
+
+    /* Tačke skroz lijevo: prvo što se u redu vidi je da se red može
+       premjestiti. Povlači se svejedno cijeli red (vidi `dodirRed()`) — ovo
+       je znak, ne jedino mjesto za koje se smije uhvatiti.
+
+       Sekcija sa jednom stavkom ga nema: tu nema šta prerasporediti, a znak
+       koji ništa ne obećava je gori od njegovog nedostatka. */
+    if (redanje) {
+      row.appendChild(dugmeHvat(naslov));
+      row.addEventListener("pointerdown", function (e) { dodirRed(e, row); });
+    }
 
     /* <label>, ne <div> sa handlerom: klik po kvačici i tekstu prebacuje
        kvačicu sam od sebe, i taj dio reda dolazi pod čitač ekrana kao jedna
@@ -553,10 +1010,14 @@
     var tools = document.createElement("span");
     tools.className = "set-pick-tools";
 
+    /* Oznaka je uvijek iste boje, i na stavci iz data.js i na vlastitoj:
+       ona kaže KOLIKO, a ne odakle stavka dolazi. Zlatna je nekad značila
+       „dirano“, ali je u spisku ispadalo da isti broj na dvije susjedne
+       kartice znači dvije različite stvari. */
     var oznaka = oznakaStavke(item);
     if (oznaka) {
       var chip = document.createElement("span");
-      chip.className = "set-pick-meta" + (dirnuta(item) ? " is-custom" : "");
+      chip.className = "set-pick-meta";
       chip.textContent = oznaka;
       tools.appendChild(chip);
     } else if (dirnuta(item)) {
@@ -599,6 +1060,8 @@
     var body = document.createElement("div");
     body.className = "set-acc-body";
     body.id = "acc-" + section.id;
+    /* Povlačenje reda odavde čita kojoj sekciji novi poredak pripada. */
+    body.dataset.sekcija = section.id;
 
     var open = otvorene[section.id] === true;
     body.hidden = !open;
@@ -637,6 +1100,11 @@
       body.hidden = !otvori;
       toggle.setAttribute("aria-expanded", otvori ? "true" : "false");
       box.classList.toggle("is-open", otvori);
+      /* Rasklopljena sekcija je duža od ekrana, a zaglavlje po kojem se
+         kliknulo zna biti pri dnu — bez ovoga se spisak otvori ISPOD ruba i
+         izgleda kao da se ništa nije desilo. Skrola se cijeli akordeon, pa mu
+         zaglavlje ostane na vrhu a stavke ispod njega. */
+      if (otvori) { skrolujDo(box); }
     });
 
     head.appendChild(toggle);
@@ -644,8 +1112,10 @@
 
     var inputs = {};
 
+    var redanje = items.length > 1;
+
     items.forEach(function (item) {
-      var red = redStavke(section, item, titles[item.id] || item.title);
+      var red = redStavke(section, item, titles[item.id] || item.title, redanje);
       inputs[item.id] = red.input;
       body.appendChild(red.node);
     });
@@ -713,6 +1183,21 @@
     btn.addEventListener("click", function () { otvoriFormu(acc.section, null); });
 
     acc.foot.appendChild(btn);
+
+    /* Put nazad na poredak iz data.js. Stoji samo dok ima šta vratiti — isto
+       pravilo kao „Vrati na zadano“ u formi. Bez njega bi se spisak od 34
+       dove morao vraćati red po red. */
+    if (config.redoslijed && config.redoslijed[acc.id]) {
+      var vrati = document.createElement("button");
+      vrati.type = "button";
+      vrati.className = "set-reset";
+      vrati.textContent = "Vrati zadani redoslijed";
+      vrati.addEventListener("click", function () {
+        delete config.redoslijed[acc.id];
+        spremiPromjenu();
+      });
+      acc.foot.appendChild(vrati);
+    }
   }
 
   function akordeonPoId(id) {
@@ -768,7 +1253,7 @@
       forma = { sekcija: section.id, id: null, mjesto: "podnozje" };
       acc.foot.textContent = "";
       acc.foot.appendChild(formaStavke(section, null));
-      acc.foot.querySelector(".set-new").scrollIntoView({ block: "nearest" });
+      skrolujDo(acc.foot.querySelector(".set-new"));
       return;
     }
 
@@ -779,7 +1264,9 @@
     forma = { sekcija: section.id, id: id, mjesto: "red" };
     var box = formaStavke(section, item);
     red.parentNode.replaceChild(box, red);
-    box.scrollIntoView({ block: "nearest" });
+    /* Olovka se pritisne bilo gdje u spisku — forma se otvara na mjestu tog
+       reda, pa mora doći pred oči cijela, a ne tek zavirivati odozdo. */
+    skrolujDo(box);
   }
 
   /* --- forma ---------------------------------------------------------------- */
@@ -1049,10 +1536,22 @@
     desno.className = "set-new-group";
 
     if (!novo) {
+      /* Korpa umjesto riječi: brisanje je jedina radnja u formi koja se ne
+         vraća, pa se ne treba čitati nego prepoznati — i ne stoji u istom
+         redu riječi sa „Odustani“ i „Sačuvaj“, gdje se lako promaši. Ime za
+         čitač ekrana i dalje kaže šta radi. */
       var obrisi = document.createElement("button");
       obrisi.type = "button";
-      obrisi.className = "set-new-btn is-danger";
-      obrisi.textContent = "Obriši";
+      obrisi.className = "set-new-btn is-danger is-icon";
+      obrisi.title = "Obriši";
+      obrisi.setAttribute("aria-label", "Obriši");
+      obrisi.appendChild(svgPutanje("set-new-btn-icon", [
+        "M4 7h16",
+        "M9.5 7V4.6h5V7",
+        "M6.4 7l.8 12.1a1.6 1.6 0 0 0 1.6 1.5h6.4a1.6 1.6 0 0 0 1.6-1.5L17.6 7",
+        "M10 11v6",
+        "M14 11v6"
+      ]));
       obrisi.addEventListener("click", obrisiStavku);
       lijevo.appendChild(obrisi);
 
@@ -1260,33 +1759,54 @@
   /* Zajednički kraj za spremanje i brisanje: očisti (isto sito kroz koje
      prolazi i server), zapamti, zatvori formu, iscrtaj spisak, javi ekranu i
      pošalji ODMAH — izmjena stavke nije kvačica koja može čekati svoj krug. */
-  function spremiPromjenu() {
+  function spremiPromjenu(fokus) {
     config = ocisti(config);
     zapamtiConfig();
     forma = null;
     trebaCrtanje = false;
     nacrtajAkordeone();
+    /* Spisak je iscrtan iznova, pa je nestao i element na kojem je bio fokus.
+       Kad se red pomjerio tastaturom, hvatište se mora vratiti pod prst —
+       inače bi svaka strelica bacila fokus na početak drawer-a i drugi korak
+       ne bi bio moguć. */
+    if (fokus) { vratiFokus(fokus); }
     javi();
     posalji(true);
+  }
+
+  function vratiFokus(id) {
+    if (!el.picks) { return; }
+    var hvat = el.picks.querySelector('.set-pick[data-id="' + id + '"] .set-grip');
+    if (!hvat) { return; }
+    try { hvat.focus({ preventScroll: true }); } catch (e) { hvat.focus(); }
   }
 
   /* --- crtanje i osvježavanje spiska --------------------------------------- */
 
   /* Potpis onoga što je UPISANO u redove spiska: vlastite stavke (kojih ima
-     i koje su), izmjene (naslov i detalj u redu) i broj stranica (oznaka u
-     kur'anskom redu). Kvačice nisu tu — njih `primijeniStanje()` mijenja u
+     i koje su), izmjene (naslov i detalj u redu), broj stranica (oznaka u
+     kur'anskom redu) i redoslijed (kojim redom stoje, a od njega zavisi i
+     numeracija dova). Kvačice nisu tu — njih `primijeniStanje()` mijenja u
      zatečenim čvorovima, bez ponovnog crtanja.
 
      Bez `izmjene` i `stranice` bi promjena sa drugog uređaja stigla na ekran
      ali ne i u postavke: red bi i dalje pisao stari naslov i stari broj. */
   function strukturaSada() {
     return JSON.stringify([
-      config.dodatno || [], config.izmjene || {}, config.stranice || 1
+      config.dodatno || [], config.izmjene || {}, config.stranice || 1,
+      config.redoslijed || {}
     ]);
   }
 
   function nacrtajAkordeone() {
     if (!el.picks) { return; }
+
+    /* Spisak se prazni pa puni iznova, a između toga mu visina padne na nulu
+       i drawer bi skočio na svoj vrh. Sadržaj je poslije crtanja iste visine,
+       pa se skrol jednostavno vrati tamo gdje je bio — bez ovoga bi svaka
+       izmjena stavke i svako povlačenje reda odvelo na početak postavki. */
+    var skrol = el.body ? el.body.scrollTop : 0;
+
     strukturaPotpis = strukturaSada();
     el.picks.textContent = "";
     akordeoni = birljive().map(function (section) {
@@ -1295,6 +1815,8 @@
       return acc;
     });
     primijeniStanje();
+
+    if (el.body) { el.body.scrollTop = skrol; }
   }
 
   /* Kvačice, brojka i prekidač sekcije u stanje iz `config`. Zove se i poslije
@@ -1377,6 +1899,9 @@
     /* --- tijelo --- */
     var body = document.createElement("div");
     body.className = "drawer-body set-body";
+    /* Jedini okvir koji se u postavkama skrola — `skrolujDo()` i povlačenje
+       reda računaju pomak nad njim. */
+    el.body = body;
 
     /* Ime */
     var field = document.createElement("div");
@@ -1699,6 +2224,9 @@
      osluškivač u script.js; ovaj ovdje gleda samo sebe, pa se ne miješaju. */
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape" || !otvoren) { return; }
+    /* Usred povlačenja se ne zatvara ništa — red je u zraku, a zatvoren
+       drawer bi ga ostavio da se spusti u spisak kojeg više nema. */
+    if (vuca) { return; }
     /* Escape zatvara ono što je najuže: prvo formu, tek onda cijeli drawer. */
     if (forma) { zatvoriFormu(); return; }
     zatvori();

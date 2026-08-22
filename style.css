@@ -1440,6 +1440,56 @@ main {
   align-items: flex-start;
   gap: 10px;
   -webkit-tap-highlight-color: transparent;
+  /* Podignut red mora imati svoj sloj i moći nositi sjenu — vidi
+     `.set-pick.is-dragging`. Prelaz je ovdje, a ne u toj klasi, da se sjena
+     ima čime i UGASITI kad se red spusti. */
+  position: relative;
+  border-radius: var(--radius-sm);
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+/* --- povlačenje reda ------------------------------------------------------
+   Redovi se dok traje povlačenje ne premještaju u DOM-u nego samo pomjeraju
+   `transform`-om (settings.js). Otud dvije klase: `is-glide` daje prelaz
+   onome ko se sklanja, a `is-dragging` podiže red koji ide za prstom.
+
+   Sam povučeni red NEMA prelaz dok se vuče — mora stajati tačno pod prstom,
+   a ne stizati za njim. `is-glide` mu se doda tek pri spuštanju, da posljednji
+   skok u rupu bude animiran. */
+.set-pick.is-glide {
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.25, 1),
+              box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.set-pick.is-dragging {
+  z-index: 5;
+  cursor: grabbing;
+  background: var(--surface);
+  box-shadow: 0 10px 26px -8px rgba(28, 28, 25, 0.28);
+  /* Podignut red dobija zrak sa strane, a jednake negativne margine vraćaju
+     sadržaj tačno tamo gdje je bio: mjere uzete na početku povlačenja moraju
+     ostati važeće do kraja. */
+  padding: 0 10px;
+  margin: 0 -10px;
+}
+
+/* Dok se red vuče, ništa u njemu ne izgleda kao da se može pritisnuti. */
+.set-pick.is-dragging .set-pick-main,
+.set-pick.is-dragging .set-grip {
+  cursor: grabbing;
+}
+
+/* Dok se vuče, ništa se ne označava niti pali pod prstom — ni tekst reda ni
+   kvačice pored kojih prolazi. */
+body.is-vuce {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.is-vuce .set-pick-main,
+body.is-vuce .set-edit {
+  pointer-events: none;
 }
 
 .set-pick-main {
@@ -1502,7 +1552,7 @@ main {
 
 /* Oznaka u redu: broj ponavljanja ("30×") ili dnevna porcija mushafa.
    Samo za čitanje — mijenja se iza olovke, kao i sve ostalo na stavci.
-   Zlatna kaže da je stavka dirana (vlastita ili izmijenjena). */
+   Uvijek ista boja: oznaka govori koliko, a ne odakle stavka dolazi. */
 .set-pick-meta {
   font-size: 0.6875rem;
   font-weight: 600;
@@ -1512,11 +1562,6 @@ main {
   padding: 3px 9px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.set-pick-meta.is-custom {
-  color: var(--accent);
-  background: var(--accent-soft);
 }
 
 /* Izmijenjena dova nema šta brojati, pa umjesto oznake nosi tačku — inače se
@@ -1562,6 +1607,63 @@ main {
   height: 15px;
 }
 
+/* Šest tačaka na lijevom rubu reda: prvo što se vidi, i znak koji se svugdje
+   čita kao „ovo se povlači“. Tiho — bez okvira i prigušeno: red se čita zbog
+   naslova, a ne zbog alatke pored njega.
+
+   Povlači se cijeli red, ne samo ovo dugme (vidi `dodirRed()` u settings.js).
+   Razlika je u čekanju: za tačke red kreće odmah, za ostatak reda tek kad se
+   pokaže namjera. Otud i `touch-action: none` SAMO ovdje — po njemu prst ne
+   skrola nego vuče, a svuda drugdje spisak od 34 reda mora ostati skrolabilan.
+
+   Negativna lijeva margina gura tačke u rub drawer-a: kvačice ispod ostaju u
+   svojoj koloni, a spisak ne dobija još jedan pojas uvlake. */
+.set-grip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 30px;
+  margin: 5px -4px 0 -8px;
+  padding: 0;
+  /* Prigušene tačke, ali ne toliko da se izgube: znak mora da se vidi i na
+     suncu, a ne smije da nadglasa naslov reda pored sebe. */
+  color: var(--muted);
+  opacity: 0.55;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: grab;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.18s ease, background 0.18s ease;
+}
+
+.set-grip:hover {
+  opacity: 1;
+  background: var(--background-alt);
+}
+
+.set-grip:active {
+  cursor: grabbing;
+}
+
+.set-grip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.set-pick.is-dragging .set-grip {
+  color: var(--primary);
+  opacity: 1;
+}
+
+.set-grip-icon {
+  width: 16px;
+  height: 16px;
+}
+
 /* Početak prevoda — naslov dove je samo broj, po njemu se ne zna koja je. */
 .set-pick-note {
   display: block;
@@ -1569,6 +1671,33 @@ main {
   font-size: 0.75rem;
   line-height: 1.45;
   color: var(--muted);
+}
+
+/* Put nazad na poredak iz data.js — postoji samo dok je nešto povučeno.
+   Tiho, kao i „Vrati na zadano“ u formi: ne takmiči se sa dugmetom iznad. */
+.set-reset {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 0;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.set-reset:hover {
+  color: var(--text);
+}
+
+.set-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
 /* --- „Dodaj svoju stavku“ i forma ---------------------------------------- */
@@ -1857,6 +1986,28 @@ main {
 .set-new-btn.is-danger {
   color: #9a3b2f;
   border-color: #e3c3bd;
+}
+
+.set-new-btn.is-danger:hover {
+  background: #fdf1ee;
+  border-color: #d8a99f;
+}
+
+/* Brisanje nosi korpu umjesto riječi — okruglo dugme veličine dodira, da se
+   u redu sa „Odustani“ i „Sačuvaj“ vidi da nije jedno od njih. */
+.set-new-btn.is-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.set-new-btn-icon {
+  width: 17px;
+  height: 17px;
 }
 
 /* „Vrati na zadano“ — postoji samo dok ima šta vratiti, pa ne smije nositi
