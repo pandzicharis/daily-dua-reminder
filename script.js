@@ -955,6 +955,10 @@
     var pages = getQuranPages(dateKey);
     var first = pages[0];
     var last = pages[pages.length - 1];
+
+    /* Slike stranica se počinju skidati odmah, u pozadini — kad korisnik
+       stigne do "Vidi stranicu", one su već tu. Vidi `prefetchPages`. */
+    prefetchPages(pages);
     /* Ono što se ispisuje na kartici dolazi sa PRVE stranice porcije: džuz,
        prvi ajet. Postotak mushafa ide po zadnjoj — to je dokle si stigao. */
     var info = quranPages[first];
@@ -1060,13 +1064,109 @@
 
   /* ------------------------------------------------------------------------
      9. "Vidi stranicu" — drawer sa cijelom stranicom mushafa
+
+     Pokazuje se STVARNA stranica mushafa, slika iz PAGES/. Prije je ovdje
+     stajao tekst složen iz quran_by_pages.json — slova ista, ali raspored
+     tuđi: nije se poklapalo sa onim što korisnik gleda u svom mushafu, pa
+     "vidi stranicu" nije pokazivalo stranicu nego prijepis.
+
+     Tekst iz quran_by_pages.json time nije postao nepotreban — kartica i
+     dalje iz njega uzima džuz, imena sura i prvi ajet.
      ------------------------------------------------------------------------ */
+
+  /* PAGES/001.png … PAGES/604.png — broj je uvijek na tri mjesta, jer se
+     fajlovi tako zovu. Stranica mushafa i broj u imenu fajla su isti broj
+     (001.png je Fatiha), pa nema preračunavanja. */
+  function pageImageUrl(page) {
+    return "/PAGES/" + String(page).padStart(3, "0") + ".png";
+  }
+
+  /* Stranica kao slika, sa svoja tri stanja: dok se skida, kad se pokaže,
+     i kad je nema. Bez međustanja bi drawer bio prazan bijeli pravougaonik
+     dok slika ne stigne — a stigne li ikad, ne bi se znalo. */
+  function pageFigure(page) {
+    var figure = document.createElement("figure");
+    figure.className = "page-figure is-loading";
+
+    var img = document.createElement("img");
+    img.className = "page-img";
+    img.alt = "Stranica " + page + " mushafa";
+    /* Dekodiranje van glavne niti — slika je 2600px široka, sinhrono
+       dekodiranje bi zamrznulo otvaranje drawera. */
+    img.decoding = "async";
+
+    img.addEventListener("load", function () {
+      figure.classList.remove("is-loading");
+    });
+    img.addEventListener("error", function () {
+      figure.classList.remove("is-loading");
+      figure.classList.add("is-error");
+    });
+
+    img.src = pageImageUrl(page);
+    /* Već u kešu i dekodirana — `load` se tada više neće javiti. */
+    if (img.complete && img.naturalWidth) { figure.classList.remove("is-loading"); }
+
+    var caption = document.createElement("figcaption");
+    caption.className = "page-caption";
+    caption.textContent = "Stranica " + page;
+
+    var fallback = document.createElement("p");
+    fallback.className = "page-error";
+    fallback.textContent = "Stranica " + page + " se nije učitala.";
+
+    figure.appendChild(img);
+    figure.appendChild(fallback);
+    figure.appendChild(caption);
+
+    return figure;
+  }
+
+  /* Keširanje: stranica se skida ČIM se kartica iscrta, ne tek na klik.
+
+     Tri sloja rade zajedno i svaki hvata drugi trenutak:
+       1. ovaj prefetch — dok korisnik čita ajet na kartici, slika se već
+          skida, pa "Vidi stranicu" otvara gotovu sliku
+       2. service worker (`moj-zikr-pages`) — drži je trajno, cache-first,
+          pa je sljedeći put nema ni na mreži da se traži; radi i offline
+       3. `immutable` zaglavlje (vercel.json, dev-server.js) — browser je ne
+          provjerava ni uslovnim zahtjevom
+
+     `fetch` a ne `new Image()`: cilj je napuniti keš, ne prikazati sliku.
+     Slika od 2600×4206 bi se pri `new Image()` mogla i dekodirati, a to je
+     40-ak MB memorije po stranici ni za šta.
+
+     Šuti kad padne — prefetch koji ne uspije nije greška, klik će sliku
+     svejedno potražiti. */
+  var prefetched = {};
+
+  function prefetchPages(pages) {
+    var todo = pages.filter(function (page) { return !prefetched[page]; });
+    if (!todo.length) { return; }
+
+    function skini() {
+      todo.forEach(function (page) {
+        prefetched[page] = true;
+        fetch(pageImageUrl(page)).catch(function () { prefetched[page] = false; });
+      });
+    }
+
+    /* Tek kad se spisak iscrta — slika ne smije usporiti prvo pojavljivanje
+       ekrana. Safari nema requestIdleCallback, tamo je dovoljan mali odmak. */
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(skini, { timeout: 3000 });
+    } else {
+      setTimeout(skini, 800);
+    }
+  }
 
   var drawer = null;
 
   function buildDrawer() {
     drawer = document.createElement("div");
-    drawer.className = "drawer";
+    /* `drawer-page-view` je tu da CSS razlikuje ovaj drawer od postavki:
+       stranica ide preko cijelog ekrana, postavke ostaju list sa dna. */
+    drawer.className = "drawer drawer-page-view";
     drawer.setAttribute("role", "dialog");
     drawer.setAttribute("aria-modal", "true");
     drawer.hidden = true;
@@ -1092,7 +1192,7 @@
     head.appendChild(close);
 
     var body = document.createElement("div");
-    body.className = "drawer-body";
+    body.className = "drawer-body drawer-pages";
 
     sheet.appendChild(head);
     sheet.appendChild(body);
@@ -1122,43 +1222,12 @@
 
     var body = drawer.querySelector(".drawer-body");
     body.textContent = "";
+    /* Jedna stranica ne treba potpis "Stranica 92" — to već piše u naslovu
+       iznad. Kod porcije od više stranica treba, da se zna koja je koja. */
+    body.classList.toggle("is-single", pages.length === 1);
 
     pages.forEach(function (page) {
-      var info = quranPages[page];
-      if (!info) { return; }
-
-      /* Granica stranice se ispisuje samo kad ih ima više — inače je naslov
-         drawer-a već rekao koja je. Bez nje bi se u porciji od pet stranica
-         izgubilo gdje jedna prestaje a druga počinje. */
-      if (pages.length > 1) {
-        body.appendChild(makeParagraph("drawer-page", "Stranica " + page));
-      }
-
-      info.suras.forEach(function (sura) {
-        body.appendChild(makeArabic(sura.name, "drawer-sura"));
-
-        /* Ajeti teku jedan za drugim u jednom obostrano poravnatom bloku —
-           kao na pravoj stranici mushafa, a ne kao spisak redova.
-           Iza svakog ajeta ide njegov broj u krugu. */
-        var block = document.createElement("p");
-        block.className = "drawer-text";
-        block.setAttribute("dir", "rtl");
-        block.setAttribute("lang", "ar");
-
-        sura.verses.forEach(function (v) {
-          block.appendChild(document.createTextNode(v.t + " "));
-          /* n = 0 je bismilla kojom sura počinje — nema svoj broj */
-          if (v.n) {
-            var mark = document.createElement("span");
-            mark.className = "ayah-mark";
-            mark.textContent = v.n;
-            block.appendChild(mark);
-            block.appendChild(document.createTextNode(" "));
-          }
-        });
-
-        body.appendChild(block);
-      });
+      body.appendChild(pageFigure(page));
     });
 
     drawer.hidden = false;

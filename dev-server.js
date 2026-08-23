@@ -83,8 +83,15 @@ function serveStatic(req, res, pathname) {
       return res.end("404 — " + rel);
     }
     res.setHeader("Content-Type", TYPES[path.extname(file)] || "application/octet-stream");
-    /* bez keša, da se izmjene odmah vide */
-    res.setHeader("Cache-Control", "no-store");
+    /* Bez keša, da se izmjene odmah vide — osim stranica mushafa. One se ne
+       mijenjaju, a `no-store` bi ih na svakom otvaranju povlačio ispočetka,
+       pa bi lokalno izgledalo sporije nego što u produkciji jeste. Isto
+       zaglavlje stoji i u vercel.json. */
+    const immutable = rel.indexOf("/PAGES/") === 0;
+    res.setHeader(
+      "Cache-Control",
+      immutable ? "public, max-age=31536000, immutable" : "no-store"
+    );
     res.end(data);
   });
 }

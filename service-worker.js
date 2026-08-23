@@ -11,7 +11,29 @@
    worker ne radi — zakazivanje je isključivo na serveru (Vercel Cron).
    ========================================================================== */
 
-var CACHE = "moj-zikr-v4";
+var CACHE = "moj-zikr-v5";
+
+/* Stranice mushafa (PAGES/001.png …) idu u SVOJ keš, odvojen od ljuske
+   aplikacije. Dva razloga:
+
+     1. Ljuska se pri svakoj novoj verziji briše (vidi `activate`). Stranice
+        se ne mijenjaju nikad — 92. stranica mushafa je ista i za deset
+        verzija aplikacije. Da su u istom kešu, svako izdanje bi ih bacilo i
+        korisnik bi ih ponovo skidao ni zbog čega.
+     2. Ljuska se servira network-first (da nikad ne bude zastarjela).
+        Stranice cache-first — jednom skinuta slika se više NE traži na
+        mreži, ni uslovnim zahtjevom. To je ono zbog čega se drawer otvara
+        odmah, i zbog čega radi bez interneta.
+
+   Zato ovaj keš nema verziju u imenu: nema šta da zastari.
+   ------------------------------------------------------------------------ */
+var PAGES_CACHE = "moj-zikr-pages";
+var PAGES_PREFIX = "/PAGES/";
+
+/* Koliko stranica se drži. Jedna je oko 400 KB, pa je 60 stranica oko 25 MB
+   — mjesec-dva čitanja unazad. Preko toga se izbacuju najstarije: `keys()`
+   vraća redom kojim su ulazile, pa je "prvih N" upravo najstarije. */
+var PAGES_LIMIT = 60;
 
 /* Ikonice obavijesti se keširaju već pri instalaciji. Push može doći kad
    uređaj nema mreže, a obavijest bez ikonice ne izgleda kao da je iz
@@ -35,12 +57,55 @@ self.addEventListener("activate", function (event) {
     caches.keys()
       .then(function (keys) {
         return Promise.all(keys.map(function (key) {
-          return key === CACHE ? null : caches.delete(key);
+          if (key === CACHE || key === PAGES_CACHE) { return null; }
+          return caches.delete(key);
         }));
       })
       .then(function () { return self.clients.claim(); })
   );
 });
+
+/* ------------------------------------------------------------------------
+   Stranice mushafa — cache-first
+
+   Suprotno od svega ostalog ispod, i namjerno: ovi fajlovi se ne mijenjaju.
+   Jednom skinuta 92. stranica je zauvijek 92. stranica, pa je svaki odlazak
+   na mrežu — pa i uslovni zahtjev koji vrati 304 — čisto čekanje. Zato se
+   iz keša servira odmah, a mreža se dira samo prvi put.
+
+   Ovdje prolazi i `prefetch` iz script.js: on traži stranicu čim se kartica
+   iscrta, pa je do klika na "Vidi stranicu" već ovdje.
+   ------------------------------------------------------------------------ */
+
+function trimPages(cache) {
+  return cache.keys().then(function (keys) {
+    if (keys.length <= PAGES_LIMIT) { return null; }
+    return Promise.all(
+      keys.slice(0, keys.length - PAGES_LIMIT).map(function (key) {
+        return cache.delete(key);
+      })
+    );
+  });
+}
+
+function servePage(req) {
+  return caches.open(PAGES_CACHE).then(function (cache) {
+    return cache.match(req).then(function (hit) {
+      if (hit) { return hit; }
+
+      return fetch(req).then(function (res) {
+        if (res && res.ok && res.type === "basic") {
+          /* Kopija u keš, original korisniku — tijelo odgovora se može
+             pročitati samo jednom. Spremanje se ne čeka: slika ide na
+             ekran odmah, a keš se napuni usput. */
+          var copy = res.clone();
+          cache.put(req, copy).then(function () { return trimPages(cache); });
+        }
+        return res;
+      });
+    });
+  });
+}
 
 /* ------------------------------------------------------------------------
    Offline — network-first
@@ -54,6 +119,10 @@ self.addEventListener("fetch", function (event) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) { return; }
   if (url.pathname.indexOf("/api/") === 0) { return; }
+
+  if (url.pathname.indexOf(PAGES_PREFIX) === 0) {
+    return event.respondWith(servePage(req));
+  }
 
   event.respondWith(
     fetch(req)
