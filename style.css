@@ -305,9 +305,13 @@ h1, h2, h3, p {
   }
 }
 
+/* Poravnanje po sredini, ne po osnovnoj liniji: brojka je inline-flex kutija
+   (kvačica + broj), pa joj osnovnu liniju daje kvačica — a ne tekst broja.
+   Uz `baseline` bi zato naslov sjedio nekoliko piksela niže od brojke. Obje
+   kutije su visoke jedan red istog pisma, pa ih sredina poravna tačno. */
 .pgroup-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
   margin-bottom: 5px;
