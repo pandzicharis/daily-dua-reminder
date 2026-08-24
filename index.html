@@ -21,12 +21,63 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=31">
+  <link rel="stylesheet" href="style.css?v=36">
+
+  <!-- Tema se bira PRIJE prvog crtanja, zato ove dvije skripte stoje ovdje a
+       ne dolje sa ostalima: kad bi se čekalo dno strane, noću bi svijetla
+       tema bljesnula pa se prebacila u tamnu.
+
+       notification-tasks.js ide uz theme.js jer tema iz njega čita kad
+       počinje veče (19:00) a kad dan (08:00) — isti spisak po kojem stižu
+       podsjetnici, da satnica ne postoji na dva mjesta. Ostali fajlovi koji
+       ga čitaju (badge.js) učitavaju se poslije, pa im je već tu. -->
+  <script src="notification-tasks.js"></script>
+  <script src="theme.js"></script>
 </head>
 <body>
 
   <!-- Header je sticky i poluprovidan (blur) — ostaje na vrhu dok se skrola. -->
   <header class="app-header">
+
+    <!-- Selam je vlastita traka NAD naslovnim redom, a ne red u njemu: među
+         datumom i trakama napretka se stopio i nije se vidio. Ovdje ima svoju
+         boju i cijelu širinu ekrana, pa je prvo što oko nađe.
+
+         Stoji UNUTAR <header>-a i zato se lijepi za vrh zajedno sa njim —
+         jedna ploča, a ne dvije koje se pri skrolanju raziđu.
+
+         Na desnom rubu je izbor teme (theme.js): sunce ili mlađak, po tome
+         koja tema trenutno stoji, i natpis po čemu je izabrana. Bez imena je
+         cijela traka skrivena — ime u nju piše script.js. -->
+    <div class="salaam" id="greeting" hidden>
+      <div class="wrap salaam-inner">
+        <p class="salaam-text">
+          <span class="salaam-hi">Es-selamu alejkum,</span>
+          <span class="salaam-name" id="greetingName"></span>
+        </p>
+
+        <!-- Obje ikonice stoje u HTML-u, theme.js samo skriva jednu: crtanje
+             SVG-a iz JavaScripta ovdje ne bi dobilo ništa, a dugme bi do
+             učitavanja skripte bilo prazno. -->
+        <button type="button" class="salaam-theme" id="themeBtn">
+          <svg class="salaam-theme-icon" id="themeSun" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+               hidden>
+            <circle cx="12" cy="12" r="4.2"/>
+            <path d="M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/>
+          </svg>
+          <svg class="salaam-theme-icon" id="themeMoon" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+               hidden>
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+          </svg>
+          <span class="salaam-theme-label" id="themeLabel"></span>
+        </button>
+      </div>
+    </div>
+
     <div class="wrap header-bar">
 
       <div class="header-left">
@@ -79,7 +130,7 @@
 
   <script src="quran-pages.js"></script>
   <script src="data.js"></script>
-  <script src="notification-tasks.js"></script>
+  <!-- notification-tasks.js i theme.js su gore, u <head> — vidi tamo zašto. -->
   <!-- Redoslijed nije proizvoljan:
        settings.js prvi jer svi ostali pitaju za ime i za config — sync.js
          da zna čiji je spisak, script.js šta da nacrta, notifications.js

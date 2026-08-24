@@ -335,6 +335,8 @@
   var visible = sectionsForDate(dateKey, prefs());
 
   var el = {
+    greeting: document.getElementById("greeting"),
+    greetingName: document.getElementById("greetingName"),
     date: document.getElementById("todayDate"),
     hijri: document.getElementById("todayHijri"),
     groups: document.getElementById("progressGroups"),
@@ -1810,6 +1812,25 @@
     if (onDayChange) { onDayChange(dateKey, todayKey); }
   }
 
+  /* Selam s imenom — jedino mjesto gdje aplikacija oslovi čovjeka. Ime je
+     ono iz postavki, isto koje spaja uređaje, pa se red pojavi tek kad ga
+     ima: bez imena nema ni pola selama ni prazne rupe u headeru.
+
+     Zove se iz `render()`, a ne iz vlastitog slušaoca: promjena imena kroz
+     `naPromjenu` ionako ponovo crta dan, pa novi selam stoji na ekranu u
+     istom trenutku kad i spisak novog korisnika. */
+  function writeGreeting() {
+    if (!el.greeting || !el.greetingName) { return; }
+
+    var name = (window.mojZikrConfig && window.mojZikrConfig.ime)
+      ? String(window.mojZikrConfig.ime()).trim()
+      : "";
+
+    /* Samo ime: "Es-selamu alejkum," stoji u HTML-u jer se nikad ne mijenja. */
+    el.greetingName.textContent = name;
+    el.greeting.hidden = !name;
+  }
+
   /* Crta dan koji je u `dateKey` — današnji ili onaj izabran strelicama.
      Stanje i spisak sekcija se uvijek čitaju iznova, pa je dovoljno
      promijeniti `dateKey` i pozvati ovo. */
@@ -1818,6 +1839,7 @@
     state = getDayState(dateKey);
     visible = sectionsForDate(dateKey, prefs());
     var shown = dateFromKey(dateKey);
+    writeGreeting();
     el.date.textContent = formatGregorian(shown);
     el.hijri.textContent = formatHijri(shown);
     markPreview();

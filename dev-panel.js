@@ -45,6 +45,12 @@
      kreće dnevni. */
   var TIMES = ["08:00", "10:00", "12:00", "12:15", "13:00", "19:00", "23:00"];
 
+  /* Sati na kojima se tema lomi: 08:00 je granica jutra, 19:00 granica
+     večeri — isti brojevi po kojima ide i dnevni/večernji podsjetnik, jer ih
+     theme.js čita sa istog spiska. Minuta prije svake granice je tu da se
+     vidi i strana PRIJE prelaza. */
+  var THEME_TIMES = ["07:59", "08:00", "12:00", "18:59", "19:00", "23:30"];
+
   var el = {};
   var atTime = "12:00";
 
@@ -304,6 +310,35 @@
     });
     el.panel.appendChild(el.intervalChips);
 
+    /* --- tema ---
+
+       Tema se sama mijenja u 19:00, a to je nezgodno vrijeme za čekanje.
+       Ovdje se sat aplikacije GLUMI (samo za temu, samo u memoriji), pa se
+       noćna vidi odmah. Dugme u traci sa selamom bira režim; ovdje se bira
+       koliko je sati.
+
+       Kad režim nije "auto", sat ne mijenja ništa — panel to i napiše, da se
+       ne traži greška tamo gdje je nema. */
+    if (window.mojZikrTema) {
+      el.panel.appendChild(node("p", "devp-label", "Tema — sat aplikacije"));
+
+      el.themeChips = node("div", "devp-chips");
+      THEME_TIMES.forEach(function (t) {
+        el.themeChips.appendChild(button("devp-chip", t, function () {
+          window.mojZikrTema.glumiSat(t);
+          syncTheme();
+        }));
+      });
+      el.themeChips.appendChild(button("devp-chip", "pravo vrijeme", function () {
+        window.mojZikrTema.glumiSat(null);
+        syncTheme();
+      }));
+      el.panel.appendChild(el.themeChips);
+
+      el.themeState = node("p", "devp-silent", "");
+      el.panel.appendChild(el.themeState);
+    }
+
     /* --- okidanje --- */
     var resetRow = node("label", "devp-check");
     el.reset = document.createElement("input");
@@ -345,6 +380,37 @@
     );
   }
 
+  function hhmm(minuta) {
+    var h = Math.floor(minuta / 60);
+    var m = minuta % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+
+  /* Stanje teme i upaljen čip. Zove se pri otvaranju panela, poslije klika po
+     čipu i poslije klika po dugmetu teme u traci — panel tako nikad ne
+     pokazuje staro stanje. */
+  function syncTheme() {
+    if (!el.themeState) { return; }
+
+    var tema = window.mojZikrTema;
+    var sat = tema.sat();
+    var rezim = tema.rezim();
+
+    var text = "sada: " + (tema.aktivna() === "noc" ? "noćna" : "dnevna") +
+               " · režim: " + rezim +
+               " · sat: " + hhmm(sat.minuta) + (sat.glumljen ? " (glumljen)" : "");
+    if (rezim !== "auto") {
+      text += " — režim nije auto, pa sat ne mijenja temu";
+    }
+    el.themeState.textContent = text;
+
+    var upaljen = sat.glumljen ? hhmm(sat.minuta) : "pravo vrijeme";
+    Array.prototype.forEach.call(
+      el.themeChips.querySelectorAll(".devp-chip"),
+      function (chip) { chip.classList.toggle("is-on", chip.textContent === upaljen); }
+    );
+  }
+
   function syncTimeChips() {
     Array.prototype.forEach.call(
       el.timeChips.querySelectorAll(".devp-chip"),
@@ -357,6 +423,7 @@
   function toggle() {
     el.panel.hidden = !el.panel.hidden;
     el.fab.classList.toggle("is-open", !el.panel.hidden);
+    if (!el.panel.hidden) { syncTheme(); }
   }
 
   /* Traka na vrhu ekrana dok se gleda dan koji nije današnji — da se proba
@@ -378,6 +445,13 @@
   buildRibbon();
   syncTimeChips();
   syncIntervalChips();
+  syncTheme();
+
+  /* Dugme teme je u traci sa selamom i mijenja režim mimo panela. Njegov
+     slušalac je registrovan ranije (theme.js, na DOMContentLoaded), pa ovaj
+     ovdje uvijek vidi već promijenjeno stanje. */
+  var temaBtn = document.getElementById("themeBtn");
+  if (temaBtn) { temaBtn.addEventListener("click", syncTheme); }
 
   window.mojZikr.naPromjenu(function (day, today) {
     el.dayText.textContent = prettyDay(day);

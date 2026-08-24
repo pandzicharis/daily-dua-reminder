@@ -13,13 +13,29 @@
    2. Varijable
    -------------------------------------------------------------------------- */
 :root {
-  --background: #faf7f0;
-  --background-alt: #f3efe4;
-  --surface: #fffdf8;
-  --primary: #1e4438;
-  --primary-soft: #37624f;
-  --accent: #b8925a;
-  --accent-soft: #e3d3b6;
+  /* Dnevne boje stoje pod vlastitim imenima (--dan-*) jer ih traže DVA
+     mjesta: dnevna tema ovdje ispod, i stranica mushafa, koja ostaje
+     svijetla i kad je noćna tema (slike stranica su bijele — vidi 2b).
+     Tako spisak svijetlih boja postoji jednom, a ne dvaput. */
+  --dan-background: #faf7f0;
+  --dan-background-alt: #f3efe4;
+  --dan-surface: #fffdf8;
+  --dan-primary: #1e4438;
+  --dan-primary-soft: #37624f;
+  --dan-accent: #b8925a;
+  --dan-accent-soft: #e3d3b6;
+  --dan-text: #1c1c19;
+  --dan-muted: #7a746a;
+  --dan-line: #e7e0d2;
+  --dan-line-strong: #cfc6b3;
+
+  --background: var(--dan-background);
+  --background-alt: var(--dan-background-alt);
+  --surface: var(--dan-surface);
+  --primary: var(--dan-primary);
+  --primary-soft: var(--dan-primary-soft);
+  --accent: var(--dan-accent);
+  --accent-soft: var(--dan-accent-soft);
 
   /* Zelena je boja ZAVRŠENOG — kvačica, gotova sekcija, puna traka. Odvojena
      je od --primary (tamnozelena, boja teksta i dugmadi) da se "gotovo" vidi
@@ -27,10 +43,33 @@
      naglasak: naslovi sekcija, fokus, djelimično urađeno. */
   --done: #2f7a55;
   --done-soft: #e0efe6;
-  --text: #1c1c19;
-  --muted: #7a746a;
-  --line: #e7e0d2;
-  --line-strong: #cfc6b3;
+  --text: var(--dan-text);
+  --muted: var(--dan-muted);
+  --line: var(--dan-line);
+  --line-strong: var(--dan-line-strong);
+
+  /* Staklo header-a i lebdećeg dugmeta — providna verzija podloge, da blur
+     ima šta miješati. Varijable su zato što noćna tema mora zamutiti tamno. */
+  --glass: rgba(250, 247, 240, 0.72);
+  --glass-surface: rgba(255, 253, 248, 0.86);
+
+  /* Traka sa selamom nad headerom. Svoje boje ima zato što nije ni podloga
+     ni kartica: to je jedina obojena površina u aplikaciji. */
+  --band: #e8d9ba;
+  --band-text: #234639;
+  --band-muted: rgba(35, 70, 57, 0.7);
+  --band-btn: rgba(35, 70, 57, 0.09);
+  --band-btn-hover: rgba(35, 70, 57, 0.16);
+
+  /* Kvačica na punom (zelenom) checkboxu — svijetla u obje teme, jer stoji
+     na zelenom, a ne na podlozi strane. */
+  --on-done: #fffdf8;
+
+  /* Brisanje — jedina crvena u aplikaciji. */
+  --danger: #9a3b2f;
+  --danger-line: #e3c3bd;
+  --danger-line-strong: #d8a99f;
+  --danger-bg: #fdf1ee;
 
   --radius: 16px;
   --radius-sm: 10px;
@@ -46,6 +85,102 @@
 
   --wrap: 720px;
   --gutter: 20px;
+}
+
+/* --------------------------------------------------------------------------
+   2b. Noćna tema
+
+   Ista aplikacija, druga podloga. Sve boje ispod su varijable iz :root, pa
+   je noćna tema samo drugi spisak vrijednosti — ni jedno pravilo se ne piše
+   dvaput i nova kartica dobije noć bez ijedne dopisane linije.
+
+   Dvije varijable moraju ostati u PARU, na njima stoji sva puna dugmad:
+     --primary   je podloga punog dugmeta (`background`) i naglašen tekst,
+     --surface   je tekst NA tom dugmetu (`color: var(--surface)`).
+   Danju je to tamnozeleno dugme sa kremastim tekstom, noću svijetlozeleno sa
+   tamnim — kontrast se obrne sam i ni jedno dugme se ne dira.
+
+   Stranice mushafa (PAGES/*.png) se NAMJERNO ne diraju: to su slike
+   kur'anskog teksta, i nikakav filter, ni invertovanje, ne ide preko njih.
+   Kartica oko njih potamni, sama stranica ostaje kakva je i štampana.
+
+   `data-theme` piše theme.js na <html> — vidi tamo kad je noć, a kad dan.
+   -------------------------------------------------------------------------- */
+:root[data-theme="noc"] {
+  --background: #0f1512;
+  --background-alt: #182220;
+  --surface: #16201c;
+  --primary: #cfe3d6;
+  --primary-soft: #a6c3b3;
+  --accent: #d8b27c;
+  --accent-soft: #a58256;
+
+  --done: #4fb883;
+  --done-soft: #1d3428;
+  --text: #e9e5db;
+  --muted: #989286;
+  --line: #26302b;
+  --line-strong: #3a453e;
+
+  --glass: rgba(15, 21, 18, 0.74);
+  --glass-surface: rgba(22, 32, 28, 0.88);
+
+  --band: #17211d;
+  --band-text: #e9e5db;
+  --band-muted: rgba(233, 229, 219, 0.6);
+  --band-btn: rgba(233, 229, 219, 0.08);
+  --band-btn-hover: rgba(233, 229, 219, 0.16);
+
+  --danger: #e3968a;
+  --danger-line: #6d3a33;
+  --danger-line-strong: #8f4b41;
+  --danger-bg: #2a1a17;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3),
+            0 8px 24px -16px rgba(0, 0, 0, 0.75);
+}
+
+/* Stranica mushafa ostaje DNEVNA i po noći.
+
+   Slike stranica (PAGES/*.png) su bijele. Na crnoj podlozi bijeli list
+   zasija kao rupa u ekranu, a okvir oko njega izgleda kao greška. Zato ovaj
+   drawer vrati dnevne vrijednosti varijabli — zaglavlje, podloga, potpis i X
+   se sami vrate na kremasto, bez ijednog pravila napisanog dvaput.
+
+   Invertovanje same slike ne dolazi u obzir: to je kur'anski tekst, štampan
+   onako kako je štampan.
+
+   Zatamnjena pozadina oko ploče (`.drawer`) se NE dira — ona je ionako crna
+   providna u obje teme, i baš ona odvaja svijetlu stranicu od tamnog ekrana. */
+:root[data-theme="noc"] .drawer-page-view {
+  --background: var(--dan-background);
+  --background-alt: var(--dan-background-alt);
+  --surface: var(--dan-surface);
+  --primary: var(--dan-primary);
+  --primary-soft: var(--dan-primary-soft);
+  --accent: var(--dan-accent);
+  --accent-soft: var(--dan-accent-soft);
+  --text: var(--dan-text);
+  --muted: var(--dan-muted);
+  --line: var(--dan-line);
+  --line-strong: var(--dan-line-strong);
+  color: var(--text);
+}
+
+/* Prelaz između tema — podloga i tekst se pretope, da promjena ne bljesne.
+   Ide na cijelu stranu jednom umjesto na svako pravilo posebno.
+
+   `prefers-reduced-motion` ga gasi, kao i ostale animacije u aplikaciji. */
+@media (prefers-reduced-motion: no-preference) {
+  body,
+  .app-header::before,
+  .salaam,
+  .item,
+  .quran-card,
+  .drawer-sheet {
+    transition: background-color 0.25s ease, color 0.25s ease,
+                border-color 0.25s ease;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -87,6 +222,117 @@ h1, h2, h3, p {
 }
 
 /* --------------------------------------------------------------------------
+   3b. Selam — traka nad headerom
+
+   Prvo je bio red u headeru, pored znaka i datuma, i tamo se nije vidio:
+   header je crn tekst na kremastoj podlozi, pa u njemu propadne sve što nema
+   svoju podlogu. Sad je vlastita traka preko cijele širine, u bež boji —
+   jedina obojena površina u aplikaciji, pa je pri otvaranju prvo što oko
+   nađe.
+
+   Traka je PRVI element headera, pa se lijepi za vrh zajedno sa njim: dok se
+   spisak skrola, selam ostaje gdje jeste. Da je stajala van headera, njih
+   dvoje bi se pri skrolanju razišli.
+
+   Boje su vlastite varijable (--band*), ne --background i --text: noću
+   traka mora potamniti sa ostatkom aplikacije, a ne ostati bež.
+   -------------------------------------------------------------------------- */
+.salaam {
+  /* Traka je prvo što stoji na vrhu strane, pa "zarez" ekrana čuva ona. */
+  padding-top: max(8px, env(safe-area-inset-top));
+  padding-bottom: 8px;
+  background: var(--band);
+  color: var(--band-text);
+}
+
+.salaam[hidden] {
+  display: none;
+}
+
+.salaam-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* Razmak odozdo dolazi iz `.salaam`, ne iz `.wrap` — traka je uska. */
+  padding-bottom: 0;
+}
+
+.salaam-text {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+/* Selam je tiši od imena — ime je ono zbog čega traka postoji. */
+.salaam-hi {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--band-muted);
+}
+
+.salaam-name {
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   3c. Tema — dugme na desnom rubu trake
+
+   Stoji tu gdje je prije stajao mlađak, i sam je mlađak: ikonica pokazuje
+   koja tema TRENUTNO stoji (sunce = dan, mlađak = noć), a natpis pored nje
+   po čemu je izabrana ("auto", "dan", "noć"). Klik vrti tri stanja, redom:
+   auto -> dan -> noć -> auto. Ostalo radi theme.js.
+
+   Podloga dugmeta je providna crna/bijela (--band-btn), a ne vlastita boja:
+   tako isto dugme radi i na bež i na tamnoj traci.
+   -------------------------------------------------------------------------- */
+.salaam-theme {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  font-family: inherit;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: inherit;
+  background: var(--band-btn);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease;
+}
+
+.salaam-theme:hover {
+  background: var(--band-btn-hover);
+}
+
+.salaam-theme:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.salaam-theme-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.salaam-theme-icon[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
    4. Header
    -------------------------------------------------------------------------- */
 /* Sticky "staklo": ostaje na vrhu dok se skrola, sadržaj se nazire kroz blur.
@@ -103,9 +349,21 @@ h1, h2, h3, p {
   position: sticky;
   top: 0;
   z-index: 50;
-  padding: 12px 0;
-  padding-top: max(12px, env(safe-area-inset-top));
-  border-bottom: 1px solid rgba(231, 224, 210, 0.9);
+  /* Gornji razmak NIJE ovdje nego na prvom elementu unutra (vidi ispod):
+     kad traka sa selamom stoji, ona mora ići do samog ruba ekrana. */
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Gornji razmak i "zarez" ekrana (safe-area) nosi ono što je u headeru PRVO:
+   traka sa selamom kad je ima, inače sam naslovni red. Tako ih tačno jedan
+   element čuva i nikad se ne broje dvaput. */
+.salaam[hidden] + .header-bar {
+  margin-top: max(12px, env(safe-area-inset-top));
+}
+
+.salaam:not([hidden]) + .header-bar {
+  margin-top: 12px;
 }
 
 /* Nikakav `transform` ni `filter` ne smije doći na .app-header: oba prave
@@ -116,7 +374,7 @@ h1, h2, h3, p {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: rgba(250, 247, 240, 0.72);
+  background: var(--glass);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   pointer-events: none;
@@ -690,7 +948,7 @@ main {
   top: 50%;
   width: 6px;
   height: 12px;
-  border: solid #fffdf8;
+  border: solid var(--on-done);
   border-width: 0 2.5px 2.5px 0;
   transform: translate(calc(-50% + 0.3px), calc(-50% - 1.95px))
              rotate(45deg) scale(0.4);
@@ -2021,7 +2279,7 @@ body.is-vuce .set-edit {
   margin-bottom: 10px;
   font-size: 0.8125rem;
   line-height: 1.5;
-  color: #9a3b2f;
+  color: var(--danger);
 }
 
 .set-new-error[hidden] {
@@ -2070,13 +2328,13 @@ body.is-vuce .set-edit {
 }
 
 .set-new-btn.is-danger {
-  color: #9a3b2f;
-  border-color: #e3c3bd;
+  color: var(--danger);
+  border-color: var(--danger-line);
 }
 
 .set-new-btn.is-danger:hover {
-  background: #fdf1ee;
-  border-color: #d8a99f;
+  background: var(--danger-bg);
+  border-color: var(--danger-line-strong);
 }
 
 /* Brisanje nosi korpu umjesto riječi — okruglo dugme veličine dodira, da se
@@ -2453,7 +2711,7 @@ body.is-vuce .set-edit {
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--primary);
-  background: rgba(255, 253, 248, 0.86);
+  background: var(--glass-surface);
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
   border: 1px solid var(--accent-soft);
@@ -2543,7 +2801,15 @@ body.has-fab {
   }
 
   .app-header {
-    padding: 16px 0;
+    padding: 0 0 16px;
+  }
+
+  .salaam[hidden] + .header-bar {
+    margin-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .salaam:not([hidden]) + .header-bar {
+    margin-top: 16px;
   }
 
   /* Na širem ekranu oba datuma stanu u isti red. */
