@@ -58,8 +58,6 @@
   --band: #e8d9ba;
   --band-text: #234639;
   --band-muted: rgba(35, 70, 57, 0.7);
-  --band-btn: rgba(35, 70, 57, 0.09);
-  --band-btn-hover: rgba(35, 70, 57, 0.16);
 
   /* Kvačica na punom (zelenom) checkboxu — svijetla u obje teme, jer stoji
      na zelenom, a ne na podlozi strane. */
@@ -128,8 +126,6 @@
   --band: #17211d;
   --band-text: #e9e5db;
   --band-muted: rgba(233, 229, 219, 0.6);
-  --band-btn: rgba(233, 229, 219, 0.08);
-  --band-btn-hover: rgba(233, 229, 219, 0.16);
 
   --danger: #e3968a;
   --danger-line: #6d3a33;
@@ -283,49 +279,31 @@ h1, h2, h3, p {
 }
 
 /* --------------------------------------------------------------------------
-   3c. Tema — dugme na desnom rubu trake
+   3c. Tema — oznaka na desnom rubu trake
 
-   Stoji tu gdje je prije stajao mlađak, i sam je mlađak: ikonica pokazuje
-   koja tema TRENUTNO stoji (sunce = dan, mlađak = noć), a natpis pored nje
-   po čemu je izabrana ("auto", "dan", "noć"). Klik vrti tri stanja, redom:
-   auto -> dan -> noć -> auto. Ostalo radi theme.js.
+   Stoji tu gdje je prije stajao mlađak, i sam je mlađak: sunce = dnevna,
+   mlađak = noćna, po tome koja tema TRENUTNO stoji. Ostalo radi theme.js.
 
-   Podloga dugmeta je providna crna/bijela (--band-btn), a ne vlastita boja:
-   tako isto dugme radi i na bež i na tamnoj traci.
+   Nema podlogu, nema pilulu i nije dugme — prije je to bilo dugme sa
+   natpisom koje je vrtjelo tri režima, ali izgled dugmeta je obećavao da se
+   pritiskom bira tema, a ikonica je pokazivala onu koja već stoji, pa se
+   čitalo naopako. Sad je gola ikonica, i tako se ne nudi pritisak kojeg
+   nema: tema se bira u postavkama.
+
+   Boja je --band-muted, ista kojom je i "Es-selamu alejkum" u istoj traci:
+   oznaka stoji uz ime a ne iznad njega.
    -------------------------------------------------------------------------- */
 .salaam-theme {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px 3px 8px;
-  font-family: inherit;
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: inherit;
-  background: var(--band-btn);
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.18s ease;
-}
-
-.salaam-theme:hover {
-  background: var(--band-btn-hover);
-}
-
-.salaam-theme:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
+  color: var(--band-muted);
 }
 
 .salaam-theme-icon {
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .salaam-theme-icon[hidden] {
@@ -1537,6 +1515,66 @@ main {
   font-size: 0.8125rem;
   line-height: 1.55;
   color: var(--muted);
+}
+
+/* --- tema: dnevna ili noćna ---------------------------------------------- */
+/* Stoji ISPOD reda „Tema“ i pojavljuje se samo kad se automatika ugasi (red
+   sam nosi prekidač automatike). Dva dugmeta, a ne padajući spisak: stanja
+   su dva, pa bi spisak krio pola izbora radi istog mjesta.
+
+   Svako uzima pola širine, pa izbor stoji kao jedna cjelina preko cijelog
+   reda i nema promašaja prstom.
+
+   Na dugmetu je ikonica pa natpis: ikonica je isto sunce i isti mlađak koji
+   stoje i kao oznaka u traci sa selamom, pa se izbor nađe pogledom, a natpis
+   kaže tačno šta je.
+
+   Isti oblik dugmeta kao izbor tipa nove stavke (.set-new-tab): jedan način
+   da se u ovom draweru bira jedno od nekoliko. */
+.set-choice {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.set-choice[hidden] {
+  display: none;
+}
+
+.set-choice-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 6px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.set-choice-btn.is-on {
+  color: var(--surface);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.set-choice-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.set-choice-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 /* Ime — jedino polje za unos u cijeloj aplikaciji. */

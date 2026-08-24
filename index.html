@@ -21,7 +21,7 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=36">
+  <link rel="stylesheet" href="style.css?v=39">
 
   <!-- Tema se bira PRIJE prvog crtanja, zato ove dvije skripte stoje ovdje a
        ne dolje sa ostalima: kad bi se čekalo dno strane, noću bi svijetla
@@ -46,9 +46,10 @@
          Stoji UNUTAR <header>-a i zato se lijepi za vrh zajedno sa njim —
          jedna ploča, a ne dvije koje se pri skrolanju raziđu.
 
-         Na desnom rubu je izbor teme (theme.js): sunce ili mlađak, po tome
-         koja tema trenutno stoji, i natpis po čemu je izabrana. Bez imena je
-         cijela traka skrivena — ime u nju piše script.js. -->
+         Na desnom rubu je oznaka teme (theme.js): sunce ili mlađak, po tome
+         koja tema trenutno stoji. Samo oznaka — tema se bira u postavkama,
+         pod zupčanikom. Bez imena je cijela traka skrivena — ime u nju piše
+         script.js. -->
     <div class="salaam" id="greeting" hidden>
       <div class="wrap salaam-inner">
         <p class="salaam-text">
@@ -56,10 +57,13 @@
           <span class="salaam-name" id="greetingName"></span>
         </p>
 
-        <!-- Obje ikonice stoje u HTML-u, theme.js samo skriva jednu: crtanje
-             SVG-a iz JavaScripta ovdje ne bi dobilo ništa, a dugme bi do
-             učitavanja skripte bilo prazno. -->
-        <button type="button" class="salaam-theme" id="themeBtn">
+        <!-- Oznaka, ne dugme: pokazuje koja tema stoji i ništa ne mijenja
+             na dodir. Tema se bira u postavkama (settings.js, red „Tema“).
+
+             Obje ikonice stoje u HTML-u, theme.js samo skriva jednu: crtanje
+             SVG-a iz JavaScripta ovdje ne bi dobilo ništa, a oznaka bi do
+             učitavanja skripte bila prazna. -->
+        <span class="salaam-theme" id="themeMark" role="img" aria-label="Tema">
           <svg class="salaam-theme-icon" id="themeSun" viewBox="0 0 24 24"
                fill="none" stroke="currentColor" stroke-width="1.7"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
@@ -73,8 +77,7 @@
                hidden>
             <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
           </svg>
-          <span class="salaam-theme-label" id="themeLabel"></span>
-        </button>
+        </span>
       </div>
     </div>
 
@@ -104,7 +107,7 @@
       <!-- Postavke — na mjestu gdje je prije stajao prstenasti graf.
            Prsten je uklonjen jer je isto govorio dvaput: trake ispod već
            pokazuju napredak, i to razdvojen po dobu dana. Klik otvara drawer
-           (ime, transkripcija, petak, podsjetnici, spisak dova) koji pravi
+           (ime, tema, transkripcija, podsjetnici, spisak dova) koji pravi
            settings.js.
            Ikonica je zupčanik. -->
       <button type="button" class="settings-btn" id="settingsBtn"

@@ -1,7 +1,7 @@
 /* ==========================================================================
    settings.js — config korisnika i drawer u kojem se podešava.
 
-   Šest stvari:
+   Sedam stvari:
 
      ime           određuje ČIJI je spisak. Svi uređaji sa istim imenom vide
                    isto čekirano; dva imena su dva odvojena spiska. Ime nije
@@ -9,6 +9,10 @@
                    tuđe ime, vidi tuđi spisak. Za porodičnu aplikaciju je to
                    dovoljno i namjerno tako: drugi telefon iste osobe se
                    prijavi istim imenom i odmah je uparen.
+
+     tema          automatski (svijetla danju, tamna uveče) ili ručno
+                   izabrana dnevna/noćna. Jedina postavka koja NE ide na
+                   server — vidi ispod. Sam prelaz radi theme.js.
 
      transkripcija umjesto arapskog teksta prikazuje transliteraciju iz
                    data.js. ZAMJENA, ne dodatak — ispod je i dalje prevod.
@@ -38,7 +42,8 @@
 
    Prekidača za cijelu sekciju nema. Postojao je (petak), ali kvačice rade
    isto i na jednom mjestu: isključi svih pet petačkih stavki i sekcije nema,
-   kao ni njenog podsjetnika. Zbog toga je `transkript` jedini prekidač.
+   kao ni njenog podsjetnika. Zbog toga je `transkript` jedini prekidač u
+   configu — tema ima svoj, ali njeno stanje pamti theme.js.
 
    Spisak sekcija se NE nabraja ovdje — akordeoni se prave iz
    `pickableSections()` u data.js, pa nova sekcija sa spiskom sama dobije svoj.
@@ -55,13 +60,17 @@
 
    Šta ide gore na server, a šta ostaje ovdje:
 
-     server (cfg:<ime>)   sve četiri postavke — da drugi uređaj istog
-                          korisnika zatekne isto stanje, i da scheduler zna
-                          šta se uopšte broji (vlastita stavka ulazi u račun
+     server (cfg:<ime>)   sve osim teme — da drugi uređaj istog korisnika
+                          zatekne isto stanje, i da scheduler zna šta se
+                          uopšte broji (vlastita stavka ulazi u račun
                           podsjetnika kao i svaka druga)
      localStorage         ime i kopija svega toga, da aplikacija zna šta da
                           nacrta prije nego odgovor sa servera stigne, i da
                           radi bez mreže
+     samo localStorage    tema, i to u ključu koji drži theme.js: ona je
+                          stvar ekrana koji se drži u ruci, a ne spiska koji
+                          se dijeli. Telefon u mraku i računar na poslu smiju
+                          biti različiti.
    ========================================================================== */
 
 (function () {
@@ -331,7 +340,10 @@
     return { wrap: wrap, input: input };
   }
 
-  function redPrekidac(id, naslov, opis) {
+  /* Red sa prekidačem. `ukljucen` je stanje u kojem red nastaje, `onChange`
+     dobija novo. Šta se sa tim stanjem radi ne zna ovaj red: transkripcija
+     ide u config i na server, tema u localStorage (theme.js). */
+  function redPrekidac(id, naslov, opis, ukljucen, onChange) {
     var row = document.createElement("div");
     row.className = "set-row";
 
@@ -345,13 +357,10 @@
     text.appendChild(p("set-note", opis));
 
     var sw = prekidac(id);
-    sw.input.checked = config[id] === true;
+    sw.input.checked = ukljucen === true;
 
     sw.input.addEventListener("change", function () {
-      config[id] = sw.input.checked;
-      zapamtiConfig();
-      javi();
-      posalji();
+      onChange(sw.input.checked);
     });
 
     row.appendChild(text);
@@ -1868,6 +1877,141 @@
     });
   }
 
+  /* ------------------------------------------------------------------------
+     Tema
+
+     Prekidač je „Automatski“, a ne „Noćna tema“: automatika je ono što
+     aplikacija radi sama od sebe (svijetla danju, tamna od večernjeg
+     podsjetnika), pa je to jedno stanje prekidača, a ne treća stavka u
+     spisku. Kad se ugasi, ispod se otvori izbor dnevne i noćne.
+
+     Gašenje automatike NE mijenja ekran: ostaje tema koja je u tom trenutku
+     stajala, samo prestaje da se mijenja sama. Bez toga bi prekidač usred
+     noći bacio korisnika u svijetlu temu, a on ga je dirao da bi izabrao.
+
+     Režim pamti theme.js, u svom ključu u localStorage, i ne ide na server uz
+     ostali config: tema je stvar ekrana koji se drži u ruci, a ne spiska koji
+     se dijeli. Isto ime na telefonu i na računaru vidi isti zikr, ali svaki
+     uređaj svoju temu.
+
+     Ako theme.js nije učitan, reda nema — nego da stoji prekidač koji ništa
+     ne mijenja.
+     ------------------------------------------------------------------------ */
+
+  /* Dva dugmeta izbora: id režima, natpis i potezi ikonice pored njega. Isto
+     sunce i isti mlađak kao oznaka na traci sa selamom, samo se ovdje crtaju
+     iz JavaScripta jer red teme cijel nastaje ovdje. */
+  var IZBOR_TEME = [
+    {
+      id: "dan",
+      label: "Dnevna",
+      crtez: [
+        ["circle", { cx: "12", cy: "12", r: "4.2" }],
+        ["path", { d: "M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6" }]
+      ]
+    },
+    {
+      id: "noc",
+      label: "Noćna",
+      crtez: [
+        ["path", { d: "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" }]
+      ]
+    }
+  ];
+
+  function ikonaTeme(crtez) {
+    var NS = "http://www.w3.org/2000/svg";
+
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "set-choice-icon");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.7");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+
+    crtez.forEach(function (par) {
+      var node = document.createElementNS(NS, par[0]);
+      Object.keys(par[1]).forEach(function (kljuc) {
+        node.setAttribute(kljuc, par[1][kljuc]);
+      });
+      svg.appendChild(node);
+    });
+
+    return svg;
+  }
+
+  function dodajTemu(body) {
+    var tema = window.mojZikrTema;
+    if (!tema) { return; }
+
+    var red = redPrekidac("tema-auto", "Tema",
+      "Automatski — svijetla danju, tamna uveče.",
+      tema.rezim() === "auto",
+      function (on) {
+        tema.postavi(on ? "auto" : tema.aktivna());
+        /* Stanje se ne pretpostavlja iz klika nego se ponovo PROČITA iz
+           theme.js — ono je jedini izvor. Prekidač tako ne može ostati u
+           položaju koji theme.js nije prihvatio. */
+        osvjeziTemu();
+      });
+
+    var izbor = document.createElement("div");
+    izbor.className = "set-choice";
+    izbor.setAttribute("role", "group");
+    izbor.setAttribute("aria-label", "Tema");
+
+    var dugmad = {};
+
+    IZBOR_TEME.forEach(function (opcija) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "set-choice-btn";
+      /* Ikonica i natpis: ikonica se nađe pogledom, natpis kaže tačno šta
+         je. Ime ne ide u `aria-label` — piše na dugmetu, pa je čitač ekrana
+         ionako pročita. */
+      b.appendChild(ikonaTeme(opcija.crtez));
+      var natpis = document.createElement("span");
+      natpis.textContent = opcija.label;
+      b.appendChild(natpis);
+      b.addEventListener("click", function () {
+        tema.postavi(opcija.id);
+        osvjeziTemu();
+      });
+      dugmad[opcija.id] = b;
+      izbor.appendChild(b);
+    });
+
+    el.tema = { auto: red.input, izbor: izbor, dugmad: dugmad };
+
+    body.appendChild(red.row);
+    body.appendChild(izbor);
+
+    /* I na promjenu koja dođe MIMO postavki: sam prelaz u 19:00 dok su
+       postavke otvorene, ili glumljeni sat iz testnog panela. */
+    tema.naPromjenu(osvjeziTemu);
+    osvjeziTemu();
+  }
+
+  function osvjeziTemu() {
+    if (!el.tema) { return; }
+
+    var rezim = window.mojZikrTema.rezim();
+    var auto = rezim === "auto";
+
+    el.tema.auto.checked = auto;
+    el.tema.izbor.hidden = auto;
+
+    IZBOR_TEME.forEach(function (opcija) {
+      var b = el.tema.dugmad[opcija.id];
+      var on = !auto && rezim === opcija.id;
+      b.classList.toggle("is-on", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
   function build() {
     el.drawer = document.createElement("div");
     el.drawer.className = "drawer drawer-settings";
@@ -1947,12 +2091,27 @@
     });
     el.name.addEventListener("blur", function () { primiIme(el.name.value); });
 
-    /* Prekidač — samo jedan. Sekcije se ne gase prekidačem nego kvačicama
-       u spisku ispod (vidi komentar na vrhu fajla). */
+    /* Tema — prekidač automatike, a pod njim izbor dnevne i noćne kad je
+       automatika ugašena. Vidi `redTeme()`. */
+    dodajTemu(body);
+
+    /* Prekidači configa — samo jedan. Sekcije se ne gase prekidačem nego
+       kvačicama u spisku ispod (vidi komentar na vrhu fajla).
+
+       `el.switches` je samo za ono što stoji u configu: `osvjeziPrekidace()`
+       ga prepisuje iz configa poslije odgovora sa servera. Tema tu NE smije
+       stajati — nije u configu, pa bi je prvo osvježavanje ugasilo. */
     el.switches = {};
 
     var t = redPrekidac("transkript", "Transkripcija",
-      "Umjesto arapskog teksta prikaži transkripciju. Prevod ostaje ispod.");
+      "Umjesto arapskog teksta prikaži transkripciju. Prevod ostaje ispod.",
+      config.transkript === true,
+      function (on) {
+        config.transkript = on;
+        zapamtiConfig();
+        javi();
+        posalji();
+      });
     el.switches.transkript = t.input;
     body.appendChild(t.row);
 

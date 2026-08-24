@@ -314,8 +314,8 @@
 
        Tema se sama mijenja u 19:00, a to je nezgodno vrijeme za čekanje.
        Ovdje se sat aplikacije GLUMI (samo za temu, samo u memoriji), pa se
-       noćna vidi odmah. Dugme u traci sa selamom bira režim; ovdje se bira
-       koliko je sati.
+       noćna vidi odmah. Režim se bira u postavkama; ovdje se bira koliko je
+       sati.
 
        Kad režim nije "auto", sat ne mijenja ništa — panel to i napiše, da se
        ne traži greška tamo gdje je nema. */
@@ -387,8 +387,8 @@
   }
 
   /* Stanje teme i upaljen čip. Zove se pri otvaranju panela, poslije klika po
-     čipu i poslije klika po dugmetu teme u traci — panel tako nikad ne
-     pokazuje staro stanje. */
+     čipu i na svaku promjenu teme iz theme.js (postavke, prelaz u 19:00) —
+     panel tako nikad ne pokazuje staro stanje. */
   function syncTheme() {
     if (!el.themeState) { return; }
 
@@ -447,11 +447,9 @@
   syncIntervalChips();
   syncTheme();
 
-  /* Dugme teme je u traci sa selamom i mijenja režim mimo panela. Njegov
-     slušalac je registrovan ranije (theme.js, na DOMContentLoaded), pa ovaj
-     ovdje uvijek vidi već promijenjeno stanje. */
-  var temaBtn = document.getElementById("themeBtn");
-  if (temaBtn) { temaBtn.addEventListener("click", syncTheme); }
+  /* Režim se bira u postavkama, mimo panela — i tema se sama prelomi u 19:00.
+     Oba puta theme.js javi, pa ispis nikad ne ostane star. */
+  if (window.mojZikrTema) { window.mojZikrTema.naPromjenu(syncTheme); }
 
   window.mojZikr.naPromjenu(function (day, today) {
     el.dayText.textContent = prettyDay(day);

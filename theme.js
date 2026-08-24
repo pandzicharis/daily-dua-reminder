@@ -11,15 +11,22 @@
    traku (`<meta name="theme-color">`). Nova kartica ili dugme dobiju noć bez
    ijedne linije ovdje.
 
-   TRI REŽIMA, dugme na traci sa selamom ih vrti u krug:
+   TRI REŽIMA, biraju se U POSTAVKAMA (settings.js, red „Tema“):
 
      auto   prati zikr — danju svijetla, uveče tamna
      dan    uvijek svijetla
      noc    uvijek tamna
 
-   Ikonica na dugmetu pokazuje temu koja TRENUTNO stoji (sunce ili mlađak), a
-   natpis pored nje po čemu je izabrana ("auto", "dan", "noć"). Zato u režimu
-   "auto" ikonica sama pređe u mlađak kad padne veče.
+   Na traci sa selamom stoji samo OZNAKA: sunce ili mlađak, po tome koja tema
+   TRENUTNO stoji. Ne mijenja se na dodir. Prije je tu bilo dugme koje vrti
+   tri režima, ali ono je krilo šta radi — mlađak znači „sada je noćna“, a
+   čitao se kao „pritisni za noćnu“ — i nije se moglo ni vidjeti ni izabrati
+   dok korisnik ne upiše ime, jer bez imena trake sa selamom nema. U
+   postavkama tri režima stoje ispisana riječima i uvijek su na istom mjestu.
+
+   Režim se pamti OVDJE, u svom ključu u localStorage, i ne ide na server uz
+   ostali config: tema je stvar ekrana koji se drži u ruci. Isto ime na
+   telefonu i na računaru vidi isti zikr, ali svaki uređaj svoju temu.
 
    KAD JE VEČE ne piše ovdje nego u notification-tasks.js: veče počinje kad i
    večernji podsjetnik (19:00), a dan kad i dnevni (08:00). Isti spisak po
@@ -40,10 +47,7 @@
 
   var KEY = "moj-zikr-tema";
 
-  /* Redoslijed kojim klik vrti režime. */
   var REZIMI = ["auto", "dan", "noc"];
-
-  var NATPIS = { auto: "auto", dan: "dan", noc: "noć" };
 
   /* Boja trake browsera / statusne linije. Jedino mjesto u JavaScriptu gdje
      boja uopšte piše — mora pratiti `--background` iz style.css. */
@@ -116,74 +120,92 @@
      Primjena
      ------------------------------------------------------------------------ */
 
+  /* Ko se javlja kad se tema ili režim promijene: postavke (da red „Tema“
+     nikad ne pokazuje staro stanje, ni kad se promijeni mimo njih) i testni
+     panel. Nema poziva pri prijavi — kao i `naPromjenu` u settings.js. */
+  var slusaoci = [];
+
+  function javi(tema) {
+    slusaoci.forEach(function (fn) {
+      try { fn(tema, rezim); } catch (e) {}
+    });
+  }
+
   var el = null;
 
   function opis(tema) {
-    var sljedeci = REZIMI[(REZIMI.indexOf(rezim) + 1) % REZIMI.length];
-    var kakva = tema === "noc" ? "tamna" : "svijetla";
-    var sada = rezim === "auto"
-      ? "Tema: automatski, prati zikr — sada " + kakva + "."
-      : "Tema: " + kakva + ".";
-    return sada + " Klik: " + NATPIS[sljedeci] + ".";
+    var kakva = tema === "noc" ? "Noćna tema" : "Dnevna tema";
+    return rezim === "auto"
+      ? kakva + " — automatski, prati zikr."
+      : kakva + ".";
   }
 
   /* Skrivanje ide preko ATRIBUTA, ne preko `.hidden`: `hidden` je svojstvo
      HTMLElement-a, a ovo su SVG elementi. `svg.hidden = false` bi napravio
      obično polje na objektu, atribut bi ostao i ikonica bi ostala skrivena —
-     dugme bi imalo samo natpis, bez sunca i mlađaka. */
+     oznaka bi ostala prazna, bez sunca i mlađaka. */
   function pokazi(svg, vidljiv) {
     if (vidljiv) { svg.removeAttribute("hidden"); }
     else { svg.setAttribute("hidden", ""); }
   }
 
-  function osvjeziDugme(tema) {
-    if (!el || !el.btn) { return; }
+  function osvjeziOznaku(tema) {
+    if (!el) { return; }
     pokazi(el.sun, tema === "dan");
     pokazi(el.moon, tema === "noc");
-    el.label.textContent = NATPIS[rezim];
-    el.btn.setAttribute("aria-label", opis(tema));
-    el.btn.setAttribute("title", opis(tema));
+    el.mark.setAttribute("aria-label", opis(tema));
+    el.mark.setAttribute("title", opis(tema));
   }
 
   var zadnja = null;
+  var zadnjiRezim = null;
 
   function primijeni() {
     var tema = aktivna();
+    var promjena = tema !== zadnja || rezim !== zadnjiRezim;
 
     if (tema !== zadnja) {
-      zadnja = tema;
       document.documentElement.setAttribute("data-theme", tema);
       var meta = document.querySelector('meta[name="theme-color"]');
       if (meta) { meta.setAttribute("content", BOJA[tema]); }
     }
 
-    osvjeziDugme(tema);
+    zadnja = tema;
+    zadnjiRezim = rezim;
+
+    osvjeziOznaku(tema);
+    if (promjena) { javi(tema); }
   }
 
   /* Odmah, dok je <body> još neiscrtan — zbog ovoga fajl i stoji u <head>. */
   primijeni();
 
+  /* Novi režim iz postavki. Nepoznata vrijednost se odbija umjesto da obori
+     temu — vraća se režim koji je ostao, da pozivalac ne mora pogađati. */
+  function postavi(noviRezim) {
+    if (REZIMI.indexOf(noviRezim) === -1 || noviRezim === rezim) { return rezim; }
+    rezim = noviRezim;
+    zapamti();
+    primijeni();
+    return rezim;
+  }
+
   /* ------------------------------------------------------------------------
-     Dugme
+     Oznaka na traci
+
+     Obje ikonice stoje u index.html, ovdje se samo skriva jedna. Element je
+     `<span role="img">`, ne dugme — ništa se na njemu ne pritiska.
      ------------------------------------------------------------------------ */
 
   function povezi() {
-    el = {
-      btn: document.getElementById("themeBtn"),
-      sun: document.getElementById("themeSun"),
-      moon: document.getElementById("themeMoon"),
-      label: document.getElementById("themeLabel")
-    };
+    var mark = document.getElementById("themeMark");
+    var sun = document.getElementById("themeSun");
+    var moon = document.getElementById("themeMoon");
 
-    if (!el.btn || !el.sun || !el.moon || !el.label) { el = null; return; }
+    if (!mark || !sun || !moon) { return; }
 
-    el.btn.addEventListener("click", function () {
-      rezim = REZIMI[(REZIMI.indexOf(rezim) + 1) % REZIMI.length];
-      zapamti();
-      primijeni();
-    });
-
-    primijeni();
+    el = { mark: mark, sun: sun, moon: moon };
+    osvjeziOznaku(aktivna());
   }
 
   if (document.readyState === "loading") {
@@ -211,11 +233,15 @@
     if (!document.hidden && rezim === "auto") { primijeni(); }
   });
 
-  /* Za ostale fajlove (testni panel): koja tema stoji, po čemu, i glumljenje
-     sata da se noćna tema vidi bez čekanja večeri. */
+  /* Za ostale fajlove: koja tema stoji, po čemu, biranje režima (postavke) i
+     glumljenje sata da se noćna tema vidi bez čekanja večeri (testni panel). */
   window.mojZikrTema = {
     aktivna: aktivna,
     rezim: function () { return rezim; },
+    postavi: postavi,
+
+    /* fn(tema, rezim) pri svakoj promjeni teme ili režima */
+    naPromjenu: function (fn) { slusaoci.push(fn); },
 
     /* "19:00", broj minuta, ili null za pravo vrijeme. Vraća šta je ostalo
        postavljeno, da panel ne mora pogađati je li vrijednost primljena. */
