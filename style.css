@@ -13,29 +13,13 @@
    2. Varijable
    -------------------------------------------------------------------------- */
 :root {
-  /* Dnevne boje stoje pod vlastitim imenima (--dan-*) jer ih traže DVA
-     mjesta: dnevna tema ovdje ispod, i stranica mushafa, koja ostaje
-     svijetla i kad je noćna tema (slike stranica su bijele — vidi 2b).
-     Tako spisak svijetlih boja postoji jednom, a ne dvaput. */
-  --dan-background: #faf7f0;
-  --dan-background-alt: #f3efe4;
-  --dan-surface: #fffdf8;
-  --dan-primary: #1e4438;
-  --dan-primary-soft: #37624f;
-  --dan-accent: #b8925a;
-  --dan-accent-soft: #e3d3b6;
-  --dan-text: #1c1c19;
-  --dan-muted: #7a746a;
-  --dan-line: #e7e0d2;
-  --dan-line-strong: #cfc6b3;
-
-  --background: var(--dan-background);
-  --background-alt: var(--dan-background-alt);
-  --surface: var(--dan-surface);
-  --primary: var(--dan-primary);
-  --primary-soft: var(--dan-primary-soft);
-  --accent: var(--dan-accent);
-  --accent-soft: var(--dan-accent-soft);
+  --background: #faf7f0;
+  --background-alt: #f3efe4;
+  --surface: #fffdf8;
+  --primary: #1e4438;
+  --primary-soft: #37624f;
+  --accent: #b8925a;
+  --accent-soft: #e3d3b6;
 
   /* Zelena je boja ZAVRŠENOG — kvačica, gotova sekcija, puna traka. Odvojena
      je od --primary (tamnozelena, boja teksta i dugmadi) da se "gotovo" vidi
@@ -43,10 +27,10 @@
      naglasak: naslovi sekcija, fokus, djelimično urađeno. */
   --done: #2f7a55;
   --done-soft: #e0efe6;
-  --text: var(--dan-text);
-  --muted: var(--dan-muted);
-  --line: var(--dan-line);
-  --line-strong: var(--dan-line-strong);
+  --text: #1c1c19;
+  --muted: #7a746a;
+  --line: #e7e0d2;
+  --line-strong: #cfc6b3;
 
   /* Staklo header-a i lebdećeg dugmeta — providna verzija podloge, da blur
      ima šta miješati. Varijable su zato što noćna tema mora zamutiti tamno. */
@@ -98,9 +82,9 @@
    Danju je to tamnozeleno dugme sa kremastim tekstom, noću svijetlozeleno sa
    tamnim — kontrast se obrne sam i ni jedno dugme se ne dira.
 
-   Stranice mushafa (PAGES/*.png) se NAMJERNO ne diraju: to su slike
-   kur'anskog teksta, i nikakav filter, ni invertovanje, ne ide preko njih.
-   Kartica oko njih potamni, sama stranica ostaje kakva je i štampana.
+   Stranice mushafa (PAGES/*.png) prate noć kao i sve ostalo — vidi niže,
+   uz `.page-img`. Slova posivjela ne bi bila, ni prebojena: slike su crn
+   crtež na PROVIDNOJ podlozi, pa noću samo mastilo pobijeli.
 
    `data-theme` piše theme.js na <html> — vidi tamo kad je noć, a kad dan.
    -------------------------------------------------------------------------- */
@@ -136,32 +120,15 @@
             0 8px 24px -16px rgba(0, 0, 0, 0.75);
 }
 
-/* Stranica mushafa ostaje DNEVNA i po noći.
+/* Stranica mushafa noću — bijela slova na tamnom listu.
 
-   Slike stranica (PAGES/*.png) su bijele. Na crnoj podlozi bijeli list
-   zasija kao rupa u ekranu, a okvir oko njega izgleda kao greška. Zato ovaj
-   drawer vrati dnevne vrijednosti varijabli — zaglavlje, podloga, potpis i X
-   se sami vrate na kremasto, bez ijednog pravila napisanog dvaput.
+   Prije je ovaj drawer po noći vraćao DNEVNE boje, pa se usred tamne
+   aplikacije otvarao bijeli list koji zaslijepi. Sada prati noć kao i sve
+   ostalo (zaglavlje, potpis, X — sve iz istih varijabli), a sama slika se
+   obrne pravilom uz `.page-img` niže.
 
-   Invertovanje same slike ne dolazi u obzir: to je kur'anski tekst, štampan
-   onako kako je štampan.
-
-   Zatamnjena pozadina oko ploče (`.drawer`) se NE dira — ona je ionako crna
-   providna u obje teme, i baš ona odvaja svijetlu stranicu od tamnog ekrana. */
-:root[data-theme="noc"] .drawer-page-view {
-  --background: var(--dan-background);
-  --background-alt: var(--dan-background-alt);
-  --surface: var(--dan-surface);
-  --primary: var(--dan-primary);
-  --primary-soft: var(--dan-primary-soft);
-  --accent: var(--dan-accent);
-  --accent-soft: var(--dan-accent-soft);
-  --text: var(--dan-text);
-  --muted: var(--dan-muted);
-  --line: var(--dan-line);
-  --line-strong: var(--dan-line-strong);
-  color: var(--text);
-}
+   Zatamnjena pozadina oko ploče (`.drawer`) se ne dira — ona je crna
+   providna u obje teme. */
 
 /* Prelaz između tema — podloga i tekst se pretope, da promjena ne bljesne.
    Ide na cijelu stranu jednom umjesto na svako pravilo posebno.
@@ -383,10 +350,22 @@ h1, h2, h3, p {
   min-width: 0;
 }
 
-/* Naslov je sada znak, ne tekst. */
+/* Naslov je sada znak, ne tekst.
+
+   Negativna lijeva margina nije "štelovanje po oku" nego ispravka za prazan
+   rub UNUTAR znaka: rub el-hizb je zarotirani kvadrat, pa mu vrhovi u
+   viewBox-u 0–48 dosežu do 4.8, a ne do 0. Na 42px to je 4.2px praznine sa
+   svake strane, zbog koje je znak stajao uvučen u odnosu na sve ispod njega
+   (kartice, naslovi sekcija, selam) — a sve to počinje tačno na `--gutter`.
+   Pomjeranjem za 4px lijevo poklopi se ivica MASTILA, ne ivica kutije, i
+   glava se poravna sa spiskom.
+
+   Razmak do datuma ostaje isti kakav je i bio: i desni rub znaka je jednako
+   prazan, pa se pomjeranjem cijelog reda ništa vizuelno ne stisne. */
 .app-title {
   display: flex;
   flex-shrink: 0;
+  margin-left: -4px;
 }
 
 .app-mark {
@@ -1362,6 +1341,28 @@ main {
   min-height: 0;
   width: 100%;
   object-fit: contain;
+}
+
+/* Noću: crno mastilo postane bijelo, list ostaje tamna podloga drawera.
+
+   Zašto `invert(1)` ovdje NIJE prebojavanje kur'anskog teksta. Slike u
+   PAGES/*.png nemaju bijelu podlogu — podloga im je PROVIDNA, a slova su
+   crn crtež (RGB oko nule) čiji oblik nosi alfa kanal. Bijeli list koji se
+   danju vidi je podloga drawera ispod slike, ne dio slike.
+
+   `invert(1)` dira samo boju, ne i prozirnost: crna slova postanu bijela,
+   providno ostane providno. Ni jedan piksel se ne pomjeri i ni jedan potez
+   ne nestane — mijenja se boja mastila, kao kad bi se ista stranica
+   odštampala bijelim na crnom.
+
+   Sigurno je i za ukrase i za znakove vakufa: provjereno je da su sve
+   stranice u PAGES/ sivotonske (nula zasićenja), pa nema boje koju bi
+   invertovanje moglo pomjeriti u drugu nijansu. Da ih ima, ovdje bi uz
+   invert morao stajati i `hue-rotate(180deg)`.
+
+   Danju se ne dira ništa — pravilo postoji samo pod `data-theme="noc"`. */
+:root[data-theme="noc"] .page-img {
+  filter: invert(1);
 }
 
 /* Dok se skida — blijedi pravougaonik na mjestu gdje ce stranica biti.
@@ -2806,6 +2807,93 @@ body.is-vuce .set-edit {
 body.has-fab {
   padding-bottom: 72px;
   padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+/* --------------------------------------------------------------------------
+   11b. "Na vrh" — dugme koje se pojavi kad se dođe do dna spiska
+
+   Isto staklo i ista sjena kao "Elhamdulillah", ali okruglo i bez teksta:
+   ovo je alat, ne poruka, pa ne treba da se čita nego da se prepozna.
+
+   DESNO, a ne u sredini. Sredina je zauzeta — na završen dan tamo stoji
+   "Elhamdulillah" (`.celebrate-fab`), a testni panel je dolje lijevo. Ovako
+   sva tri mogu stajati u isto vrijeme i nijedno ne mora znati za drugo.
+
+   Strana NE dobija dodatni prostor na dnu kao kod `body.has-fab`, i to
+   namjerno: dugme se pojavljuje baš kad se stigne na dno, pa bi prostor koji
+   se tada doda odgurao dno od oka — strana više ne bi bila na dnu, dugme bi
+   se sakrilo, prostor bi nestao, dno bi se vratilo. Vrtjelo bi se u krug.
+   Zato dugme lebdi preko samog ugla, kako lebde i sva ostala ovakva dugmad.
+   -------------------------------------------------------------------------- */
+.top-fab {
+  position: fixed;
+  right: max(20px, calc(env(safe-area-inset-right) + 12px));
+  bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--primary);
+  background: var(--glass-surface);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid var(--accent-soft);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  animation: fab-in-right 0.32s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+.top-fab[hidden] {
+  display: none;
+}
+
+/* Preko ekrana je drawer ili završni ekran — ispod se ionako ne skrola.
+   `display: none`, a ne samo nevidljivo: tako dugme ispadne i iz reda za
+   tastaturu, pa se tabom ne može doći do nečega što se ne vidi. */
+body.no-scroll .top-fab {
+  display: none;
+}
+
+/* Bez blura pozadina mora biti puna — inače se lista providi kroz dugme. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .top-fab {
+    background: var(--surface);
+  }
+}
+
+/* Ne translate kao kod pilule u sredini: ovo dugme nije centrirano
+   transformom, pa se smije pomjerati bez ičega što bi se poništilo. */
+@keyframes fab-in-right {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.top-fab:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--surface);
+}
+
+.top-fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.top-fab-icon {
+  width: 19px;
+  height: 19px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top-fab {
+    animation: none;
+  }
 }
 
 /* Nizak ekran (telefon položen vodoravno) — sve se skupi da ne bude odrezano. */

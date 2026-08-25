@@ -1799,6 +1799,119 @@
   }
 
   /* ------------------------------------------------------------------------
+     12b. "Na vrh" — povratak na početak spiska
+
+     Spisak je dug: Kur'an, zikr, dove, pa Navečer. Ko ga prođe do kraja
+     nema kako natrag osim da skrola cijeli put nazad. Zato se na DNU pojavi
+     malo okruglo dugme koje vrati na početak.
+
+     Samo na dnu, ne cijelo vrijeme. Dugme koje lebdi od prve minute stoji
+     preko sadržaja i onda kad nikome ne treba — na vrhu spiska "vrati me na
+     vrh" ne znači ništa.
+
+     Ide DESNO, a ne u sredinu, jer je sredina zauzeta: tamo na završen dan
+     stoji "Elhamdulillah" (`celebrate-fab`). Ovako mogu stajati oba, i
+     nijedno ne mora znati za drugo.
+     ------------------------------------------------------------------------ */
+
+  /* Koliko strana mora biti duža od ekrana da dugme uopšte ima smisla.
+     Spisak od jednog ekrana i pol se vidi skoro cijeli, pa se sa njegovog
+     dna nema odakle vraćati. */
+  var TOP_MIN_SCROLL = 240;
+
+  /* Koliko blizu dna se računa "došlo se do dna". Nekoliko piksela jer
+     zbir `pageYOffset + innerHeight` na nekim uređajima (zumirana strana,
+     traka browsera koja se skriva) nikad ne pogodi `scrollHeight` tačno. */
+  var TOP_EDGE = 24;
+
+  var topBtn = null;
+  var topShown = false;
+  var topTick = null;
+
+  /* Strelica nagore — jedini sadržaj dugmeta, pa nema teksta koji bi se
+     morao prevoditi ni skraćivati na uskom ekranu. Naziv za čitače ekrana
+     stoji na samom dugmetu (`aria-label`). */
+  function makeArrowUp(className) {
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", className);
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+
+    var path = document.createElementNS(NS, "path");
+    path.setAttribute("d", "M12 19V6M6 12l6-6 6 6");
+    svg.appendChild(path);
+
+    return svg;
+  }
+
+  function buildTopBtn() {
+    topBtn = document.createElement("button");
+    topBtn.type = "button";
+    topBtn.className = "top-fab";
+    topBtn.hidden = true;
+    topBtn.setAttribute("aria-label", "Na vrh spiska");
+    topBtn.setAttribute("title", "Na vrh spiska");
+    topBtn.appendChild(makeArrowUp("top-fab-icon"));
+
+    topBtn.addEventListener("click", function () {
+      /* Ista animacija kao auto-skrol, pa se vidi kuda je strana otišla.
+         `smoothScrollTo` sam skoči kad korisnik traži manje animacija. */
+      smoothScrollTo(0);
+      /* Skloni se odmah, ne tek kad prvi `scroll` stigne: dugme koje ostane
+         pod prstom dok strana klizi izgleda kao da klik nije primljen. */
+      showTopBtn(false);
+    });
+
+    document.body.appendChild(topBtn);
+  }
+
+  /* Je li se došlo do dna spiska. `false` i dok je preko ekrana drawer ili
+     završni ekran (`no-scroll`) — tada se ispod ništa i ne skrola, pa dugme
+     nema šta vratiti. */
+  function atBottom() {
+    if (document.body.classList.contains("no-scroll")) { return false; }
+
+    var doc = document.documentElement;
+    var ukupno = Math.max(doc.scrollHeight, document.body.scrollHeight);
+    var ekran = window.innerHeight;
+
+    if (ukupno - ekran < TOP_MIN_SCROLL) { return false; }
+    return window.pageYOffset + ekran >= ukupno - TOP_EDGE;
+  }
+
+  function showTopBtn(on) {
+    if (on && !topBtn) { buildTopBtn(); }
+    if (!topBtn || on === topShown) { return; }
+    topShown = on;
+    topBtn.hidden = !on;
+  }
+
+  function refreshTopBtn() {
+    showTopBtn(atBottom());
+  }
+
+  /* `scroll` opali na svaki piksel — račun se zato radi najviše jednom po
+     frejmu. Sam račun je jeftin, ali `scrollHeight` tjera browser da izmjeri
+     raspored, a to usred skrolanja nije besplatno. */
+  function scheduleTopBtn() {
+    if (topTick !== null) { return; }
+    topTick = requestAnimationFrame(function () {
+      topTick = null;
+      refreshTopBtn();
+    });
+  }
+
+  window.addEventListener("scroll", scheduleTopBtn, { passive: true });
+  /* Nova visina ekrana (rotacija, traka browsera) mijenja i gdje je dno. */
+  window.addEventListener("resize", scheduleTopBtn, { passive: true });
+
+  /* ------------------------------------------------------------------------
      13. Start
      ------------------------------------------------------------------------ */
 
@@ -1845,6 +1958,9 @@
     markPreview();
     renderSections();
     updateProgress();
+    /* Nov spisak je druge visine, pa je i dno na drugom mjestu — bez ovoga
+       bi "Na vrh" ostalo na ekranu i poslije prebacivanja na kraći dan. */
+    refreshTopBtn();
   }
 
   /* Prebacivanje na drugi dan. Završni ekran se pri prebacivanju NE otvara
