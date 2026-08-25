@@ -75,7 +75,20 @@
   /* Skupine onako kako ih taj korisnik ima. Prazan niz ako data.js nije
      učitan — tada se strana ni ne otvara (vidi dno fajla). */
   function skupine() {
-    return (typeof stanjeSections === "function") ? stanjeSections(prefs()) : [];
+    if (typeof stanjeSections !== "function") { return []; }
+
+    /* Skupina kojoj je u postavkama isključena SVAKA dova ne dobija tab.
+       Prije je ostajala na traci, prigušena, da se tabovi ne premještaju — ali
+       tab koji se ne može ni otvoriti ni napuniti je samo mjesto na koje se
+       promaši. Isti postupak kao na dnevnom spisku: `stanjeSections()` je
+       vraća (postavkama treba cijeli spisak, tamo se i uključuje), a crtanje
+       je preskače — kao `drawableSections()` u script.js.
+
+       Kad se prva dova u njoj opet uključi, tab se sam vrati: promjena u
+       postavkama ovamo dolazi kroz `naPromjenu` i strana se iscrta iznova. */
+    return stanjeSections(prefs()).filter(function (section) {
+      return (section.items || []).length > 0;
+    });
   }
 
   /* Skupina koja se prikazuje. Zapamćena ako još postoji, inače prva —
@@ -190,14 +203,15 @@
     return art;
   }
 
-  /* Skupina kojoj je sve isključeno u postavkama. Nije greška — dugme vodi
-     tamo gdje se vraća. Strana se pri tome zatvara: postavke i ova strana su
-     dva drawer-a na istoj visini, pa bi otvorene jedna preko druge stajale
-     naopako. */
-  function praznaSkupina() {
+  /* Nijedna skupina nema ni jednu uključenu dovu — sve je isključeno u
+     postavkama. Nije greška, pa dugme vodi tamo gdje se vraća.
+
+     Strana se pri tome zatvara: postavke i ova strana su dva drawer-a na istoj
+     visini, pa bi otvorene jedna preko druge stajale naopako. */
+  function prazno() {
     var box = document.createElement("div");
     box.className = "duas-empty";
-    box.appendChild(p("duas-empty-msg", "U ovoj skupini nije uključena ni jedna dova."));
+    box.appendChild(p("duas-empty-msg", "Nije uključena ni jedna dova za stanja."));
 
     var open = document.createElement("button");
     open.type = "button";
@@ -358,6 +372,9 @@
 
   function nacrtajTabove(lista, izabrana) {
     tabsBox.textContent = "";
+    /* Bez ijedne uključene dove nema ni jednog taba — a prazna traka sa svojom
+       podlogom i linijom izgleda kao da se nešto nije iscrtalo. */
+    tabsBox.hidden = !lista.length;
 
     lista.forEach(function (section) {
       var tab = document.createElement("button");
@@ -370,10 +387,6 @@
       /* Čitač ekrana kroz tablistu ide strelicama, a ne tabulatorom — pa
          tabulator preskače neizabrane i vodi pravo u sadržaj. */
       tab.tabIndex = (section === izabrana) ? 0 : -1;
-
-      /* Prazna skupina ostaje na traci, samo prigušena: da se tabovi ne
-         premještaju svaki put kad se nešto isključi u postavkama. */
-      if (!(section.items || []).length) { tab.classList.add("is-empty"); }
 
       var icon = (typeof makeSectionIcon === "function")
         ? makeSectionIcon(section.icon, "duas-tab-icon")
@@ -428,17 +441,20 @@
        svake putanje kroz ovu funkciju — i kad se ne nacrta ništa. */
     pokaziTop(false);
 
-    if (!izabrana) { return; }
+    if (!izabrana) {
+      body.removeAttribute("aria-labelledby");
+      body.appendChild(prazno());
+      return;
+    }
+
     body.setAttribute("aria-labelledby", "duas-tab-" + izabrana.id);
     /* Zapamćeni tab je mogao ispasti iz data.js — tada `tekuca()` vrati prvu,
        pa se pamti ona, da se pri sljedećem otvaranju ne traži ponovo. */
     if (izabrana.id !== aktivna) { zapamtiTab(izabrana.id); }
 
-    var items = izabrana.items || [];
-    if (!items.length) {
-      body.appendChild(praznaSkupina());
-      return;
-    }
+    /* Izabrana skupina uvijek ima stavki: prazne ne dobiju tab (vidi
+       `skupine()`), pa se ovdje ne može zateći nijedna. */
+    var items = izabrana.items;
 
     /* Naslovi idu kroz `itemTitles()` iz data.js, kao i na spisku: tako
        vlastita dova i preimenovana dova stoje pod istim imenom svugdje. */

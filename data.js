@@ -1464,9 +1464,10 @@
      spisak, samo za drugu polovinu istog niza `sections`: vlastite stavke i
      izmjene su unutra (`fullSections()`), a isključene stavke van.
 
-     Sekcija kojoj je isključeno sve OSTAJE u spisku, sa praznim `items` — tab
-     joj se i dalje vidi, a u njemu stoji poruka i put nazad u postavke. Bez
-     toga bi se tabovi premještali svaki put kad se nešto isključi. */
+     Sekcija kojoj je isključeno sve OSTAJE u spisku, sa praznim `items` — isto
+     kao u `sectionsForDate()`, i iz istog razloga: postavkama treba cijeli
+     spisak, jer se u njima ta dova i uključuje natrag. Onaj ko crta je
+     preskače (vidi `skupine()` u situacije.js), pa joj se tab ne pojavi. */
   function stanjeSections(prefs) {
     var skriveno = (prefs && Array.isArray(prefs.skriveno)) ? prefs.skriveno : [];
 

@@ -1566,6 +1566,12 @@ main {
   display: none;
 }
 
+/* `display: flex` gore nadjačava sam atribut `hidden`, pa mu treba svoje
+   pravilo. Traka je skrivena kad nema ni jednog taba — vidi `nacrtajTabove()`. */
+.duas-tabs[hidden] {
+  display: none;
+}
+
 .duas-tab {
   flex-shrink: 0;
   display: inline-flex;
@@ -1602,12 +1608,6 @@ main {
 .duas-tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-/* Skupina kojoj je sve isključeno u postavkama — tab ostaje (da se tabovi ne
-   premještaju), pa se prigušen znak da u njemu nema ništa. */
-.duas-tab.is-empty {
-  opacity: 0.55;
 }
 
 /* Sadržaj taba. Razmak između kartica je veći nego na spisku: ovdje se čita

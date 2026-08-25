@@ -355,6 +355,13 @@ može pozvati `smoothScrollTo()` iz `script.js` (on radi nad stranom), niti se
 može upotrijebiti `.top-fab` (to dugme se pod `no-scroll` namjerno skriva, a
 drawer tu klasu i postavlja).
 
+**Skupina kojoj je isključena svaka dova ne dobija tab.** `stanjeSections()` je
+i dalje vraća — postavkama treba cijeli spisak, tamo se dova i uključuje natrag
+— a crtanje je preskače (`skupine()` u `situacije.js`), isto kao što
+`drawableSections()` u `script.js` preskače praznu sekciju na dnevnom spisku.
+Kad se prva dova opet uključi, tab se sam vrati. Ako je isključeno sve, traka sa
+tabovima se skriva cijela i ostane poruka sa putem nazad u postavke.
+
 **Traka sa tabovima** ima isti vodoravni razmak kao kartice ispod (20px), pa
 prvi tab počinje tačno tamo gdje počinje i kartica. Na telefonu se **klizi** —
 pet naslova ne stane u jedan red; od 640px se **prelome** u drugi red, jer tamo
