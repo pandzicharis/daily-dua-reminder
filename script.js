@@ -1826,7 +1826,6 @@
 
   var topBtn = null;
   var topShown = false;
-  var topTick = null;
 
   /* Strelica nagore — jedini sadržaj dugmeta, pa nema teksta koji bi se
      morao prevoditi ni skraćivati na uskom ekranu. Naziv za čitače ekrana
@@ -1896,20 +1895,19 @@
     showTopBtn(atBottom());
   }
 
-  /* `scroll` opali na svaki piksel — račun se zato radi najviše jednom po
-     frejmu. Sam račun je jeftin, ali `scrollHeight` tjera browser da izmjeri
-     raspored, a to usred skrolanja nije besplatno. */
-  function scheduleTopBtn() {
-    if (topTick !== null) { return; }
-    topTick = requestAnimationFrame(function () {
-      topTick = null;
-      refreshTopBtn();
-    });
-  }
+  /* Račun ide ODMAH iz slušaoca, bez requestAnimationFrame.
 
-  window.addEventListener("scroll", scheduleTopBtn, { passive: true });
+     Prvo je bio kroz rAF, da se `scrollHeight` ne čita češće nego jednom po
+     frejmu. Ali `scroll` browseri ionako sažimaju na jedan po frejmu, pa se
+     nije dobilo ništa — a izgubilo se to što rAF NE opali dok je strana
+     skrivena (druga kartica, ugašen ekran). Skrol koji se u tom trenutku
+     desi ostao bi neobrađen, i dugme bi kasnilo za stanjem.
+
+     Sam račun je dva čitanja koja se pri skrolanju ionako mjere, a u DOM se
+     ne piše ništa dok se stanje stvarno ne promijeni (`topShown`). */
+  window.addEventListener("scroll", refreshTopBtn, { passive: true });
   /* Nova visina ekrana (rotacija, traka browsera) mijenja i gdje je dno. */
-  window.addEventListener("resize", scheduleTopBtn, { passive: true });
+  window.addEventListener("resize", refreshTopBtn, { passive: true });
 
   /* ------------------------------------------------------------------------
      13. Start

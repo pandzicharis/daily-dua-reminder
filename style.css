@@ -311,9 +311,48 @@ h1, h2, h3, p {
   margin-top: 12px;
 }
 
+/* Sadržaj headera dobija SVOJ sloj, iznad staklene ploče.
+
+   Ovo je druga polovina iste popravke opisane gore. Prebacivanje blura na
+   ::before spasilo je header u Safariju, ali u instaliranoj aplikaciji
+   (standalone PWA) sadržaj je i dalje nestajao čim strana krene sama —
+   klik na traku napretka, skok na prvu neurađenu stavku, "Na vrh". Ostane
+   zamućena ploča bez selama, znaka, datuma i traka.
+
+   Razlog nije da se sadržaj obriše nego da se ::before nađe PREKO njega:
+   backdrop-filter tjera WebKit da tu ploču digne u vlastiti sloj, a slojevi
+   se pri skrolanju iz JavaScripta znaju posložiti mimo redoslijeda crtanja.
+   Ploča jeste `z-index: -1`, ali to vrijedi dok se oboje crta na istom sloju.
+
+   Zato dvije stvari, i jedna bez druge ne pomaže:
+
+     position/z-index  sadržaj postaje POZICIONIRAN sa svojim z-indexom, pa
+                       redoslijed prema ploči (-1) više nije stvar toka nego
+                       zapisan broj
+     translateZ(0)     i sadržaj ide u svoj sloj, pa se dva sloja porede po
+                       z-indexu umjesto da jedan prekrije drugi
+
+   Promocija u sloj stoji pod `-webkit-touch-callout` upitom jer je i greška
+   samo tamo: drugdje nema šta popravljati, a nepotreban sloj ume da omekša
+   tekst.
+
+   Ne odnosi se na sam .app-header — vidi ispod zašto on transform ne smije
+   ni dodirnuti. */
+.app-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .app-header > * {
+    transform: translateZ(0);
+  }
+}
+
 /* Nikakav `transform` ni `filter` ne smije doći na .app-header: oba prave
    novi "backdrop root", pa bi ::before umjesto strane ispod zamućivao sam
-   header i blur bi nestao. */
+   header i blur bi nestao. Djeca smiju — backdrop root prave samo PRECI
+   elementa sa filterom, a djeca su ::before-u braća. */
 .app-header::before {
   content: "";
   position: absolute;
