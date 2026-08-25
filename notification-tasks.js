@@ -7,7 +7,7 @@
 
    Tri podsjetnika, ni jedan više:
 
-     petak    — sekcija "Petak", SAMO petkom, prozor 08:00–12:59
+     petak    — sekcija "Petak", SAMO petkom, prozor 07:00–12:59
      dan      — Kur'an, Zikr i Dove (sve osim Navečer i Petak — te dvije
                 sekcije imaju svoj podsjetnik, pa se ne broje ovdje)
      navecer  — sve što je u sekciji "Navečer"
@@ -15,13 +15,13 @@
    Razdvojeni su baš zato da dnevni dio može biti završen a navečer još ne —
    i da podsjetnik za navečer u tom slučaju svejedno stigne.
 
-   PETAK. Petkom do podneva stiže SAMO petački podsjetnik: 08, 09, 10, 11 i
-   zadnji u 12:00. Dnevni tog dana ćuti dok petački traje (`quietFor`), pa se
-   dvije obavijesti ne mogu poklopiti; prva dnevna je u 13:00.
+   PETAK. Petkom do podneva stiže SAMO petački podsjetnik: 07, 08, 09, 10,
+   11 i zadnji u 12:00. Dnevni tog dana ćuti dok petački traje (`quietFor`),
+   pa se dvije obavijesti ne mogu poklopiti; prva dnevna je u 13:00.
 
    Ali zaklon pada u trenutku kad se petačke stavke ZAVRŠE: tada petački
    podsjetnik nema šta više da javi, pa dnevni odmah nastavlja po uobičajenim
-   pravilima (prozor mu je i petkom 08:00–00:00, satni ritam kao svaki dan).
+   pravilima (prozor mu je i petkom 07:00–00:00, satni ritam kao svaki dan).
    Dok je petak samo djelimično urađen, zaklon stoji i stiže "Petak je!
    Nastavi sa zikrom." — dnevni i dalje čeka.
 
@@ -108,7 +108,10 @@ var NOTIFICATION_TASKS = [
        ćuti, pa nema koga zaklanjati i dnevni nastavlja kao svaki drugi dan.
        Djelimično urađen petak zaklon NE skida. */
     quietFor: ["petak"],
-    startTime: "08:00",
+    /* Jutro počinje u 07:00 — i za obavijest, i za broj na ikonici, i za
+       dnevnu temu. Sva tri to vrijeme čitaju odavde (badge.js, theme.js), pa
+       se pomjera na jednom mjestu. */
+    startTime: "07:00",
     /* Do ponoći, a ne do 21:00: dok dnevni nije završen, večernji je
        zaklonjen — da poslije 21:00 ne nastupi tišina baš kad je najviše
        ostalo neurađeno. Zadnji podsjetnik je u 23:00. */
@@ -139,7 +142,10 @@ var NOTIFICATION_TASKS = [
     message: "Petak je! Nemoj zaboraviti zikr.",
     messagePartial: "Petak je! Nastavi sa zikrom.",
     /* Bez messageLate/titleLate — ovaj podsjetnik nikog ne zaklanja. */
-    startTime: "08:00",
+    /* Kreće kad i dnevni, u 07:00: petkom je petački podsjetnik PRVI toga
+       dana (dnevni ćuti do 13:00), pa bi se sa 08:00 jutro petkom budilo sat
+       kasnije nego ostalim danima. */
+    startTime: "07:00",
     /* Zadnji petački podsjetnik je onaj od 12:00 i tako i ostaje: 12:00–12:59
        je JEDAN slot, pa se može poslati samo jednom i najranije u 12:00.
        Kraj je 12:59 a NE 12:00 zato što se cron ne pokreće u sekundu u

@@ -13,11 +13,11 @@
 
    Odatle slijedi sve što je traženo, bez ijednog posebnog slučaja:
 
-     08:00–18:59   nastupio je samo dnevni      -> broj = neurađeno dnevno
+     07:00–18:59   nastupio je samo dnevni      -> broj = neurađeno dnevno
      od 19:00      nastupio je i večernji       -> broj = dnevno + večernje
-     petkom 08:00  nastupio je i petački        -> i on ulazi u zbir
+     petkom 07:00  nastupio je i petački        -> i on ulazi u zbir
      sve urađeno   nema šta ostati              -> nema kruga na ikonici
-     00:00–07:59   ništa još nije nastupilo     -> nema kruga na ikonici
+     00:00–06:59   ništa još nije nastupilo     -> nema kruga na ikonici
 
    Zadnji red je razlog zašto se gleda SAMO početak prozora, a ne i kraj:
    dnevni prozor ide do ponoći, pa neurađeno dnevno u 21:00 i dalje stoji na
@@ -137,7 +137,7 @@
     /* Prešla je ponoć otkako su brojke izbrojane — one više ne govore o
        današnjem danu, pa se odbacuju. Nula je ovdje TAČAN odgovor, a ne
        zamjena za nepoznato: novi dan počinje prazan i prvi podsjetnik mu je
-       tek u 08:00. Prave brojke stižu prvim iscrtavanjem. */
+       tek u 07:00. Prave brojke stižu prvim iscrtavanjem. */
     if (zadnjiDan !== null && zadnjiDan !== danasKey()) {
       zadnje = [];
       zadnjiDan = null;

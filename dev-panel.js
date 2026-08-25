@@ -43,13 +43,13 @@
   /* Vremena koja se najčešće provjeravaju. Petačke granice su tu namjerno:
      12:00 je zadnji petački podsjetnik, 12:15 mora biti tišina, a u 13:00
      kreće dnevni. */
-  var TIMES = ["08:00", "10:00", "12:00", "12:15", "13:00", "19:00", "23:00"];
+  var TIMES = ["07:00", "10:00", "12:00", "12:15", "13:00", "19:00", "23:00"];
 
-  /* Sati na kojima se tema lomi: 08:00 je granica jutra, 19:00 granica
+  /* Sati na kojima se tema lomi: 07:00 je granica jutra, 19:00 granica
      večeri — isti brojevi po kojima ide i dnevni/večernji podsjetnik, jer ih
      theme.js čita sa istog spiska. Minuta prije svake granice je tu da se
      vidi i strana PRIJE prelaza. */
-  var THEME_TIMES = ["07:59", "08:00", "12:00", "18:59", "19:00", "23:30"];
+  var THEME_TIMES = ["06:59", "07:00", "12:00", "18:59", "19:00", "23:30"];
 
   var el = {};
   var atTime = "12:00";

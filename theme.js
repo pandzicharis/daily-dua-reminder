@@ -29,7 +29,7 @@
    telefonu i na računaru vidi isti zikr, ali svaki uređaj svoju temu.
 
    KAD JE VEČE ne piše ovdje nego u notification-tasks.js: veče počinje kad i
-   večernji podsjetnik (19:00), a dan kad i dnevni (08:00). Isti spisak po
+   večernji podsjetnik (19:00), a dan kad i dnevni (07:00). Isti spisak po
    kojem telefon zvoni određuje i boju ekrana — satnica postoji na jednom
    mjestu i ne može se razići.
 
@@ -105,9 +105,9 @@
 
   function nocSad() {
     var minuta = minutaSad();
-    var dan = pocetak("dan", 8 * 60);
+    var dan = pocetak("dan", 7 * 60);
     var noc = pocetak("navecer", 19 * 60);
-    /* Dan je [08:00, 19:00). Sve ostalo je noć — i rano jutro i veče. */
+    /* Dan je [07:00, 19:00). Sve ostalo je noć — i rano jutro i veče. */
     return !(minuta >= dan && minuta < noc);
   }
 

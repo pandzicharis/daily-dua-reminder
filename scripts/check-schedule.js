@@ -20,13 +20,17 @@
    i ispad od tri sata). Ako bilo koja padne, izlazni kod je 1:
 
      1. najviše JEDAN podsjetnik po ciklusu — nikad dva bannera jedan do drugog
-     2. "petak" samo petkom, najviše 5 puta, prvi ne prije 08:00, a zadnji
-        slot (onaj od 12:00) ne prije 12:00; sa cronom koji pogodi pun sat
-        tačno 08:00, 09:00, 10:00, 11:00, 12:00
+     2. "petak" samo petkom, ne više puta nego što mu prozor ima slotova,
+        prvi ne prije njegovog startTime-a, a zadnji slot (onaj od 12:00) ne
+        prije 12:00; sa cronom koji pogodi pun sat stižu svi, redom
      3. petkom u 12:01–12:59 ne kreće NIJEDAN novi podsjetnik; jedino što tu
         smije stići je zakasnjeli zadnji petački slot (zato mu je endTime
         "12:59", a ne "12:00")
-     4. "dan" petkom 13:00–23:00, ostalim danima 08:00–23:00
+     4. "dan" petkom 13:00–23:00, ostalim danima od svog startTime-a do 23:00
+
+   Ni jedan sat u tim tvrdnjama nije upisan rukom: svi se izvode iz istog
+   spiska po kojem odlučuje i server (TASKS iz api/_lib.js). Pomjeri li se
+   jutro u notification-tasks.js, provjera se pomjeri s njim.
 
    Računa se BEZ korisničkog configa, dakle sa svim sekcijama uključenim.
    Tako i treba: ovdje se provjerava sam raspored, a config ga ne mijenja
@@ -63,6 +67,52 @@ const INTERVAL = (function () {
   const raw = parseInt(process.env.REMINDER_INTERVAL_MINUTES || "60", 10);
   return (!isFinite(raw) || raw < 1) ? 60 : Math.min(raw, 1440);
 })();
+
+/* ------------------------------------------------------------------------
+   Satnica se ČITA, ne prepisuje
+
+   Tvrdnje ispod govore o satima: kad smije prva petačka, kad prva dnevna,
+   koliko petak uopšte ima slotova. Da su ti brojevi ovdje upisani rukom,
+   pomjeranje jutra (08:00 -> 07:00) oborilo bi provjeru koja ništa loše nije
+   ni našla. Zato se svaki izvodi iz TASKS-a — iz istog spiska po kojem
+   odlučuje server.
+   ------------------------------------------------------------------------ */
+function taskById(id) {
+  for (const task of TASKS) {
+    if (task.id === id) { return task; }
+  }
+  throw new Error("nema podsjetnika \"" + id + "\" na spisku");
+}
+
+function startOf(id) {
+  return parseTime(taskById(id).startTime);
+}
+
+/* "00:00" znači ponoć na KRAJU dana — isto pravilo kao u dueSlot(). */
+function endOf(id) {
+  const end = parseTime(taskById(id).endTime || "22:00");
+  return end === 0 ? 24 * 60 : end;
+}
+
+/* Koliko slotova prozor uopšte ima pri ovom intervalu. */
+function slotsOf(id) {
+  return Math.floor((endOf(id) - startOf(id)) / INTERVAL) + 1;
+}
+
+const PETAK_START = startOf("petak");
+const PETAK_SLOTS = slotsOf("petak");
+/* Zadnji slot i minuta u kojoj najranije smije otići (12:00). */
+const PETAK_LAST = PETAK_SLOTS - 1;
+const PETAK_LAST_AT = PETAK_START + PETAK_LAST * INTERVAL;
+
+const DAN_START = startOf("dan");
+/* Prva minuta u kojoj zaklon nad dnevnim više ne stoji (13:00). */
+const DAN_PETKOM = endOf("petak") + 1;
+
+/* Sva vremena petačkih obavijesti kad cron pogodi pun sat. */
+const PETAK_PUNCTUAL = Array.from({ length: PETAK_SLOTS }, function (_, i) {
+  return hhmm(PETAK_START + i * INTERVAL);
+}).join(" ");
 
 /* ------------------------------------------------------------------------
    Scenariji — šta je čekirano. Spisak stavki se uzima iz data.js za TAJ
@@ -223,22 +273,23 @@ function checkAll() {
             fail("[2] " + label + ": petački podsjetnik u " + day);
           }
           if (res.weekday === 5 && pair[0] === "nista" && petakZaklanja) {
-            /* Prozor 08:00–12:59 uz interval 60 daje pet slotova (0–4) i ni
-               jedan više — koliko ih stvarno stigne zavisi od crona. */
-            if (petak.length > 5) {
+            /* Prozor petačkog uz ovaj interval daje tačno PETAK_SLOTS
+               slotova i ni jedan više — koliko ih stvarno stigne zavisi od
+               crona. */
+            if (petak.length > PETAK_SLOTS) {
               fail("[2] " + label + ": petačkih obavijesti " + petak.length +
-                   ", najviše 5 (" +
+                   ", najviše " + PETAK_SLOTS + " (" +
                    petak.map(function (s) { return hhmm(s.minutes); }).join(" ") + ")");
             }
-            if (petak.length && petak[0].minutes < 480) {
+            if (petak.length && petak[0].minutes < PETAK_START) {
               fail("[2] " + label + ": prva petačka u " + hhmm(petak[0].minutes) +
-                   ", prije 08:00");
+                   ", prije " + hhmm(PETAK_START));
             }
             /* Zadnji slot je onaj od 12:00 i ne smije otići prije 12:00. */
             petak.forEach(function (s) {
-              if (s.slot === 4 && s.minutes < 720) {
+              if (s.slot === PETAK_LAST && s.minutes < PETAK_LAST_AT) {
                 fail("[2] " + label + ": zadnja petačka u " + hhmm(s.minutes) +
-                     ", prije 12:00");
+                     ", prije " + hhmm(PETAK_LAST_AT));
               }
             });
             /* Sa cronom koji radi na pun sat moraju stići sve pet, u 08–12.
@@ -246,9 +297,9 @@ function checkAll() {
                (tvrdnja iznad to pokriva) — isto kao za dnevni podsjetnik. */
             if (obrazac.punctual) {
               const kada = petak.map(function (s) { return hhmm(s.minutes); }).join(" ");
-              if (kada !== "08:00 09:00 10:00 11:00 12:00") {
+              if (kada !== PETAK_PUNCTUAL) {
                 fail("[2] " + label + ": petačke u [" + kada +
-                     "], očekivano [08:00 09:00 10:00 11:00 12:00]");
+                     "], očekivano [" + PETAK_PUNCTUAL + "]");
               }
             }
           }
@@ -259,16 +310,16 @@ function checkAll() {
              mu endTime nije "12:00" nego "12:59". */
           if (petakZaklanja) {
             res.sent.forEach(function (s) {
-              if (s.minutes <= 720 || s.minutes >= 780) { return; }
-              if (s.task === "petak" && s.slot === 4) { return; }
+              if (s.minutes <= PETAK_LAST_AT || s.minutes >= DAN_PETKOM) { return; }
+              if (s.task === "petak" && s.slot === PETAK_LAST) { return; }
               fail("[3] " + label + ": obavijest (" + s.task + ", slot " +
                    s.slot + ") u " + hhmm(s.minutes) + ", a tu treba tišina");
             });
           }
 
-          /* 4. Prozor dnevnog: 08:00 kao i svaki dan, osim dok ga petački
-             zaklanja — tada je prva dnevna obavijest u 13:00. */
-          const prviDan = petakZaklanja ? 780 : 480;
+          /* 4. Prozor dnevnog: njegov startTime kao i svaki dan, osim dok ga
+             petački zaklanja — tada je prva dnevna obavijest u 13:00. */
+          const prviDan = petakZaklanja ? DAN_PETKOM : DAN_START;
           dan.forEach(function (s) {
             if (s.minutes < prviDan) {
               fail("[4] " + label + ": dnevni u " + hhmm(s.minutes) +
@@ -280,10 +331,10 @@ function checkAll() {
              danima — inače bi "završi petak pa nastavi normalno" tiho
              prestalo raditi. */
           if (res.weekday === 5 && pair[0] === "petak-gotov" && obrazac.punctual) {
-            if (!dan.length || dan[0].minutes !== 480) {
+            if (!dan.length || dan[0].minutes !== DAN_START) {
               fail("[5] " + label + ": prva dnevna u " +
                    (dan.length ? hhmm(dan[0].minutes) : "nikad") +
-                   ", a petak je završen pa se očekuje 08:00");
+                   ", a petak je završen pa se očekuje " + hhmm(DAN_START));
             }
           }
         });

@@ -218,7 +218,7 @@ function taskStatus(task, checked, dateKey, prefs) {
    se donosi i odluka o slanju), da proba sa izmišljenim vremenom pokazuje
    broj koji bi tada stvarno otišao. `startOverride` je isti onaj
    REMINDER_START_TIME kojim lokalno testiranje pomjera sve zadatke da počnu
-   odmah — bez njega bi broj i tada čekao 08:00, pa bi proba lagala. */
+   odmah — bez njega bi broj i tada čekao 07:00, pa bi proba lagala. */
 function badgeCount(checked, dateKey, prefs, minutes, weekday, startOverride) {
   let ostalo = 0;
 

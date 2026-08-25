@@ -143,9 +143,9 @@ Iz toga slijedi sve, bez ijednog posebnog slučaja:
 
 | Kada | Šta stoji na ikonici |
 |---|---|
-| 00:00–07:59 | ništa — nijedan podsjetnik još nije nastupio, dan je čist |
-| 08:00–18:59 | koliko je ostalo **dnevnih** |
-| petkom od 08:00 | dnevne **+ petačke** (i petački podsjetnik je nastupio) |
+| 00:00–06:59 | ništa — nijedan podsjetnik još nije nastupio, dan je čist |
+| 07:00–18:59 | koliko je ostalo **dnevnih** |
+| petkom od 07:00 | dnevne **+ petačke** (i petački podsjetnik je nastupio) |
 | od 19:00 | dnevne **+ večernje** — dva broja se saberu |
 | sve urađeno | ništa, krug nestaje |
 
@@ -179,7 +179,7 @@ tom trenutku uopšte radi:
 | aplikacija otvorena (i u pozadini) | u ponoć, najkasnije 30 s poslije — `script.js` otvori nov dan satom, ne samo pri povratku |
 | aplikacija otvorena, niko je ne dira | u ponoć — `badge.js` odbaci jučerašnje brojke i sam očisti krug |
 | aplikacija zatvorena, pa otvorena ujutro | u trenutku otvaranja |
-| aplikacija zatvorena cijelu noć | **tek prvom jutarnjom obavijesti (08:00)** |
+| aplikacija zatvorena cijelu noć | **tek prvom jutarnjom obavijesti (07:00)** |
 
 Zadnji red je jedina rupa i **ne može se zatvoriti**: dok aplikacija ne radi,
 ikonicu može dirnuti samo push, a push bez vidljive obavijesti nije dozvoljen
@@ -313,7 +313,7 @@ ničiji config. Filtriranje radi isti `sectionsForDate()` kroz koji prolaze i
 ekran i scheduler, pa **isključena dova mijenja i slanje, ne samo ekran**: ne
 ulazi u `total`, a sekcija kojoj je isključeno sve ispada cijela — njen
 podsjetnik onda ima `total = 0`, status `done` i ćuti. Petkom time pada i
-zaklon `quietFor`, pa dnevni kreće u 08:00 kao svaki drugi dan. Sve to bez
+zaklon `quietFor`, pa dnevni kreće u 07:00 kao svaki drugi dan. Sve to bez
 ijednog posebnog pravila, samo iz brojanja.
 
 Numeraciju dova daje `itemTitles()` i ide preko **cijelog** spiska sekcije, ne
@@ -564,21 +564,21 @@ petački traje, pa telefon nikad ne javi dvaput za isto.
 
 | Vrijeme | Šta stiže |
 |---|---|
-| 08:00 | `petak` slot 0 — *„Petak je! Nemoj zaboraviti zikr."* |
-| 09:00 – 11:00 | `petak` slot 1, 2, 3 — djelimično urađen: *„Petak je! Nastavi sa zikrom."* |
-| 12:00 | `petak` slot 4 — **zadnji petački** |
+| 07:00 | `petak` slot 0 — *„Petak je! Nemoj zaboraviti zikr."* |
+| 08:00 – 11:00 | `petak` slot 1, 2, 3, 4 — djelimično urađen: *„Petak je! Nastavi sa zikrom."* |
+| 12:00 | `petak` slot 5 — **zadnji petački** |
 | 12:01–12:59 | tišina |
-| 13:00 | `dan` slot 5 — *„Vrijeme je za dnevni zikr."* |
-| 14:00 … 23:00 | `dan` slot 6 … 15, pa `navecer` po starim pravilima |
+| 13:00 | `dan` slot 6 — *„Vrijeme je za dnevni zikr."* |
+| 14:00 … 23:00 | `dan` slot 7 … 16, pa `navecer` po starim pravilima |
 
 **Kad se petačke stavke završe prije 12:00**, zaklon pada **odmah** i dnevni
-nastavlja kao svaki drugi dan — dakle satni ritam od 08:00, pa `navecer` po
+nastavlja kao svaki drugi dan — dakle satni ritam od 07:00, pa `navecer` po
 starom. Djelimično urađen petak zaklon **ne** skida.
 
 Dva polja u konfiguraciji drže to na mjestu:
 
 - **`petak` ima `endTime: "12:59"`, ne `"12:00"`.** Uz interval od sat vremena
-  je 12:00–12:59 **jedan slot** (4), pa se može poslati samo jednom i najranije
+  je 12:00–12:59 **jedan slot** (5), pa se može poslati samo jednom i najranije
   u 12:00 — „zadnja u 12:00" i dalje vrijedi. Da tu stoji `"12:00"`, cron koji
   se pokrene u 12:03 vidio bi `minutes > end` i zadnja petačka obavijest bi se
   **tiho izgubila** (isto pravilo po kojem podsjetnik za 07:00 stiže u 07:32
@@ -607,7 +607,7 @@ petački ne šalje ništa.
 > kad bi start zavisio od toga je li petak završen, odčekiravanje jedne stavke
 > u 11:30 dalo bi manji slot od već zapisanog, `last >= slot` bi se poklopio i
 > dnevni bi zanijemio **do sutra**. `quietFor` taj problem ne može imati jer
-> start ostaje 08:00 cijeli dan.
+> start ostaje 07:00 cijeli dan.
 
 ## 6. Kako server zna dokle je zadatak stigao
 
@@ -783,7 +783,7 @@ jedino mjesto sa kojeg se provjerava ono što se inače ne može bez čekanja:
 | Kontrola | Šta radi |
 |---|---|
 | **Dan** `‹ ›`, *danas*, *prvi petak* | mijenja dan koji **aplikacija prikazuje** — tako se petačka sekcija vidi bez čekanja petka |
-| **Vrijeme** (08:00 … 23:00 ili ručno) | vrijeme koje se **glumi serveru** pri okidanju |
+| **Vrijeme** (07:00 … 23:00 ili ručno) | vrijeme koje se **glumi serveru** pri okidanju |
 | **Interval** 60 / 1 min | 60 = kao u produkciji, 1 = svaka minuta je nov slot |
 | **resetuj „poslano"** | uključeno: svaki okidač je nezavisan (pokazuje *prozor*). isključeno: pravi niz kroz dan (12:00 pošalje, 12:15 ćuti jer je slot 4 već poslan) |
 | **Okini — pošalji** | zove pravi `/api/cron` — obavijest stvarno stigne |
@@ -795,7 +795,7 @@ ništa ne odlučuje sam — samo prikazuje izvještaj `/api/cron`, pa ne može
 pokazati jedno a produkcija uraditi drugo.
 
 **Recept za petak:** *prvi petak* → interval **60** → resetuj **isključi** →
-okidaj redom 08:00, 09:00, 12:00, 12:15, 13:00, 14:00. Očekivano: četiri
+okidaj redom 07:00, 09:00, 12:00, 12:15, 13:00, 14:00. Očekivano: četiri
 petačke, zadnja u 12:00, tišina u 12:15, dnevni od 13:00.
 
 Kad se gleda dan koji nije današnji, na vrhu stoji žuta traka *„proba"*:
@@ -825,9 +825,10 @@ Ispiše svaku minutu u kojoj bi obavijest otišla i sa kojim tekstom, zovući
 ispad od 3h) i vrati izlazni kod 1 ako nešto padne:
 
 1. najviše **jedan** podsjetnik po ciklusu — nikad dva bannera jedan do drugog
-2. `petak` samo petkom, najviše 5 puta, zadnji slot ne prije 12:00
+2. `petak` samo petkom, ne više puta nego što mu prozor ima slotova (07:00–12:59
+   uz interval 60 = 6), zadnji slot ne prije 12:00
 3. petkom u 12:01–12:59 ne kreće **nijedan** novi podsjetnik
-4. `dan` petkom 13:00–23:00, ostalim danima 08:00–23:00
+4. `dan` petkom 13:00–23:00, ostalim danima 07:00–23:00
 
 Vrijedi pokrenuti prije deploya.
 
@@ -907,8 +908,8 @@ Provjera redom:
    ali više nije fokusiran) pa okini opet — obavijest stiže.
 
 9. Petak: u panelu *prvi petak*, interval 60, resetuj isključeno — pa okidaj
-   08:00, 12:00, 12:15, 13:00. Treba: petačka, petačka, tišina, dnevna.
-10. Ostali dani: isto za četvrtak — petačke sekcije nema, `dan` kreće u 08:00
+   07:00, 12:00, 12:15, 13:00. Treba: petačka, petačka, tišina, dnevna.
+10. Ostali dani: isto za četvrtak — petačke sekcije nema, `dan` kreće u 07:00
     kao i prije.
 
 Na kraju vrati `REMINDER_INTERVAL_MINUTES=60` i obriši `REMINDER_START_TIME`.

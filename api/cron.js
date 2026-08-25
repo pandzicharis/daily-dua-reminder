@@ -23,7 +23,7 @@
 
    Config utiče i na slanje, ne samo na ekran: ugašena sekcija (petak) ne
    ulazi u račun, pa njen podsjetnik ima total 0, status "done" i ćuti. Uz
-   to pada i zaklon `quietFor`, pa dnevni petkom kreće u 08:00 kao svaki
+   to pada i zaklon `quietFor`, pa dnevni petkom kreće u 07:00 kao svaki
    drugi dan — sve to bez ijednog posebnog pravila, samo iz brojanja.
 
    Šalje li se uopšte i sa kojim tekstom, zavisi od toga koliko je danas
