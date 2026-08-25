@@ -32,7 +32,9 @@
      vlastite      svoja dova ili svoj zikr, u bilo koju sekciju osim
      stavke        kur'anske, bez deploya. Tri oblika: zikr sa brojem, dova
                    (arapski, transkripcija, prevod, izvor) i obična stavka
-                   sa samo naslovom i kvačicom.
+                   sa samo naslovom i kvačicom. U skupinama dova za stanja je
+                   oblik samo jedan — dova sa naslovom — pa se tip tamo ni ne
+                   bira (vidi `tipoviZa()`).
 
      redoslijed    red se povuče i spusti gdje treba. Poredak vrijedi svugdje
                    — na ekranu, u postavkama i u numeraciji dova — jer se
@@ -47,6 +49,11 @@
 
    Spisak sekcija se NE nabraja ovdje — akordeoni se prave iz
    `pickableSections()` u data.js, pa nova sekcija sa spiskom sama dobije svoj.
+
+   Spisak je razdvojen na dva dijela: dnevne sekcije i skupine dova za stanja
+   (`kind: "stanje"` u data.js — one sa svoje strane, koju pravi situacije.js).
+   Razdvojene su samo zaglavljem, jer se različito koriste; sve ostalo im je
+   isto — ista kvačica, ista forma, isto brisanje, isto dodavanje svoje dove.
 
    Brisanje: vlastita stavka nestaje zauvijek, a stavka iz data.js se skida
    sa spiska (isto što radi i kvačica pored nje). Obrisati je zauvijek nije
@@ -444,17 +451,6 @@
     posalji();
   }
 
-  /* Naslov dove je samo broj ("DOVA #7"), pa se po njemu ne zna koja je —
-     ispod ide početak prevoda. Prevod, a ne arapski: po njemu se i bira. */
-  function opisStavke(item) {
-    if (item.type !== "dua") { return ""; }
-    var text = String(item.translation || item.transliteration || "").trim();
-    if (!text) { return ""; }
-    if (text.length <= 78) { return text; }
-    /* Rez na zadnjoj cijeloj riječi — presječena riječ izgleda kao greška. */
-    return text.slice(0, 78).replace(/[\s.,;:!?]+\S*$/, "") + "…";
-  }
-
   /* Pali ili gasi sve stavke sekcije odjednom. */
   function postaviSve(items, prikazi) {
     var promjena = false;
@@ -493,7 +489,10 @@
        opis onoga što naslov već kaže. */
     if (item.type === "quran") { return ""; }
 
-    if (item.type !== "dua") {
+    /* Dova za stanje ("ajet") ide istim putem kao "dua": naslov joj je
+       kratak ("Ta-Ha, 25–26"), a izvor bi ispod njega samo ponovio to isto —
+       početak prevoda kaže koja je dova. */
+    if (item.type !== "dua" && item.type !== "ajet") {
       return item.source ? String(item.source) : "";
     }
 
@@ -1188,7 +1187,9 @@
     btn.type = "button";
     btn.className = "set-add";
     btn.appendChild(svgPutanje("set-add-icon", ["M12 5v14", "M5 12h14"], "1.8"));
-    btn.appendChild(document.createTextNode("Dodaj svoju stavku"));
+    btn.appendChild(document.createTextNode(
+      acc.section.kind === "stanje" ? "Dodaj svoju dovu" : "Dodaj svoju stavku"
+    ));
     btn.addEventListener("click", function () { otvoriFormu(acc.section, null); });
 
     acc.foot.appendChild(btn);
@@ -1290,12 +1291,43 @@
     { id: "prosto", label: "Stavka" }
   ];
 
+  /* U skupinama dova za stanja (`kind: "stanje"`) postoji samo jedan oblik:
+     dova sa naslovom. Brojani zikr i gola stavka tamo nemaju smisla — ta
+     strana ništa ne broji i ništa ne čekira, pa bi kartica sa brojem
+     obećavala tespih kojeg nema.
+
+     Jedan tip znači i da se tip ne bira: forma tada ne crta traku sa
+     tabovima (vidi `formaStavke()`). */
+  var TIPOVI_STANJE = [
+    { id: "ajet", label: "Dova" }
+  ];
+
+  function tipoviZa(section) {
+    return (section && section.kind === "stanje") ? TIPOVI_STANJE : TIPOVI;
+  }
+
+  /* Polja NOVE stavke, po izabranom tipu. Tip je ovdje ono što stoji na
+     dugmetu ("broj", "dova", "prosto", "ajet"), a `poljaZaTip()` ispod prima
+     tip STAVKE iz data.js ("count", "dua", "ajet", …) — dvije stvari, pa i
+     dvije funkcije. */
+  function poljaZaNovi(tip) {
+    if (tip === "ajet") { return poljaZaTip("ajet"); }
+    if (tip === "dova") { return poljaZaTip("dua"); }
+    if (tip === "broj") { return ["title", "repetitions"]; }
+    return ["title"];
+  }
+
   /* Polja koja forma pokazuje, po tipu stavke. `kljuc` je ime polja u
      `data.js` odnosno u configu — po njemu se i puni i sprema, pa se spisak
      polja vodi na jednom mjestu. */
   function poljaZaTip(type) {
     if (type === "quran") { return ["stranice"]; }
     if (type === "dua") { return ["arabic", "transliteration", "translation", "source"]; }
+    /* Dova za stanje ima i naslov, za razliku od "dua": ona se ne numeriše
+       sama nego se na svojoj strani bira po imenu. */
+    if (type === "ajet") {
+      return ["title", "arabic", "transliteration", "translation", "source"];
+    }
     if (type === "surah") { return ["title", "source"]; }
     return ["title", "repetitions"];
   }
@@ -1441,21 +1473,26 @@
     box.className = "set-new";
 
     var naslovForme = novo
-      ? "Nova stavka — " + section.title
+      ? (section.kind === "stanje" ? "Nova dova — " : "Nova stavka — ") + section.title
       : "Uredi";
     box.appendChild(p("set-new-head", naslovForme));
 
     /* --- tip (samo za novu stavku) --- */
-    var tip = "broj";
+    /* Koji su oblici uopšte mogući zavisi od sekcije: u skupinama dova za
+       stanja postoji samo jedan (vidi `tipoviZa()`), pa se traka sa tabovima
+       ne crta — jedno dugme koje se ne može ni odabrati ni odbiti nije
+       izbor. */
+    var tipovi = tipoviZa(section);
+    var tip = tipovi[0].id;
     var dugmad = {};
 
-    if (novo) {
+    if (novo && tipovi.length > 1) {
       var tabs = document.createElement("div");
       tabs.className = "set-new-tabs";
       tabs.setAttribute("role", "group");
       tabs.setAttribute("aria-label", "Tip stavke");
 
-      TIPOVI.forEach(function (t) {
+      tipovi.forEach(function (t) {
         var b = document.createElement("button");
         b.type = "button";
         b.className = "set-new-tab";
@@ -1602,15 +1639,13 @@
     box.appendChild(akcije);
 
     function primijeniTip() {
-      TIPOVI.forEach(function (t) {
+      tipovi.forEach(function (t) {
+        /* Bez trake sa tabovima nema ni dugmadi — jedan tip se ne bira. */
+        if (!dugmad[t.id]) { return; }
         dugmad[t.id].classList.toggle("is-on", t.id === tip);
         dugmad[t.id].setAttribute("aria-pressed", t.id === tip ? "true" : "false");
       });
-      nacrtajPolja(
-        tip === "dova" ? poljaZaTip("dua")
-          : tip === "broj" ? ["title", "repetitions"]
-            : ["title"]
-      );
+      nacrtajPolja(poljaZaNovi(tip));
       greska.hidden = true;
     }
 
@@ -1632,19 +1667,35 @@
 
     /* --- spremanje --- */
 
+    /* Arapski / transkripcija / prevod / izvor — isti posao za "dova" i za
+       "ajet", pa stoji na jednom mjestu. Vraća false i piše grešku kad nema
+       ni jednog teksta: prazna kartica se ne bi znala ni prepoznati ni
+       obrisati. */
+    function upisiTekstove(entry) {
+      entry.arabic = tekst("arabic");
+      entry.transliteration = tekst("transliteration");
+      entry.translation = tekst("translation");
+      entry.source = tekst("source");
+      if (!entry.arabic && !entry.transliteration && !entry.translation) {
+        pisiGresku("Upiši bar arapski tekst, transkripciju ili prevod.");
+        return false;
+      }
+      return true;
+    }
+
     function spremiNovu() {
       var entry = { id: novaId(), sekcija: section.id };
 
-      if (tip === "dova") {
+      if (tip === "ajet") {
+        entry.type = "ajet";
+        entry.title = tekst("title");
+        /* Naslov je ovdje obavezan, za razliku od "dova": na strani sa dovama
+           za stanja se dova bira po imenu (vidi `cleanCustom()` u data.js). */
+        if (!entry.title) { pisiGresku("Upiši naslov."); return false; }
+        if (!upisiTekstove(entry)) { return false; }
+      } else if (tip === "dova") {
         entry.type = "dua";
-        entry.arabic = tekst("arabic");
-        entry.transliteration = tekst("transliteration");
-        entry.translation = tekst("translation");
-        entry.source = tekst("source");
-        if (!entry.arabic && !entry.transliteration && !entry.translation) {
-          pisiGresku("Upiši bar arapski tekst, transkripciju ili prevod.");
-          return false;
-        }
+        if (!upisiTekstove(entry)) { return false; }
       } else {
         entry.type = "count";
         entry.title = tekst("title");
@@ -1663,15 +1714,12 @@
     function spremiVlastitu() {
       var entry = { id: id, sekcija: section.id, type: zapis ? zapis.type : "count" };
 
-      if (entry.type === "dua") {
-        entry.arabic = tekst("arabic");
-        entry.transliteration = tekst("transliteration");
-        entry.translation = tekst("translation");
-        entry.source = tekst("source");
-        if (!entry.arabic && !entry.transliteration && !entry.translation) {
-          pisiGresku("Upiši bar arapski tekst, transkripciju ili prevod.");
-          return false;
-        }
+      if (entry.type === "ajet") {
+        entry.title = tekst("title");
+        if (!entry.title) { pisiGresku("Upiši naslov."); return false; }
+        if (!upisiTekstove(entry)) { return false; }
+      } else if (entry.type === "dua") {
+        if (!upisiTekstove(entry)) { return false; }
       } else {
         entry.title = tekst("title");
         if (!entry.title) { pisiGresku("Upiši naslov."); return false; }
@@ -1807,6 +1855,18 @@
     ]);
   }
 
+  /* Zaglavlje nad skupinama dova za stanja. Nastaje ovdje a ne u `build()`
+     jer stoji UNUTAR spiska koji se pri svakoj izmjeni crta iznova. */
+  function glavaStanja() {
+    var box = document.createElement("div");
+    box.className = "set-group-head";
+    box.appendChild(p("set-label", "Dove za stanja"));
+    box.appendChild(p("set-note",
+      "Skupine sa strane koju otvara ikonica sa rukama u zaglavlju. " +
+      "Ništa se ne čekira — samo se prouči."));
+    return box;
+  }
+
   function nacrtajAkordeone() {
     if (!el.picks) { return; }
 
@@ -1818,11 +1878,41 @@
 
     strukturaPotpis = strukturaSada();
     el.picks.textContent = "";
-    akordeoni = birljive().map(function (section) {
+
+    /* Dva spiska, jedan ispod drugog: dnevne sekcije pa skupine dova za
+       stanja. Razdvojene su zato što se različito i koriste — dnevne se
+       odrađuju, ove se traže kad zatreba — pa bi "Strah i nemir" između
+       "Dove" i "Navečer" izgledao kao još jedan dio dnevnog zikra.
+
+       Sve ostalo im je isto: isti akordeon, isti red, ista kvačica, ista
+       olovka, isto dugme za dodavanje. Zato ovdje stoji samo zaglavlje
+       između, a ne drugi spisak sa svojim pravilima.
+
+       Dijeli se po `kind`, a ne po mjestu u nizu `sections`: redoslijed u
+       data.js je slobodan i skupine ne moraju stajati na kraju. */
+    var dnevne = [];
+    var stanja = [];
+
+    birljive().forEach(function (section) {
+      if (section.kind === "stanje") { stanja.push(section); }
+      else { dnevne.push(section); }
+    });
+
+    akordeoni = [];
+
+    function dopisi(section) {
       var acc = akordeon(section);
       el.picks.appendChild(acc.node);
-      return acc;
-    });
+      akordeoni.push(acc);
+    }
+
+    dnevne.forEach(dopisi);
+
+    if (stanja.length) {
+      el.picks.appendChild(glavaStanja());
+      stanja.forEach(dopisi);
+    }
+
     primijeniStanje();
 
     if (el.body) { el.body.scrollTop = skrol; }
@@ -2142,9 +2232,12 @@
        Akordeoni idu u svoj kontejner, a ne pravo u tijelo drawer-a: spisak se
        crta iznova kad se vlastita stavka doda ili obriše, pa mora postojati
        mjesto koje se smije isprazniti bez diranja ostatka postavki. */
+    /* "Dnevni spisak", a ne samo "Prikaz": ispod njega stoji još jedno
+       zaglavlje ("Dove za stanja", vidi `glavaStanja()`), pa se iz naslova
+       mora vidjeti na šta se koji spisak odnosi. */
     var pickHead = document.createElement("div");
     pickHead.className = "set-group-head";
-    pickHead.appendChild(p("set-label", "Prikaz"));
+    pickHead.appendChild(p("set-label", "Dnevni spisak"));
     pickHead.appendChild(p("set-note",
       "Odaberi šta se prikazuje, promijeni broj ponavljanja ili dodaj svoje."));
     body.appendChild(pickHead);

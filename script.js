@@ -335,6 +335,8 @@
   var visible = sectionsForDate(dateKey, prefs());
 
   var el = {
+    header: document.querySelector(".app-header"),
+    glass: document.querySelector(".app-glass"),
     greeting: document.getElementById("greeting"),
     greetingName: document.getElementById("greetingName"),
     date: document.getElementById("todayDate"),
@@ -602,7 +604,11 @@
        Dova bez `transliteration` bi u tom režimu ostala bez ijednog teksta,
        pa se za nju vraća arapski. Trenutno je imaju sve, ali nova dova se
        može dodati bez nje i ne smije ispasti prazna. */
-    if (item.type === "dua") {
+    /* "ajet" (dova za stanje) ima isto tijelo kao "dua" — arapski ili
+       transkripcija, pa prevod. Na dnevnom spisku ga po pravilu nema (te
+       sekcije `sectionsForDate()` ne pušta), ali stavka se u postavkama može
+       premjestiti gdje god, pa ne smije ispasti prazna kartica. */
+    if (item.type === "dua" || item.type === "ajet") {
       var body = document.createElement("div");
       var transcript = prefs().transkript === true && !!item.transliteration;
       body.className = "item-body";
@@ -1910,6 +1916,47 @@
   window.addEventListener("resize", refreshTopBtn, { passive: true });
 
   /* ------------------------------------------------------------------------
+     12b. Visina headera -> staklena ploča
+
+     Podlogu i blur headera nosi odvojen `fixed` element (`.app-glass` u
+     index.html), a ne sam header — vidi komentar tamo i u style.css zašto.
+     Cijena tog razdvajanja je jedna jedina: ploča ne zna koliko je header
+     visok, pa joj se visina mjeri odavde i upisuje u `--header-h`.
+
+     Header nije uvijek iste visine: traka sa selamom se pojavi kad se upiše
+     ime, trake napretka kad se iscrta dan, a petkom ih je tri umjesto dvije.
+     Zato ResizeObserver, a ne jedno mjerenje pri startu.
+
+     Mjeri se `offsetHeight`, ne `getBoundingClientRect()`: cijela ploča je
+     pun broj piksela, pa se polovina piksela na razlomljenim visinama ne
+     pojavljuje kao svijetla linija ispod ruba headera.
+     ------------------------------------------------------------------------ */
+
+  var glassH = -1;
+
+  function measureHeader() {
+    if (!el.header) { return; }
+    var h = el.header.offsetHeight;
+    if (!h || h === glassH) { return; }
+    glassH = h;
+    document.documentElement.style.setProperty("--header-h", h + "px");
+  }
+
+  if (el.header && el.glass && typeof window.ResizeObserver === "function") {
+    new window.ResizeObserver(measureHeader).observe(el.header);
+  } else {
+    /* Staro okruženje bez ResizeObserver-a: mjeri se na promjenu ekrana i
+       poslije svakog crtanja (vidi poziv u `render()`). */
+    window.addEventListener("resize", measureHeader, { passive: true });
+  }
+
+  /* Fontovi dolaze poslije prvog crtanja i pomjere visinu reda sa datumom.
+     ResizeObserver bi to uhvatio sam, ali ovdje je i za onaj drugi put. */
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(measureHeader).catch(function () {});
+  }
+
+  /* ------------------------------------------------------------------------
      13. Start
      ------------------------------------------------------------------------ */
 
@@ -1959,6 +2006,10 @@
     /* Nov spisak je druge visine, pa je i dno na drugom mjestu — bez ovoga
        bi "Na vrh" ostalo na ekranu i poslije prebacivanja na kraći dan. */
     refreshTopBtn();
+    /* Selam i trake napretka mijenjaju visinu headera — staklena ploča ispod
+       njega je odvojen element, pa mora znati novu visinu (vidi 12b).
+       ResizeObserver bi to uhvatio i sam; ovo je za okruženja bez njega. */
+    measureHeader();
   }
 
   /* Prebacivanje na drugi dan. Završni ekran se pri prebacivanju NE otvara

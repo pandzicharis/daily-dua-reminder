@@ -21,7 +21,7 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=41">
+  <link rel="stylesheet" href="style.css?v=42">
 
   <!-- Tema se bira PRIJE prvog crtanja, zato ove dvije skripte stoje ovdje a
        ne dolje sa ostalima: kad bi se čekalo dno strane, noću bi svijetla
@@ -36,7 +36,29 @@
 </head>
 <body>
 
-  <!-- Header je sticky i poluprovidan (blur) — ostaje na vrhu dok se skrola. -->
+  <!-- Staklena ploča ispod headera.
+
+       Stoji OVDJE, van headera, i `position: fixed` je — a ne pseudoelement
+       sticky headera, kako je bila. Razlog je greška koja se vidjela samo u
+       instaliranoj aplikaciji na iPhone-u: sadržaj headera (selam, znak,
+       datum, trake) nestane i ostane prazna zamućena ploča. Zadnje što je to
+       izazivalo bio je skrol NAGORE sa samog dna spiska.
+
+       `backdrop-filter` tjera WebKit da tu ploču digne u vlastiti sloj. Dok
+       je ploča bila dijete sticky headera, taj se sloj pri naglom skrolanju
+       znao posložiti PREKO svoje braće (`z-index: -1` vrijedi samo dok se
+       oboje crta na istom sloju) — i header bi ostao bez sadržaja. Popravke
+       su bile dvije (pozicioniranje djece i njihova promocija u sloj) i obje
+       su samo pomjerale granicu na kojoj greška počinje.
+
+       Sada sloja sa filterom u headeru NEMA: ploča je odvojen element bez
+       ijednog djeteta, pa nema šta izgubiti, a header je običan sticky
+       element bez filtera. Izgled je isti do piksela — ploča je uvijek tačno
+       ispod headera jer je header PRVI element strane, pa mu je vrh uvijek na
+       vrhu ekrana. Visinu joj daje `--header-h`, koju mjeri script.js. -->
+  <div class="app-glass" aria-hidden="true"></div>
+
+  <!-- Header je sticky, a poluprovidnu podlogu mu daje .app-glass iznad. -->
   <header class="app-header">
 
     <!-- Selam je vlastita traka NAD naslovnim redom, a ne red u njemu: među
@@ -104,21 +126,44 @@
         </p>
       </div>
 
-      <!-- Postavke — na mjestu gdje je prije stajao prstenasti graf.
+      <!-- Dva okrugla dugmeta, na mjestu gdje je prije stajao prstenasti graf.
            Prsten je uklonjen jer je isto govorio dvaput: trake ispod već
-           pokazuju napredak, i to razdvojen po dobu dana. Klik otvara drawer
-           (ime, tema, transkripcija, podsjetnici, spisak dova) koji pravi
-           settings.js.
-           Ikonica je zupčanik. -->
-      <button type="button" class="settings-btn" id="settingsBtn"
-              aria-label="Postavke" title="Postavke">
-        <svg class="settings-icon" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="1.6"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3.2"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-      </button>
+           pokazuju napredak, i to razdvojen po dobu dana. -->
+      <div class="header-tools">
+
+        <!-- Dove za stanja — svoja strana sa tabovima (situacije.js): strah i
+             nemir, tuga, zahvalnost, zaštita, oslonac. Otvori se kad treba
+             nešto proučiti za ono što se tog trenutka osjeća.
+
+             Kvačica na tim karticama postoji, ali se nigdje ne pamti i briše
+             se sa zatvaranjem — ona je oznaka dokle se stiglo u JEDNOM učenju,
+             ne obaveza koja se vodi.
+
+             Ikonica su sklopljene ruke — isti znak koji na spisku nosi
+             sekcija "Dove", jer je i ovo dova. -->
+        <button type="button" class="header-btn" id="duasBtn"
+                aria-label="Dove za stanja" title="Dove za stanja">
+          <svg class="header-btn-icon" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 13a8 8 0 0 0 16 0zM12 3v3.5M7.5 5l1.4 2.2M16.5 5l-1.4 2.2"/>
+          </svg>
+        </button>
+
+        <!-- Postavke. Klik otvara drawer (ime, tema, transkripcija,
+             podsjetnici, spisak dova) koji pravi settings.js.
+             Ikonica je zupčanik. -->
+        <button type="button" class="header-btn settings-btn" id="settingsBtn"
+                aria-label="Postavke" title="Postavke">
+          <svg class="header-btn-icon" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+
+      </div>
 
     </div>
 
@@ -149,5 +194,9 @@
   <script src="sync.js"></script>
   <script src="script.js"></script>
   <script src="notifications.js"></script>
+  <!-- Dove za stanja — svoja strana, sa ikonicom u headeru. Ide POSLIJE
+       settings.js jer iz njega čita config (šta je uključeno, transkripcija) i
+       prijavljuje se na `naPromjenu`. -->
+  <script src="situacije.js"></script>
 </body>
 </html>

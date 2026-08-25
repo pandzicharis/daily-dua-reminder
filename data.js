@@ -29,6 +29,10 @@
    Kur'anska stranica je i sama takva stavka, pod id-em "quran" — nije u
    nizu `items` (vidi `sectionItems()`), ali se isključuje isto kao dova.
 
+   Isto vrijedi i za dove za stanja (`kind: "stanje"`): njih nema na dnevnom
+   spisku, ali se u postavkama sakrivaju, mijenjaju i dopisuju kroz iste
+   kvačice i istu formu.
+
    Prekidač u postavkama nema svoje polje u configu: pali i gasi sve kvačice
    sekcije odjednom, pa se ne može raziće sa njima.
 
@@ -36,6 +40,11 @@
      "surah"   -> samo checkbox + naslov, bez teksta (sve sure)
      "count"   -> checkbox + naslov + broj ponavljanja, bez teksta
      "dua"     -> checkbox + naslov + arapski + prevod
+     "ajet"    -> dova za stanje: naslov + arapski + prevod, BEZ checkboxa.
+                  Stoji samo u sekcijama `kind: "stanje"` (vidi ispod) i
+                  prikazuje se na svojoj strani (`situacije.js`), ne na
+                  dnevnom spisku. Naslov joj je obavezan i ne numeriše se —
+                  po njemu se dova i bira.
 
    Naslov dove se ne piše ovdje — aplikacija ih sama numeriše po sekciji
    ("DOVA #1", "DOVA #2", ...). `title` je bitan samo za "surah" i "count".
@@ -587,6 +596,295 @@
   ];
 
   /* --------------------------------------------------------------------------
+     DOVE ZA STANJA
+
+     Ne stoje na dnevnom spisku i nigdje se ne pamte — imaju svoju stranu
+     (ikonica u headeru, `situacije.js`), sa po jednim tabom za svaku skupinu
+     ispod. Zato su im sekcije `kind: "stanje"`: `sectionsForDate()` ih ne
+     pušta ni na listu ni u račun podsjetnika, a `pickableSections()` ih pušta
+     u postavke, pa se sakrivaju, mijenjaju, brišu i dopisuju kao svaka druga
+     stavka.
+
+     Kvačica na toj strani POSTOJI, ali ne znači isto što i na spisku: služi
+     samo da se pri učenju vidi dokle se stiglo, živi u memoriji i nestaje sa
+     ponovnim učitavanjem. Ne ide ni u localStorage ni na server. Zato ove
+     stavke i nemaju šta tražiti u `sectionsForDate()`.
+
+     Tip je "ajet", ne "dua", i to je jedina razlika u sadržaju: dova na
+     dnevnom spisku se numeriše sama ("DOVA #7") jer se tamo ne bira nego
+     prolazi red po red, a ovdje se BIRA po stanju — pa svaka nosi svoje ime
+     ("Er-Ra'd, 28", "Dova Junusa, a.s."). Numeraciju daje `itemTitles()`,
+     koja broji samo "dua", pa "ajet" zadrži svoj `title`.
+
+     Ponavljanja između skupina su namjerna: "Hasbunallahu ve ni'mel-vekil" se
+     uči i u strahu i kao oslonac, a strana se otvara u jednom stanju i tada u
+     tabu mora stajati sve što tom stanju pripada. Zato su to dva zapisa sa
+     dva id-a, a ne jedan koji stoji na dva mjesta — id je ono po čemu se
+     stavka sakriva i mijenja, pa bi dijeljeni id značio da sakrivanje u
+     "Oslonac" nijemo sakrije dovu i u "Strah i nemir".
+     -------------------------------------------------------------------------- */
+
+  const stanjeStrah = [
+    {
+      id: "stanje-rad-28",
+      title: "Er-Ra'd, 28",
+      type: "ajet",
+      arabic: "الَّذِينَ آمَنُوا وَتَطْمَئِنُّ قُلُوبُهُم بِذِكْرِ اللَّهِ ۗ أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ",
+      transliteration:
+        "El-lezine amenu ve tatmeinnu kulubuhum bi zikrillah. " +
+        "Ela bi zikrillahi tatmeinnul-kulub.",
+      translation: "Oni koji vjeruju i čija se srca, kad se Allah spomene, smiruju — a srca se, doista, kad se Allah spomene, smiruju.",
+      source: "Kur'an, Er-Ra'd, 28"
+    },
+    {
+      id: "stanje-serh-5-6",
+      title: "Eš-Šerh, 5–6",
+      type: "ajet",
+      arabic: "فَإِنَّ مَعَ الْعُسْرِ يُسْرًا ۝ إِنَّ مَعَ الْعُسْرِ يُسْرًا",
+      transliteration: "Fe inne meal-'usri jusra. Inne meal-'usri jusra.",
+      translation: "Zaista, s teškoćom je olakšanje! Zaista, s teškoćom je olakšanje!",
+      source: "Kur'an, Eš-Šerh, 5–6"
+    },
+    {
+      id: "stanje-tevbe-40",
+      title: "Et-Tevbe, 40",
+      type: "ajet",
+      arabic: "لَا تَحْزَنْ إِنَّ اللَّهَ مَعَنَا",
+      transliteration: "La tahzen, innallahe me'ana.",
+      translation: "Ne žalosti se, Allah je s nama.",
+      source: "Kur'an, Et-Tevbe, 40"
+    },
+    {
+      id: "stanje-bekare-286",
+      title: "El-Bekare, 286",
+      type: "ajet",
+      arabic: "لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا",
+      transliteration: "La jukellifullahu nefsen illa vus'aha.",
+      translation: "Allah nikoga ne opterećuje preko njegovih mogućnosti.",
+      source: "Kur'an, El-Bekare, 286"
+    },
+    {
+      id: "stanje-imran-173",
+      title: "Ali Imran, 173",
+      type: "ajet",
+      arabic: "حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ",
+      transliteration: "Hasbunallahu ve ni'mel-vekil.",
+      translation: "Dovoljan nam je Allah i divan je On Zaštitnik.",
+      source: "Kur'an, Ali Imran, 173"
+    },
+    {
+      id: "stanje-tevbe-129",
+      title: "Et-Tevbe, 129",
+      type: "ajet",
+      arabic: "حَسْبِيَ اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ ۖ عَلَيْهِ تَوَكَّلْتُ ۖ وَهُوَ رَبُّ الْعَرْشِ الْعَظِيمِ",
+      transliteration:
+        "Hasbijallahu la ilahe illa Huve, alejhi tevekkeltu, " +
+        "ve Huve Rabbul-'Aršil-'Azim.",
+      translation: "Meni je dovoljan Allah, nema boga osim Njega. Na Njega se oslanjam i On je Gospodar Veličanstvenog Arša.",
+      source: "Kur'an, Et-Tevbe, 129"
+    },
+    {
+      /* Ista dova stoji i na dnevnom spisku, pod "dove-hemm-hazen" — tamo se
+         čekira, ovdje se traži po stanju. Ovdje je duži oblik, sa "e'uzu bike"
+         pred svakim parom; onaj na spisku je kraći. */
+      id: "stanje-hemm-hazen",
+      title: "Dova protiv brige i tuge",
+      type: "ajet",
+      arabic: "اللَّهُمَّ إِنِّي أَعُوذُ بِكَ مِنَ الْهَمِّ وَالْحَزَنِ، وَأَعُوذُ بِكَ مِنَ الْعَجْزِ وَالْكَسَلِ، وَأَعُوذُ بِكَ مِنَ الْجُبْنِ وَالْبُخْلِ، وَأَعُوذُ بِكَ مِنْ غَلَبَةِ الدَّيْنِ وَقَهْرِ الرِّجَالِ",
+      transliteration:
+        "Allahumme inni e'uzu bike minel-hemmi vel-hazen, ve e'uzu bike " +
+        "minel-'adžzi vel-kesel, ve e'uzu bike minel-džubni vel-buhl, " +
+        "ve e'uzu bike min galebetid-dejni ve kahrir-ridžal.",
+      translation: "Allahu, utječem Ti se od brige i tuge, i utječem Ti se od nemoći i lijenosti, i utječem Ti se od kukavičluka i škrtosti, i utječem Ti se od tereta duga i od toga da me ljudi nadvladaju.",
+      source: "Sahih el-Buhari, 6369"
+    },
+    {
+      id: "stanje-azim-halim",
+      title: "Dova pri velikoj nevolji",
+      type: "ajet",
+      arabic: "لَا إِلَهَ إِلَّا اللَّهُ الْعَظِيمُ الْحَلِيمُ، لَا إِلَهَ إِلَّا اللَّهُ رَبُّ الْعَرْشِ الْعَظِيمِ، لَا إِلَهَ إِلَّا اللَّهُ رَبُّ السَّمَاوَاتِ وَرَبُّ الْأَرْضِ وَرَبُّ الْعَرْشِ الْكَرِيمِ",
+      transliteration:
+        "La ilahe illallahul-'Azimul-Halim, la ilahe illallahu Rabbul-'Aršil-'Azim, " +
+        "la ilahe illallahu Rabbus-semavati ve Rabbul-erdi ve Rabbul-'Aršil-Kerim.",
+      translation: "Nema boga osim Allaha, Veličanstvenog i Blagog. Nema boga osim Allaha, Gospodara Veličanstvenog Arša. Nema boga osim Allaha, Gospodara nebesa, Gospodara Zemlje i Gospodara Plemenitog Arša.",
+      source: "Sahih el-Buhari, 6346; Sahih Muslim, 2730"
+    },
+    {
+      id: "stanje-anbija-87",
+      title: "Dova Junusa, a.s.",
+      type: "ajet",
+      arabic: "لَا إِلَهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ",
+      transliteration: "La ilahe illa Ente, subhaneke inni kuntu minez-zalimin.",
+      translation: "Nema boga osim Tebe. Slavljen neka si Ti! Zaista sam bio među onima koji su sebi nepravdu učinili.",
+      source: "Kur'an, El-Enbija, 87"
+    },
+    {
+      id: "stanje-taha-25-28",
+      title: "Dova Musaa, a.s.",
+      type: "ajet",
+      arabic: "رَبِّ اشْرَحْ لِي صَدْرِي ۝ وَيَسِّرْ لِي أَمْرِي ۝ وَاحْلُلْ عُقْدَةً مِنْ لِسَانِي ۝ يَفْقَهُوا قَوْلِي",
+      transliteration:
+        "Rabbi išrah li sadri, ve jessir li emri, vahlul 'ukdeten min lisani, " +
+        "jefkahu kavli.",
+      translation: "Gospodaru moj, raširi mi prsa, olakšaj mi moj zadatak i razveži uzao s jezika mog, da bi razumjeli govor moj.",
+      source: "Kur'an, Ta-Ha, 25–28"
+    }
+  ];
+
+  const stanjeTuga = [
+    {
+      id: "stanje-junus-62",
+      title: "Junus, 62",
+      type: "ajet",
+      arabic: "أَلَا إِنَّ أَوْلِيَاءَ اللَّهِ لَا خَوْفٌ عَلَيْهِمْ وَلَا هُمْ يَحْزَنُونَ",
+      transliteration: "Ela inne evlija'allahi la havfun alejhim ve la hum jahzenun.",
+      translation: "I neka znate: Allahovi štićenici neće strahovati i neće tugovati.",
+      source: "Kur'an, Junus, 62"
+    },
+    {
+      id: "stanje-jusuf-86",
+      title: "Jusuf, 86",
+      type: "ajet",
+      arabic: "إِنَّمَا أَشْكُو بَثِّي وَحُزْنِي إِلَى اللَّهِ وَأَعْلَمُ مِنَ اللَّهِ مَا لَا تَعْلَمُونَ",
+      transliteration:
+        "Innema ešku bessi ve huzni ilallahi ve a'lemu minallahi ma la ta'lemun.",
+      translation: "Ja se samo Allahu jadam zbog svoje muke i tuge, a od Allaha znam ono što vi ne znate.",
+      source: "Kur'an, Jusuf, 86"
+    },
+    {
+      id: "stanje-imran-8",
+      title: "Dova za srce",
+      type: "ajet",
+      arabic: "رَبَّنَا لَا تُزِغْ قُلُوبَنَا بَعْدَ إِذْ هَدَيْتَنَا وَهَبْ لَنَا مِنْ لَدُنْكَ رَحْمَةً ۚ إِنَّكَ أَنْتَ الْوَهَّابُ",
+      transliteration:
+        "Rabbena la tuzig kulubena ba'de iz hedejtena ve heb lena min ledunke " +
+        "rahmeh. Inneke Entel-Vehhab.",
+      translation: "Gospodaru naš, ne dopusti da naša srca skrenu nakon što si nas uputio i daruj nam Svoju milost. Ti si, zaista, Onaj koji mnogo daruje.",
+      source: "Kur'an, Ali Imran, 8"
+    },
+    {
+      id: "stanje-rabia-kalbi",
+      title: "Dova protiv tuge",
+      type: "ajet",
+      arabic: "اللَّهُمَّ إِنِّي عَبْدُكَ، ابْنُ عَبْدِكَ، ابْنُ أَمَتِكَ، نَاصِيَتِي بِيَدِكَ، مَاضٍ فِيَّ حُكْمُكَ، عَدْلٌ فِيَّ قَضَاؤُكَ، أَسْأَلُكَ بِكُلِّ اسْمٍ هُوَ لَكَ، سَمَّيْتَ بِهِ نَفْسَكَ، أَوْ أَنْزَلْتَهُ فِي كِتَابِكَ، أَوْ عَلَّمْتَهُ أَحَدًا مِنْ خَلْقِكَ، أَوِ اسْتَأْثَرْتَ بِهِ فِي عِلْمِ الْغَيْبِ عِنْدَكَ، أَنْ تَجْعَلَ الْقُرْآنَ رَبِيعَ قَلْبِي، وَنُورَ صَدْرِي، وَجَلَاءَ حُزْنِي، وَذَهَابَ هَمِّي",
+      transliteration:
+        "Allahumme inni 'abduke, ibnu 'abdike, ibnu emetike, nasijeti bi jedike, " +
+        "madin fijje hukmuke, 'adlun fijje kadauke. Es'eluke bi kulli ismin huve lek, " +
+        "semmejte bihi nefsek, ev enzeltehu fi kitabik, ev 'allemtehu ehaden min halkik, " +
+        "ev iste'serte bihi fi 'ilmil-gajbi 'indek, en tedž'alel-Kur'ane rabi'a kalbi, " +
+        "ve nura sadri, ve dželae huzni, ve zehabe hemmi.",
+      translation: "Allahu, ja sam Tvoj rob, sin Tvoga roba i sin Tvoje robinje. Moja sudbina je u Tvojoj ruci. Nada mnom se izvršava Tvoja odredba i Tvoja je presuda prema meni pravedna. Molim Te svakim Tvojim imenom kojim si Sebe nazvao, ili ga objavio u Svojoj Knjizi, ili ga podučio nekoga od Svojih stvorenja, ili ga zadržao kod Sebe u znanju nevidljivog, da Kur'an učiniš proljećem moga srca, svjetlom mojih prsa, onim što će ukloniti moju tugu i otkloniti moju brigu.",
+      source: "Musned Ahmed, 3712"
+    }
+  ];
+
+  const stanjeZahvalnost = [
+    {
+      id: "stanje-neml-19",
+      title: "En-Neml, 19",
+      type: "ajet",
+      arabic: "رَبِّ أَوْزِعْنِي أَنْ أَشْكُرَ نِعْمَتَكَ الَّتِي أَنْعَمْتَ عَلَيَّ وَعَلَىٰ وَالِدَيَّ وَأَنْ أَعْمَلَ صَالِحًا تَرْضَاهُ",
+      transliteration:
+        "Rabbi evzi'ni en eškure ni'metekelleti en'amte alejje ve ala validejje " +
+        "ve en a'mele salihan terdahu.",
+      translation: "Gospodaru moj, omogući mi da budem zahvalan na blagodati Tvojoj koju si podario meni i mojim roditeljima i da činim dobra djela kojima si zadovoljan.",
+      source: "Kur'an, En-Neml, 19"
+    },
+    {
+      id: "stanje-ahkaf-15",
+      title: "El-Ahkaf, 15",
+      type: "ajet",
+      arabic: "رَبِّ أَوْزِعْنِي أَنْ أَشْكُرَ نِعْمَتَكَ الَّتِي أَنْعَمْتَ عَلَيَّ وَعَلَىٰ وَالِدَيَّ وَأَنْ أَعْمَلَ صَالِحًا تَرْضَاهُ وَأَصْلِحْ لِي فِي ذُرِّيَّتِي ۖ إِنِّي تُبْتُ إِلَيْكَ وَإِنِّي مِنَ الْمُسْلِمِينَ",
+      transliteration:
+        "Rabbi evzi'ni en eškure ni'metekelleti en'amte alejje ve ala validejje " +
+        "ve en a'mele salihan terdahu, ve aslih li fi zurijjeti. " +
+        "Inni tubtu ilejke ve inni minel-muslimin.",
+      translation: "Gospodaru moj, omogući mi da budem zahvalan na blagodati Tvojoj koju si podario meni i mojim roditeljima, i da činim dobra djela kojima si zadovoljan. I učini dobrim potomstvo moje. Ja Ti se, zaista, kajem i ja sam, zaista, od muslimana.",
+      source: "Kur'an, El-Ahkaf, 15"
+    },
+    {
+      id: "stanje-zikr-sukr",
+      title: "Dova Poslanika ﷺ",
+      type: "ajet",
+      arabic: "اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ وَشُكْرِكَ وَحُسْنِ عِبَادَتِكَ",
+      transliteration: "Allahumme e'inni ala zikrike ve šukrike ve husni 'ibadetik.",
+      translation: "Allahu, pomozi mi da Te spominjem, da Ti zahvaljujem i da Ti na najljepši način robujem.",
+      source: "Ebu Davud, 1526; En-Nesai, 1303"
+    },
+    {
+      id: "stanje-fatiha",
+      title: "El-Fatiha",
+      type: "ajet",
+      arabic: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ ۝ الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ ۝ الرَّحْمَٰنِ الرَّحِيمِ ۝ مَالِكِ يَوْمِ الدِّينِ ۝ إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ ۝ اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ ۝ صِرَاطَ الَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ الْمَغْضُوبِ عَلَيْهِمْ وَلَا الضَّالِّينَ",
+      transliteration:
+        "Bismillahir-Rahmanir-Rahim. El-hamdu lillahi Rabbil-'alemin. " +
+        "Er-Rahmanir-Rahim. Maliki jevmid-din. Ijjake na'budu ve ijjake neste'in. " +
+        "Ihdinas-siratal-mustekim. Siratallezine en'amte alejhim, " +
+        "gajril-magdubi alejhim ve leddallin.",
+      translation: "U ime Allaha, Milostivog, Samilosnog. Hvala Allahu, Gospodaru svjetova. Milostivom, Samilosnom. Vladaru Dana sudnjega. Samo Tebi robujemo i samo od Tebe pomoć tražimo. Uputi nas na Pravi put, na put onih kojima si milost Svoju darovao, a ne onih koji su protiv sebe srdžbu izazvali, niti onih koji su zalutali.",
+      source: "Kur'an, El-Fatiha, 1–7"
+    }
+  ];
+
+  const stanjeZastita = [
+    {
+      id: "stanje-ajetul-kursijj",
+      title: "Ajetul-Kursijja",
+      type: "ajet",
+      arabic: "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ ۗ مَنْ ذَا الَّذِي يَشْفَعُ عِنْدَهُ إِلَّا بِإِذْنِهِ ۚ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ ۖ وَلَا يُحِيطُونَ بِشَيْءٍ مِنْ عِلْمِهِ إِلَّا بِمَا شَاءَ ۚ وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ ۖ وَلَا يَئُودُهُ حِفْظُهُمَا ۚ وَهُوَ الْعَلِيُّ الْعَظِيمُ",
+      transliteration:
+        "Allahu la ilahe illa Huvel-Hajjul-Kajjum. La te'huzuhu sinetun ve la nevm. " +
+        "Lehu ma fis-semavati ve ma fil-erd. Men zellezi ješfe'u indehu illa bi iznih. " +
+        "Ja'lemu ma bejne ejdihim ve ma halfehum. Ve la juhitune bi šej'in min " +
+        "'ilmihi illa bima ša'. Vesi'a kursijjuhus-semavati vel-erd. " +
+        "Ve la jeuduhu hifzuhuma. Ve Huvel-'Alijjul-'Azim.",
+      translation: "Allah je — nema boga osim Njega — Živi i Vječni! Ne obuzima Ga ni drijemež ni san! Njegovo je ono što je na nebesima i ono što je na Zemlji. Ko se može pred Njim zauzimati bez dopuštenja Njegova?! On zna šta je bilo prije njih i šta će biti poslije njih, a od onoga što On zna — drugi znaju samo onoliko koliko On želi. Njegova Kursijja obuhvata i nebesa i Zemlju i Njemu nije teško održavati ih! On je Svevišnji i Veličanstveni!",
+      source: "Kur'an, El-Bekare, 255"
+    },
+    {
+      id: "stanje-kelimat",
+      title: "Zaštita od svakog zla",
+      type: "ajet",
+      arabic: "أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ",
+      transliteration: "E'uzu bi kelimatillahit-tammati min šerri ma halek.",
+      translation: "Utječem se Allahovim savršenim riječima od zla onoga što je stvorio.",
+      source: "Sahih Muslim, 2708"
+    }
+  ];
+
+  const stanjeOslonac = [
+    {
+      id: "stanje-anbija-89",
+      title: "Dova Zekerijjaa, a.s.",
+      type: "ajet",
+      arabic: "رَبِّ لَا تَذَرْنِي فَرْدًا وَأَنْتَ خَيْرُ الْوَارِثِينَ",
+      transliteration: "Rabbi la tezerni ferden ve Ente hajrul-varisin.",
+      translation: "Gospodaru moj, ne ostavljaj me sama, a Ti si najbolji nasljednik.",
+      source: "Kur'an, El-Enbija, 89"
+    },
+    {
+      /* Ista dova kao "stanje-anbija-87" u skupini "Strah i nemir" — vidi
+         komentar o ponavljanjima na vrhu ovog bloka. */
+      id: "stanje-oslonac-junus",
+      title: "Dova u teškoći — Junus, a.s.",
+      type: "ajet",
+      arabic: "لَا إِلَهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ",
+      transliteration: "La ilahe illa Ente, subhaneke inni kuntu minez-zalimin.",
+      translation: "Nema boga osim Tebe. Slavljen neka si Ti! Zaista sam bio među onima koji su sebi nepravdu učinili.",
+      source: "Kur'an, El-Enbija, 87"
+    },
+    {
+      id: "stanje-oslonac-hasbunallah",
+      title: "Hasbunallahu",
+      type: "ajet",
+      arabic: "حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ",
+      transliteration: "Hasbunallahu ve ni'mel-vekil.",
+      translation: "Dovoljan nam je Allah i divan je On Zaštitnik.",
+      source: "Kur'an, Ali Imran, 173"
+    }
+  ];
+
+  /* --------------------------------------------------------------------------
      SEKCIJE — redoslijed na ekranu.
      Premjesti stavku u ovom nizu i aplikacija se sama presloži.
      -------------------------------------------------------------------------- */
@@ -610,7 +908,15 @@
     /* list papira — dugme "Vidi stranicu" */
     pages: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6",
     /* kvačica — zeleni znak "gotovo" uz završenu sekciju i završenu traku */
-    check: "M4.5 12.5l5 5 10-11"
+    check: "M4.5 12.5l5 5 10-11",
+    /* dah koji se smiruje — skupina dova za strah i nemir */
+    wind: "M3.5 8.5h9.6a2.6 2.6 0 1 0-2.4-3.7M3.5 12.5h12.1a2.6 2.6 0 1 1-2.4 3.7M3.5 16.5h5.6",
+    /* oblak sa kapima — skupina dova za tugu */
+    rain: "M7.6 14.4h8.6a3.2 3.2 0 0 0 .2-6.4 4.9 4.9 0 0 0-9.1-.2 3.1 3.1 0 0 0 .3 6.6M9.6 17.6v1.8M12 18.2v1.8M14.4 17.6v1.8",
+    /* srce — skupina dova za zahvalnost */
+    heart: "M12 20.2S5 16.1 5 11.2A3.6 3.6 0 0 1 12 8.6a3.6 3.6 0 0 1 7 2.6c0 4.9-7 9-7 9z",
+    /* štit — skupina dova za zaštitu */
+    shield: "M12 3.2l7 2.6v5.4c0 4.3-2.9 8-7 9.3-4.1-1.3-7-5-7-9.3V5.8z"
   };
 
   /* Vraća <svg> za dati ključ, ili null ako ga u registru nema. Klasa se daje
@@ -641,12 +947,25 @@
      konvenciji: 0 = nedjelja … 5 = petak, 6 = subota. Sekcija bez `days`
      postoji svaki dan, pa se postojeće četiri ne diraju. Filtriranje radi
      `sectionsForDate()` ispod — i aplikacija i server idu kroz njega. */
+  /* `kind: "stanje"` su dove za stanja — one sa svoje strane (`situacije.js`),
+     ne sa dnevnog spiska. Stoje u istom nizu jer kroz njega ide sve što
+     postavke znaju raditi sa stavkom (kvačica, izmjena, brisanje, vlastita
+     stavka, redoslijed), a sa liste i iz podsjetnika ih skida
+     `sectionsForDate()` — jednim uslovom, na jednom mjestu.
+
+     Redoslijed među njima je redoslijed TABOVA na toj strani. */
   const sections = [
     { id: "petak",   title: "Petak",   icon: "mosque", kind: "list", items: petak, days: [5] },
     { id: "quran",   title: "Kur'an",  icon: "book",   kind: "quran" },
     { id: "zikr",    title: "Zikr",    icon: "loop",   kind: "list", items: zikr },
     { id: "dove",    title: "Dove",    icon: "hands",  kind: "list", items: dove },
-    { id: "navecer", title: "Navečer", icon: "moon",   kind: "list", items: navecer }
+    { id: "navecer", title: "Navečer", icon: "moon",   kind: "list", items: navecer },
+
+    { id: "stanje-strah",      title: "Strah i nemir",   icon: "wind",   kind: "stanje", items: stanjeStrah },
+    { id: "stanje-tuga",       title: "Tuga",            icon: "rain",   kind: "stanje", items: stanjeTuga },
+    { id: "stanje-zahvalnost", title: "Zahvalnost",      icon: "heart",  kind: "stanje", items: stanjeZahvalnost },
+    { id: "stanje-zastita",    title: "Zaštita",         icon: "shield", kind: "stanje", items: stanjeZastita },
+    { id: "stanje-oslonac",    title: "Oslonac",         icon: "hands",  kind: "stanje", items: stanjeOslonac }
   ];
 
   /* Dan sedmice iz ključa "YYYY-MM-DD": 0 = nedjelja … 5 = petak.
@@ -765,6 +1084,19 @@
         entry.source = cleanText(item.source, 120);
         /* Naslova nema namjerno — dove se numerišu same (`itemTitles()`), pa
            bi vlastita dova sa imenom ispala iz reda ostalih. */
+        if (!entry.arabic && !entry.transliteration && !entry.translation) { return; }
+      } else if (item.type === "ajet") {
+        /* Dova za stanje. Za razliku od "dua", naslov JOJ TREBA i obavezan je:
+           na svojoj strani se dova bira po imenu, a "DOVA #4" ne kaže za koje
+           je stanje. Zato ovdje pada upis bez naslova, a kod "dua" upis bez
+           teksta. */
+        entry.type = "ajet";
+        entry.title = cleanText(item.title, 80);
+        entry.arabic = cleanText(item.arabic, 2000);
+        entry.transliteration = cleanText(item.transliteration, 2000);
+        entry.translation = cleanText(item.translation, 2000);
+        entry.source = cleanText(item.source, 120);
+        if (!entry.title) { return; }
         if (!entry.arabic && !entry.transliteration && !entry.translation) { return; }
       } else {
         entry.title = cleanText(item.title, 80);
@@ -977,9 +1309,11 @@
     }).map(function (c) {
       var item = { id: c.id, custom: true };
 
-      if (c.type === "dua") {
-        item.type = "dua";
-        item.title = "";
+      if (c.type === "dua" || c.type === "ajet") {
+        item.type = c.type;
+        /* "dua" se numeriše sama, pa naslova nema; "ajet" ga nosi — vidi
+           `cleanCustom()`. */
+        item.title = (c.type === "ajet") ? (c.title || "") : "";
         item.arabic = c.arabic || "";
         item.transliteration = c.transliteration || "";
         item.translation = c.translation || "";
@@ -1082,35 +1416,64 @@
      Server prosljeđuje config vlasnika baze, pa isključena stavka znači isto
      na ekranu i u odluci o podsjetniku: nema je u računu, a sekcija kojoj je
      isključeno sve dobije total 0 i njen podsjetnik ućuti. */
+  /* Sekcija bez stavki koje je korisnik isključio. Stoji zasebno jer kroz nju
+     idu DVA spiska: dnevni (`sectionsForDate()`) i dove za stanja
+     (`stanjeSections()`) — isti `skriveno` mora značiti isto na oba. */
+  function bezSkrivenih(section, skriveno) {
+    if (!section.items || !skriveno.length) { return section; }
+
+    var kept = section.items.filter(function (item) {
+      return skriveno.indexOf(item.id) === -1;
+    });
+    if (kept.length === section.items.length) { return section; }
+
+    /* KOPIJA, ne izmjena zatečenog objekta — vidi `withConfig()`. */
+    var copy = {};
+    Object.keys(section).forEach(function (k) { copy[k] = section[k]; });
+    copy.items = kept;
+    return copy;
+  }
+
   function sectionsForDate(dateKey, prefs) {
     var wd = weekdayFromKey(dateKey);
     var skriveno = (prefs && Array.isArray(prefs.skriveno)) ? prefs.skriveno : [];
 
     return fullSections(prefs).filter(function (section) {
+      /* Dove za stanja nisu dnevni spisak: imaju svoju stranu i ne čekiraju
+         se. Ovaj jedan red je sve što ih drži van liste, van računa
+         podsjetnika i van završnog ekrana — sve to ide kroz ovu funkciju. */
+      if (section.kind === "stanje") { return false; }
       if (section.days && section.days.indexOf(wd) === -1) { return false; }
       /* Kur'anska sekcija nema `items` pa je ne može isprazniti filter ispod —
          gasi je njena jedina stavka, pod id-em "quran". */
       if (section.kind === "quran") { return skriveno.indexOf("quran") === -1; }
       return true;
-    }).map(function (section) {
-      if (!section.items || !skriveno.length) { return section; }
-
-      var kept = section.items.filter(function (item) {
-        return skriveno.indexOf(item.id) === -1;
-      });
-      if (kept.length === section.items.length) { return section; }
-
-      /* KOPIJA, ne izmjena zatečenog objekta — vidi `withConfig()`. */
-      var copy = {};
-      Object.keys(section).forEach(function (k) { copy[k] = section[k]; });
-      copy.items = kept;
-      return copy;
-    /* Sekcija kojoj je isključeno sve nema šta prikazati na glavnoj
-       listi, ali u postavkama jeste — njenu stavku je moguće opet uključiti.
-       Dakle, ostaje u resultu ali sa praznom stavkom (`items: []`). Njen
-       podsjetnik dobije total 0 i sam ućuti. Kur'anska sekcija nema `items`
-       (jedna je stavka) i nikad ne biva ispražnjena.
+    /* Sekcija kojoj je isključeno sve nema šta prikazati na glavnoj listi, ali
+       u postavkama jeste — njenu stavku je moguće opet uključiti. Dakle,
+       ostaje u rezultatu ali sa praznim `items`. Njen podsjetnik dobije total 0
+       i sam ućuti. Kur'anska sekcija nema `items` (jedna je stavka) i nikad ne
+       biva ispražnjena.
        Na ekranu će se tada umjesto liste stavki prikazati "nema dova" + dugme. */
+    }).map(function (section) {
+      return bezSkrivenih(section, skriveno);
+    });
+  }
+
+  /* Dove za stanja — spisak za stranu koju otvara ikonica u headeru
+     (`situacije.js`). Isti posao koji `sectionsForDate()` radi za dnevni
+     spisak, samo za drugu polovinu istog niza `sections`: vlastite stavke i
+     izmjene su unutra (`fullSections()`), a isključene stavke van.
+
+     Sekcija kojoj je isključeno sve OSTAJE u spisku, sa praznim `items` — tab
+     joj se i dalje vidi, a u njemu stoji poruka i put nazad u postavke. Bez
+     toga bi se tabovi premještali svaki put kad se nešto isključi. */
+  function stanjeSections(prefs) {
+    var skriveno = (prefs && Array.isArray(prefs.skriveno)) ? prefs.skriveno : [];
+
+    return fullSections(prefs).filter(function (section) {
+      return section.kind === "stanje";
+    }).map(function (section) {
+      return bezSkrivenih(section, skriveno);
     });
   }
   
@@ -1198,6 +1561,10 @@ if (typeof module !== "undefined" && module.exports) {
        stigao. Dvije stvari, namjerno razdvojene: kvačica napravljena u petak
        u 23:58 a poslana u subotu u 00:03 mora proći validaciju. */
     sectionsForDate: sectionsForDate,
+    /* Dove za stanja — svoja strana, ne dnevni spisak. Server ih ne broji
+       (nema ih u `sectionsForDate()`), ali njihove stavke prolaze kroz istu
+       validaciju kao i sve ostale jer stoje u nizu `sections`. */
+    stanjeSections: stanjeSections,
     /* Sekcije čije se stavke smiju isključiti — iz ovoga se gradi spisak
        ispravnih id-eva za polje `skriveno` u configu. */
     pickableSections: pickableSections,

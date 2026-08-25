@@ -136,7 +136,7 @@
    `prefers-reduced-motion` ga gasi, kao i ostale animacije u aplikaciji. */
 @media (prefers-reduced-motion: no-preference) {
   body,
-  .app-header::before,
+  .app-glass,
   .salaam,
   .item,
   .quran-card,
@@ -280,16 +280,15 @@ h1, h2, h3, p {
 /* --------------------------------------------------------------------------
    4. Header
    -------------------------------------------------------------------------- */
-/* Sticky "staklo": ostaje na vrhu dok se skrola, sadržaj se nazire kroz blur.
-   Boja pozadine je --background sa providnošću, da blur ima šta miješati.
+/* Sticky header: ostaje na vrhu dok se skrola, sadržaj se nazire kroz blur.
 
-   Blur i pozadina stoje na ::before, a NE na samom headeru. To nije ukras
-   nego popravka: na iOS-u (WebKit) element koji je istovremeno
-   `position: sticky` i nosi `backdrop-filter` izgubi svoju djecu kad se
-   strana pomjeri iz JavaScripta — a upravo to radi klik na traku napretka.
-   Ostane zamućena prazna ploča bez naslova, datuma i traka. Kad blur pređe
-   na pseudoelement, element sa filterom nema djece koja se mogu izgubiti,
-   pa sadržaj ostaje nacrtan. Izgled je isti do piksela. */
+   Sam header NEMA ni pozadinu ni blur — oboje nosi `.app-glass` ispod njega
+   (vidi dalje). To nije ukras nego popravka, i to druga po redu za istu
+   grešku: na iOS-u u instaliranoj aplikaciji je sadržaj headera nestajao i
+   ostajala je prazna zamućena ploča. Prvo je blur bio na samom headeru, pa na
+   njegovom ::before-u — i jedno i drugo je element sa `backdrop-filter`
+   UNUTAR sticky headera, pa je greška samo mijenjala mjesto na kojem se
+   pojavi. Sada tog elementa u headeru nema. */
 .app-header {
   position: sticky;
   top: 0;
@@ -311,53 +310,35 @@ h1, h2, h3, p {
   margin-top: 12px;
 }
 
-/* Sadržaj headera dobija SVOJ sloj, iznad staklene ploče.
+/* Staklena ploča ispod headera — poluprovidna podloga i blur.
 
-   Ovo je druga polovina iste popravke opisane gore. Prebacivanje blura na
-   ::before spasilo je header u Safariju, ali u instaliranoj aplikaciji
-   (standalone PWA) sadržaj je i dalje nestajao čim strana krene sama —
-   klik na traku napretka, skok na prvu neurađenu stavku, "Na vrh". Ostane
-   zamućena ploča bez selama, znaka, datuma i traka.
+   Zašto je odvojen element (`<div class="app-glass">` u index.html) i zašto
+   je `fixed`, a ne pseudoelement headera:
 
-   Razlog nije da se sadržaj obriše nego da se ::before nađe PREKO njega:
-   backdrop-filter tjera WebKit da tu ploču digne u vlastiti sloj, a slojevi
-   se pri skrolanju iz JavaScripta znaju posložiti mimo redoslijeda crtanja.
-   Ploča jeste `z-index: -1`, ali to vrijedi dok se oboje crta na istom sloju.
+     backdrop-filter tjera WebKit da element digne u vlastiti sloj. Kad je
+     taj element bio u sticky headeru, njegov se sloj pri naglom skrolanju
+     znao posložiti PREKO braće — `z-index: -1` vrijedi samo dok se oboje
+     crta na istom sloju — pa je od headera ostajala prazna zamućena ploča
+     bez selama, znaka, datuma i traka. Vidjelo se samo u instaliranoj
+     aplikaciji na iPhone-u, a zadnji gest koji je to izazivao bio je skrol
+     nagore sa samog dna spiska.
 
-   Zato dvije stvari, i jedna bez druge ne pomaže:
+     Odvojena ploča nema djece, pa nema šta izgubiti. Header nad njom je
+     običan sticky element bez filtera, pa nema ni sloja koji bi se premetao.
 
-     position/z-index  sadržaj postaje POZICIONIRAN sa svojim z-indexom, pa
-                       redoslijed prema ploči (-1) više nije stvar toka nego
-                       zapisan broj
-     translateZ(0)     i sadržaj ide u svoj sloj, pa se dva sloja porede po
-                       z-indexu umjesto da jedan prekrije drugi
-
-   Promocija u sloj stoji pod `-webkit-touch-callout` upitom jer je i greška
-   samo tamo: drugdje nema šta popravljati, a nepotreban sloj ume da omekša
-   tekst.
-
-   Ne odnosi se na sam .app-header — vidi ispod zašto on transform ne smije
-   ni dodirnuti. */
-.app-header > * {
-  position: relative;
-  z-index: 1;
-}
-
-@supports (-webkit-touch-callout: none) {
-  .app-header > * {
-    transform: translateZ(0);
-  }
-}
-
-/* Nikakav `transform` ni `filter` ne smije doći na .app-header: oba prave
-   novi "backdrop root", pa bi ::before umjesto strane ispod zamućivao sam
-   header i blur bi nestao. Djeca smiju — backdrop root prave samo PRECI
-   elementa sa filterom, a djeca su ::before-u braća. */
-.app-header::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
+   Ploča ne mora pratiti skrol: header je PRVI element strane i sticky na
+   `top: 0`, pa mu je vrh uvijek na vrhu ekrana. Prati mu samo VISINU, kroz
+   `--header-h` koju mjeri script.js (selam se pojavi kad se upiše ime, trake
+   napretka kad se iscrta dan — header nije uvijek iste visine). */
+.app-glass {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Bez izmjerene visine ploče nema. Tako se u tren oka do prvog mjerenja
+     vidi gola podloga strane, a ne pogrešno visoka obojena traka. */
+  height: var(--header-h, 0px);
+  z-index: 49;
   background: var(--glass);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
@@ -367,7 +348,7 @@ h1, h2, h3, p {
 /* Ako browser nema backdrop-filter, pozadina mora biti puna —
    inače bi se tekst ispod providno miješao sa headerom. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .app-header::before {
+  .app-glass {
     background: var(--background);
   }
 }
@@ -458,7 +439,18 @@ h1, h2, h3, p {
    i trake ispod, samo grublje (jedan postotak za cijeli dan), pa je uklonjen
    a mjesto je dobila jedina kontrola koju aplikacija ima.
    -------------------------------------------------------------------------- */
-.settings-btn {
+/* Dva dugmeta u desnom ćošku headera: dove za stanja i postavke. Razmak je
+   uzak namjerno — to je jedna grupa alata, a ne dvije odvojene radnje. */
+.header-tools {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Oblik je isti za oba: krug boje površine, sa tankim rubom. Razlika je samo
+   u znaku unutra i u tome što se zupčanik okrene na hover (ispod). */
+.header-btn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -476,21 +468,32 @@ h1, h2, h3, p {
   transition: color 0.18s ease, border-color 0.18s ease, transform 0.35s ease;
 }
 
-.settings-icon {
+.header-btn-icon {
   width: 19px;
   height: 19px;
 }
 
-.settings-btn:hover {
+.header-btn:hover {
   color: var(--primary);
   border-color: var(--accent-soft);
-  /* Zupčanik se okrene kad se pređe preko njega — sitno, jednom. */
-  transform: rotate(45deg);
 }
 
-.settings-btn:focus-visible {
+.header-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Otvorena strana sa dovama — dugme ostaje "upaljeno" dok drawer stoji, da se
+   vidi odakle je došao. */
+.header-btn.is-on {
+  color: var(--primary);
+  border-color: var(--accent-soft);
+  background: var(--background-alt);
+}
+
+.settings-btn:hover {
+  /* Zupčanik se okrene kad se pređe preko njega — sitno, jednom. */
+  transform: rotate(45deg);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1507,6 +1510,264 @@ main {
 
   .drawer-page-view .drawer-body {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   9b. Dove za stanja — drawer sa tabovima
+
+   Ikonica u headeru (sklopljene ruke) otvara ovu stranu; pravi je
+   situacije.js. Dijeli oblik i zaglavlje sa "Vidi stranicu", pa je i ovdje
+   na telefonu preko cijelog ekrana — ovo se čita, a ne pregledava.
+
+   Ni jedna kartica nema kvačicu: strana ne mjeri ništa i ništa se na njoj ne
+   pamti. Zato kartice nose vlastite klase (`.dua`), a ne `.item` — `.item` je
+   klikabilan i nosi stanje "urađeno", a ovdje bi oboje obećavalo nešto čega
+   nema.
+   -------------------------------------------------------------------------- */
+
+/* Na širem ekranu je uža ploča od stranice mushafa: ovdje je tekst, a
+   predugačak red se teško čita. */
+.drawer-duas .drawer-sheet {
+  max-width: 620px;
+}
+
+/* Traka sa tabovima stoji između zaglavlja i sadržaja i ne skrola s njim:
+   dok se dova čita, prelaz na drugo stanje mora ostati pod rukom.
+
+   Vodoravni razmak je ISTI kao na karticama ispod (`.drawer-body`, 20px), pa
+   prvi tab počinje tačno tamo gdje počinje i kartica. Traka jeste puna
+   širina — pozadina i linija idu od ivice do ivice — ali sadržaj u njoj stoji
+   u istoj koloni kao sve ostalo.
+
+   Na telefonu se KLIZI: pet naslova ("Strah i nemir", "Tuga", "Zahvalnost",
+   "Zaštita", "Oslonac") ne stanu u jedan red, a stisnuti ih u nečitljive
+   skraćenice je gore od povlačenja u stranu. Na širem ekranu se
+   prelome u drugi red (vidi ispod) — tamo ima mjesta, pa se svi vide odjednom
+   i ne mora se tražiti šta je izvan ruba. */
+.duas-tabs {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 10px 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* Tab se pri klizanju zaustavi svojim lijevim rubom na rubu kolone, a ne
+     na goloj ivici ekrana. */
+  scroll-padding-left: 20px;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.duas-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.duas-tab {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--muted);
+  background: var(--background-alt);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.duas-tab-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.duas-tab[aria-selected="true"] {
+  color: var(--primary);
+  font-weight: 600;
+  background: var(--surface);
+  border-color: var(--accent-soft);
+}
+
+.duas-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Skupina kojoj je sve isključeno u postavkama — tab ostaje (da se tabovi ne
+   premještaju), pa se prigušen znak da u njemu nema ništa. */
+.duas-tab.is-empty {
+  opacity: 0.55;
+}
+
+/* Sadržaj taba. Razmak između kartica je veći nego na spisku: ovdje se čita
+   jedna dova, pa joj treba prazan prostor oko sebe. */
+.duas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 16px;
+}
+
+/* Kartica dove. Kvačica na njoj postoji, ali ne znači isto što i na dnevnom
+   spisku: ona je oznaka „ovu sam proučio“ dok se ide kroz skupinu, i nigdje se
+   ne pamti — ni u localStorage-u ni na serveru. Zato kartica nosi vlastite
+   klase (`.dua`), a ne `.item`: `.item` ulazi u trake napretka, u podsjetnike
+   i u završni ekran, a ova ne ulazi ni u jedno od toga.
+
+   `touch-action: manipulation` je da drugi dodir u nizu ne bude "double-tap
+   zoom" — kroz skupinu se ide kartica po kartica. */
+.dua {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.dua-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  min-height: 58px;
+}
+
+.dua-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+  transition: color 0.2s ease;
+}
+
+/* Proučena dova — isti prigušeni izgled kao označena stavka na spisku, da se
+   ista radnja i ovdje prepozna. Tekst ostaje čitljiv: kvačica je oznaka, a ne
+   sklanjanje. */
+.dua.is-done {
+  background: var(--background-alt);
+  border-color: var(--done-soft);
+}
+
+.dua.is-done .dua-title {
+  color: var(--muted);
+}
+
+.dua.is-done .dua-body {
+  opacity: 0.62;
+}
+
+/* Izvor stoji desno, kao i na dnevnom spisku (`.item-source`) — sitno i
+   verzalom, da naslov ostane ono što se prvo pročita. */
+.dua-source {
+  flex-shrink: 1;
+  max-width: 44%;
+  text-align: right;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Arapski, transkripcija i prevod su isti kao na dnevnom spisku (`.arabic`,
+   `.transliteration`, `.translation`) — jedna dova ne smije izgledati kao dvije
+   različite stvari zato što se čita na dvije strane. */
+.dua-body {
+  padding: 16px 18px 20px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+/* „Na vrh“ unutar drawer-a. Isti izgled kao dugme na listi (`.top-fab`) — samo
+   `absolute` prema ploči drawer-a, a ne `fixed` prema ekranu: ovdje se skrola
+   tijelo drawer-a, a ne strana.
+
+   Zbog toga i ne može biti `.top-fab`: to dugme se pod klasom `no-scroll`
+   (a nju drawer i postavlja) namjerno skriva, jer se strana ispod tada ne
+   skrola. Ovo dugme se pojavljuje tačno u tom stanju. */
+.drawer-duas .drawer-sheet {
+  position: relative;
+}
+
+/* Selektor je namjerno uži od `.duas-top`: zajednički izgled sa `.top-fab`
+   stoji niže u fajlu (dio 11c) i sa njim dolazi `position: fixed`, pa ga se
+   ovdje mora nadjačati specifičnošću, a ne redom. */
+.drawer-duas .duas-top {
+  position: absolute;
+  right: max(20px, calc(env(safe-area-inset-right) + 12px));
+  bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px));
+  /* Iznad tijela drawer-a; zaglavlje i traka sa tabovima su iznad njega u
+     toku, pa dugme ne može preći preko naslova. */
+  z-index: 2;
+}
+
+/* Skupina u kojoj nema ni jedne uključene dove. Ne greška — korisnik ih je
+   isključio u postavkama, pa dugme vodi tamo. */
+.duas-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 20px;
+  text-align: center;
+}
+
+.duas-empty-msg {
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+
+/* Na širem ekranu ima mjesta za sve tabove, pa se prelome u drugi red i vide
+   se odjednom. Klizanje ostaje samo tamo gdje je i potrebno — na telefonu. */
+@media (min-width: 640px) {
+  .duas-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+
+/* Na telefonu preko cijelog ekrana, isto kao stranica mushafa. */
+@media (max-width: 639px) {
+  .drawer-duas {
+    align-items: stretch;
+    background: var(--background);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .drawer-duas .drawer-sheet {
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .drawer-duas .drawer-head {
+    align-items: center;
+    padding: 12px 14px;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .drawer-duas .drawer-title {
+    font-size: 1rem;
   }
 }
 
@@ -2864,7 +3125,8 @@ body.has-fab {
    se sakrilo, prostor bi nestao, dno bi se vratilo. Vrtjelo bi se u krug.
    Zato dugme lebdi preko samog ugla, kako lebde i sva ostala ovakva dugmad.
    -------------------------------------------------------------------------- */
-.top-fab {
+.top-fab,
+.duas-top {
   position: fixed;
   right: max(20px, calc(env(safe-area-inset-right) + 12px));
   bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px));
@@ -2888,7 +3150,8 @@ body.has-fab {
   animation: fab-in-right 0.32s cubic-bezier(0.22, 0.8, 0.24, 1) both;
 }
 
-.top-fab[hidden] {
+.top-fab[hidden],
+.duas-top[hidden] {
   display: none;
 }
 
@@ -2901,7 +3164,8 @@ body.no-scroll .top-fab {
 
 /* Bez blura pozadina mora biti puna — inače se lista providi kroz dugme. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .top-fab {
+  .top-fab,
+  .duas-top {
     background: var(--surface);
   }
 }
@@ -2913,13 +3177,15 @@ body.no-scroll .top-fab {
   to   { opacity: 1; transform: none; }
 }
 
-.top-fab:hover {
+.top-fab:hover,
+.duas-top:hover {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--surface);
 }
 
-.top-fab:focus-visible {
+.top-fab:focus-visible,
+.duas-top:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -2930,7 +3196,8 @@ body.no-scroll .top-fab {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .top-fab {
+  .top-fab,
+  .duas-top {
     animation: none;
   }
 }
@@ -3379,8 +3646,14 @@ body.no-scroll .top-fab {
   cursor: pointer;
 }
 
-/* Traka pokriva sticky header — spusti cijelu stranu dok stoji. */
+/* Traka pokriva sticky header — spusti cijelu stranu dok stoji. Staklena
+   ploča ide s njim: ona nije njegovo dijete nego odvojen `fixed` element
+   (vidi 4), pa se mora pomjeriti isto toliko. */
 body.has-devp-ribbon .app-header {
+  top: 26px;
+}
+
+body.has-devp-ribbon .app-glass {
   top: 26px;
 }
 

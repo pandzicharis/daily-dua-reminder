@@ -36,6 +36,7 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `sync.js` | zajedničko stanje kroz uređaje: slanje promjena, povlačenje, offline red |
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
 | `badge.js` | broj na ikonici aplikacije: koliko je dova ostalo u podsjetnicima koji su nastupili |
+| `situacije.js` | strana „Dove za stanja“ — tabovi po stanju (strah, tuga, zahvalnost, zaštita, oslonac) |
 | `icons/*.png` | 96, 192, 512, maskable 192/512, apple-touch 180, favicon 32 |
 | `api/config.js` | `GET` → javni VAPID ključ |
 | `api/subscribe.js` | `POST` upiši pretplatu, `DELETE` obriši |
@@ -58,7 +59,9 @@ iPhone PWA  ←→  localStorage (offline keš)
   raspored nije diran.
 - `script.js` — slanje promjene checkboxa (`pushChange`), primanje stanja
   sa servera (`applyRemoteState`) i prikaz `item.source` u ćošku headera.
-- `style.css` — `.item-source` i `.notify*` stilovi.
+- `style.css` — `.item-source` i `.notify*` stilovi, `.app-glass` (staklena
+  ploča zaglavlja, vidi 2) i stilovi strane sa dovama za stanja (`.duas-*`,
+  `.dua*`).
 - `data.js` — `source` polja (izvor dove/sure) i `module.exports` na kraju,
   da server može računati koliko je od sekcije urađeno iz istog spiska.
   Uz to sekcija **Petak** (`days: [5]`) i dvije čiste funkcije koje su jedini
@@ -99,6 +102,31 @@ Ne radi ono što radi browserovo osvježavanje, i to je namjerno:
 
 Kad se ništa nije promijenilo, oba su prazna — pa se ovo ne može zavrtjeti u
 krug ponovnih učitavanja.
+
+### Staklena ploča zaglavlja (`--header-h`)
+
+Zaglavlje je poluprovidno sa blurom, ali `backdrop-filter` **nije** ni na njemu
+ni na njegovom `::before`-u — nosi ga odvojen `fixed` element,
+`<div class="app-glass">`, prvi u `<body>`.
+
+Razlog je greška koju se vidjelo **samo u instaliranoj aplikaciji na iPhone-u**:
+sadržaj zaglavlja (selam, znak, datum, trake) nestane i ostane prazna zamućena
+ploča. `backdrop-filter` tjera WebKit da element digne u vlastiti sloj, a dok je
+taj element bio dijete sticky zaglavlja, njegov se sloj pri naglom skrolanju
+znao posložiti **preko** svoje braće — `z-index: -1` vrijedi samo dok se oboje
+crta na istom sloju. Pokretači su bili skrol iz JavaScripta (klik na traku
+napretka, „Na vrh“) i, na kraju, skrol nagore sa samog dna spiska.
+
+Dvije popravke prije ove (blur na `::before`, pa promocija djece u vlastiti sloj
+kroz `translateZ(0)`) su samo pomjerale granicu na kojoj greška počinje. Sada
+sloja sa filterom u zaglavlju **nema**: ploča je odvojen element bez ijednog
+djeteta, pa nema šta izgubiti, a zaglavlje je običan sticky element.
+
+Ploča ne mora pratiti skrol — zaglavlje je prvi element strane i sticky na
+`top: 0`, pa mu je vrh uvijek na vrhu ekrana. Prati mu samo **visinu**, kroz
+`--header-h` koju mjeri `script.js` (ResizeObserver): traka sa selamom se
+pojavi kad se upiše ime, trake napretka kad se iscrta dan, a petkom ih je tri
+umjesto dvije.
 
 ---
 
@@ -298,6 +326,71 @@ kad je element ionako na ekranu.
 
 Config se čuva pod `cfg:<ime>` i dijeli kroz uređaje istog korisnika, isto
 kao i čekirano.
+
+## 4c. Dove za stanja
+
+Ikonica sa sklopljenim rukama u zaglavlju (lijevo od zupčanika) otvara stranu
+sa pet tabova: **Strah i nemir**, **Tuga**, **Zahvalnost**, **Zaštita**,
+**Oslonac**. Pravi je `situacije.js`.
+
+Dnevni spisak je posao koji se odradi; ove dove se traže kad zatrebaju.
+
+**Kvačica postoji, ali se ne pamti nigdje.** Kroz skupinu se ide dova po dova,
+pa treba znati dokle se stiglo — otud kvačica na kartici, skok na sljedeću
+neproučenu (`naSljedecu()`) i dugme „Na vrh“ kad se dođe do dna. Ali to stanje
+živi **samo u memoriji** (`ucene` u `situacije.js`) i **samo dok je strana
+otvorena**:
+
+- ne ide u `localStorage` ni na server,
+- ne ulazi u trake napretka, u badge ni u račun podsjetnika,
+- ne otvara završni ekran,
+- **zatvaranje strane ga briše** — jedno otvaranje je jedno učenje, pa se pri
+  sljedećem ne zatekne pola skupine već prekrižene.
+
+Kartice zato nose klasu `.dua`, a ne `.item`: izgledaju i rade isto, ali `.item`
+ulazi u sve to gore, a ova ne ulazi ni u jedno.
+
+Skrol i dugme „Na vrh“ rade nad **tijelom drawer-a**, ne nad stranom — pa se ne
+može pozvati `smoothScrollTo()` iz `script.js` (on radi nad stranom), niti se
+može upotrijebiti `.top-fab` (to dugme se pod `no-scroll` namjerno skriva, a
+drawer tu klasu i postavlja).
+
+**Traka sa tabovima** ima isti vodoravni razmak kao kartice ispod (20px), pa
+prvi tab počinje tačno tamo gdje počinje i kartica. Na telefonu se **klizi** —
+pet naslova ne stane u jedan red; od 640px se **prelome** u drugi red, jer tamo
+ima mjesta i ne mora se tražiti šta je izvan ruba.
+
+**Odakle sadržaj.** Iz `data.js`, iz sekcija sa `kind: "stanje"`. To su obične
+sekcije u istom nizu `sections`, samo sa dva različita puta:
+
+| kroz | dobija ih | zašto |
+|---|---|---|
+| `sectionsForDate()` | **ne** | ekran, trake napretka, badge i podsjetnici — nijedno ih ne smije brojati |
+| `stanjeSections()` | da | strana sa tabovima; isti posao, druga polovina niza |
+| `pickableSections()` | da | postavke — pa se sakrivaju, mijenjaju, brišu i dopisuju kao svaka druga stavka |
+
+Zbog toga u `situacije.js` nema ni jednog naziva skupine ni jedne dove: nova
+skupina u `data.js` sama dobije svoj tab, nova dova svoju karticu.
+
+**Tip stavke je `"ajet"`**, ne `"dua"`. Jedina razlika je naslov: dova na
+dnevnom spisku se numeriše sama („DOVA #7“) jer se tamo ne bira nego prolazi
+red po red, a ovdje se bira po imenu — pa svaka nosi svoje („Er-Ra'd, 28“,
+„Dova od brige i tuge“). `itemTitles()` numeriše samo `"dua"`, pa `"ajet"`
+zadrži svoj `title`.
+
+**U postavkama** su te skupine drugi spisak akordeona, pod zaglavljem „Dove za
+stanja“ (dnevne sekcije su iznad, pod „Dnevni spisak“). Sve radi isto kao gore
+— kvačica prikaza, olovka, brisanje, redoslijed, „Dodaj svoju dovu“ — s jednom
+razlikom: nova stavka tamo može biti samo dova sa naslovom, pa se tip ni ne
+bira (brojani zikr na strani koja ništa ne broji ne bi imao smisla).
+
+**Ponavljanja između tabova su namjerna.** „Hasbunallahu ve ni'mel-vekil“ stoji
+i u „Strah i nemir“ i u „Oslonac“, ali kao **dva zapisa sa dva id-a** — id je
+ono po čemu se stavka sakriva i mijenja, pa bi dijeljeni id značio da
+sakrivanje u jednom tabu nijemo sakrije dovu i u drugom.
+
+Zadnje otvoreni tab se pamti lokalno (`moj-zikr-stanje`), kao i tema: nije
+spisak koji se dijeli, nego mjesto na kojem je ostao **ovaj** ekran.
 
 **Čišćenje configa je u `data.js` (`cleanPrefs()`), na jednom mjestu.** Kroz
 njega prolazi i ono što browser upiše u localStorage i ono što server primi u
