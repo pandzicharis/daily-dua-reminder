@@ -123,7 +123,7 @@ Provjera ide pri svakom otvaranju, pri svakom povratku u aplikaciju (ne
 > provjeru nove verzije radi nad tim fajlom i ni nad jednim drugim: ako se
 > `service-worker.js` nije promijenio, nova verzija za njega ne postoji i
 > traka se neće pojaviti — makar se promijenio svaki drugi fajl. Podignut
-> broj (`moj-zikr-v7` → `v8`) je najmanja promjena koja to rješava.
+> broj (`moj-zikr-v8` → `v9`) je najmanja promjena koja to rješava.
 
 **Prva instalacija nije nova verzija.** Traka se pokazuje samo kad već
 postoji `navigator.serviceWorker.controller` — inače bi svaki novi uređaj pri
@@ -741,8 +741,8 @@ malo završi. Isto vrijedi i za trake napretka i za završni ekran.
 ## 4d. Vaktija (Sarajevo)
 
 **Kartica iznad spiska**, odmah pod zaglavljem: naredni vakat, njegovo
-vrijeme, odbrojavanje, traka isteka i luk dana sa svih šest vremena i njihovim
-znakovima. Klik po njoj otvara stranu sa istim danom raspisanim red po red.
+vrijeme, odbrojavanje, traka isteka i luk dana sa svih šest vremena — svako
+sa svojim znakom i imenom vakta. Klik po njoj otvara stranu sa istim danom raspisanim red po red.
 Pravi je `vaktija.js`, a imena vakata i tekstovi obavijesti su u `vakti.js`.
 
 **Zašto nije u zaglavlju.** Zaglavlje je sticky i stoji preko cijelog dana

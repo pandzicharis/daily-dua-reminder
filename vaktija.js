@@ -537,6 +537,12 @@
     return svg;
   }
 
+  /* "Izlazak sunca" u stubac luka dana ne stane, a skraćeno se i dalje zna
+     šta je. Na strani (drawer) stoji cijelo ime — tamo ima mjesta. */
+  function kratkoIme(naziv) {
+    return naziv === "Izlazak sunca" ? "Izlazak" : naziv;
+  }
+
   function span(klasa, tekst) {
     var node = document.createElement("span");
     node.className = klasa;
@@ -603,6 +609,11 @@
     tacke = VAKTI.map(function (vakat) {
       var dot = span("vdot");
       dot.appendChild(ikonaVakta(vakat.id, "vdot-icon"));
+      /* Ime uz vrijeme: znak sam po sebi ne kaže koji je vakat, a "16:34" bez
+         imena traži da se prebroji koji je po redu. Imena su različite
+         dužine, pa stupci imaju jednaku širinu (`flex: 1 1 0` u style.css) i
+         sadržaj centriran u njoj — bez toga bi se razmaci razišli. */
+      dot.appendChild(span("vdot-name", kratkoIme(vakat.naziv)));
       var vrijeme = span("vdot-time", "—");
       dot.appendChild(vrijeme);
       dot.vrijeme = vrijeme;

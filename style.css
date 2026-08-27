@@ -1037,7 +1037,7 @@ h1, h2, h3, p {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   color: var(--muted);
   transition: color 0.4s ease, opacity 0.4s ease;
 }
@@ -1045,6 +1045,19 @@ h1, h2, h3, p {
 .vdot-icon {
   width: 16px;
   height: 16px;
+}
+
+/* Ime vakta između znaka i vremena. Sitnije od vremena i bez prelamanja: šest
+   imena u jednom redu na telefonu stane samo ako svako ostaje u svom stupcu.
+   Najduže ("Ikindija") na najužem ekranu dobije tri točke umjesto da razvuče
+   stubac i pomjeri sve ostale. */
+.vdot-name {
+  max-width: 100%;
+  font-size: 0.5625rem;
+  line-height: 1.25;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .vdot-time {
@@ -3974,6 +3987,16 @@ body.has-update .celebrate-fab {
 @media (min-width: 640px) {
   :root {
     --gutter: 32px;
+  }
+
+  /* Na širem ekranu ima mjesta, pa ime vakta ne mora biti najsitnije slovo na
+     strani. */
+  .vdot-name {
+    font-size: 0.625rem;
+  }
+
+  .vdot-time {
+    font-size: 0.6875rem;
   }
 
   .app-header {
