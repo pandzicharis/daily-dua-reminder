@@ -68,10 +68,9 @@
          Stoji UNUTAR <header>-a i zato se lijepi za vrh zajedno sa njim —
          jedna ploča, a ne dvije koje se pri skrolanju raziđu.
 
-         Na desnom rubu su oznake: putovanje (avion, samo dok je uključeno)
-         i tema (sunce ili mlađak, po tome koja trenutno stoji).
-         Samo oznake — i tema i putovanje se biraju u postavkama, pod
-         zupčanikom. Bez imena je cijela traka skrivena — ime u nju piše
+         Desni rub nosi samo oznaku narednog vakta (vaktija.js) — tema i
+         putovanje se biraju u postavkama, pod zupčanikom, i ovdje više nema
+         ikonicu. Bez imena je cijela traka skrivena — ime u nju piše
          script.js. -->
     <div class="salaam" id="greeting" hidden>
       <div class="wrap salaam-inner">
@@ -80,54 +79,12 @@
           <span class="salaam-name" id="greetingName"></span>
         </p>
 
-        <!-- Oznake na desnom rubu trake: putovanje (avion), pa tema (sunce
-             ili mlađak). Svoj okvir imaju zato što ih je više i moraju
-             stajati kao jedna grupa — `space-between` u traci bi ih inače
-             razvukao po njenoj širini.
-
-             Ni jedna nije dugme: i tema i putovanje se biraju u postavkama,
-             pod zupčanikom. Oznaka koja izgleda kao dugme obećava pritisak
-             kojeg nema — vidi komentar uz `.salaam-theme` u style.css. -->
-        <span class="salaam-marks">
-
-          <!-- Putovanje. Avion odozgo: nos, dva krila, dva repna krilca.
-
-               NE skriva ga JavaScript nego CSS, po `data-putovanje` na <html>
-               (settings.js, `primijeniPut()`) — zato ovdje nema id-a na kojem
-               bi ga neko tražio da upali: stanje je jedno, u configu, i nema
-               gdje da se raziđe. -->
-          <span class="salaam-travel" role="img" aria-label="Putovanje"
-                title="Putovanje — kraći dnevni spisak">
-            <svg class="salaam-travel-icon" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="1.6"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 2.4c.7 0 1.1 1.1 1.1 2.1v4.9l8 4.1v1.6l-8-1.9v4.4l2.5 2v1.2L12 20l-3.6.8v-1.2l2.5-2v-4.4l-8 1.9v-1.6l8-4.1V4.5c0-1 .4-2.1 1.1-2.1z"/>
-            </svg>
-          </span>
-
-          <!-- Oznaka, ne dugme: pokazuje koja tema stoji i ništa ne mijenja
-               na dodir. Tema se bira u postavkama (settings.js, red „Tema“).
-
-               Obje ikonice stoje u HTML-u, theme.js samo skriva jednu: crtanje
-               SVG-a iz JavaScripta ovdje ne bi dobilo ništa, a oznaka bi do
-               učitavanja skripte bila prazna. -->
-          <span class="salaam-theme" id="themeMark" role="img" aria-label="Tema">
-            <svg class="salaam-theme-icon" id="themeSun" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="1.7"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-                 hidden>
-              <circle cx="12" cy="12" r="4.2"/>
-              <path d="M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/>
-            </svg>
-            <svg class="salaam-theme-icon" id="themeMoon" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="1.7"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-                 hidden>
-              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
-            </svg>
-          </span>
-
-        </span>
+        <!-- Prije su ovdje stajale oznake za putovanje i temu (avion, sunce
+             ili mlađak) — uklonjene su, i tema i putovanje se i dalje biraju
+             u postavkama, pod zupčanikom, samo se više ne najavljuju ovdje.
+             `.salaam-marks` ostaje kao okvir jer u njega vaktija.js (funkcija
+             `napraviChip`) ubacuje oznaku narednog vakta. -->
+        <span class="salaam-marks"></span>
       </div>
     </div>
 

@@ -17,12 +17,9 @@
      dan    uvijek svijetla
      noc    uvijek tamna
 
-   Na traci sa selamom stoji samo OZNAKA: sunce ili mlađak, po tome koja tema
-   TRENUTNO stoji. Ne mijenja se na dodir. Prije je tu bilo dugme koje vrti
-   tri režima, ali ono je krilo šta radi — mlađak znači „sada je noćna“, a
-   čitao se kao „pritisni za noćnu“ — i nije se moglo ni vidjeti ni izabrati
-   dok korisnik ne upiše ime, jer bez imena trake sa selamom nema. U
-   postavkama tri režima stoje ispisana riječima i uvijek su na istom mjestu.
+   Nema oznake u headeru koja bi pokazivala koja tema trenutno stoji — u
+   postavkama tri režima stoje ispisana riječima i uvijek su na istom mjestu,
+   pa ta oznaka ne treba i ne piše se ovdje.
 
    Režim se pamti OVDJE, u svom ključu u localStorage, i ne ide na server uz
    ostali config: tema je stvar ekrana koji se drži u ruci. Isto ime na
@@ -131,32 +128,6 @@
     });
   }
 
-  var el = null;
-
-  function opis(tema) {
-    var kakva = tema === "noc" ? "Noćna tema" : "Dnevna tema";
-    return rezim === "auto"
-      ? kakva + " — automatski, prati zikr."
-      : kakva + ".";
-  }
-
-  /* Skrivanje ide preko ATRIBUTA, ne preko `.hidden`: `hidden` je svojstvo
-     HTMLElement-a, a ovo su SVG elementi. `svg.hidden = false` bi napravio
-     obično polje na objektu, atribut bi ostao i ikonica bi ostala skrivena —
-     oznaka bi ostala prazna, bez sunca i mlađaka. */
-  function pokazi(svg, vidljiv) {
-    if (vidljiv) { svg.removeAttribute("hidden"); }
-    else { svg.setAttribute("hidden", ""); }
-  }
-
-  function osvjeziOznaku(tema) {
-    if (!el) { return; }
-    pokazi(el.sun, tema === "dan");
-    pokazi(el.moon, tema === "noc");
-    el.mark.setAttribute("aria-label", opis(tema));
-    el.mark.setAttribute("title", opis(tema));
-  }
-
   var zadnja = null;
   var zadnjiRezim = null;
 
@@ -173,7 +144,6 @@
     zadnja = tema;
     zadnjiRezim = rezim;
 
-    osvjeziOznaku(tema);
     if (promjena) { javi(tema); }
   }
 
@@ -188,30 +158,6 @@
     zapamti();
     primijeni();
     return rezim;
-  }
-
-  /* ------------------------------------------------------------------------
-     Oznaka na traci
-
-     Obje ikonice stoje u index.html, ovdje se samo skriva jedna. Element je
-     `<span role="img">`, ne dugme — ništa se na njemu ne pritiska.
-     ------------------------------------------------------------------------ */
-
-  function povezi() {
-    var mark = document.getElementById("themeMark");
-    var sun = document.getElementById("themeSun");
-    var moon = document.getElementById("themeMoon");
-
-    if (!mark || !sun || !moon) { return; }
-
-    el = { mark: mark, sun: sun, moon: moon };
-    osvjeziOznaku(aktivna());
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", povezi);
-  } else {
-    povezi();
   }
 
   /* ------------------------------------------------------------------------

@@ -666,12 +666,10 @@
 
      Kartica je prvo što se vidi pri otvaranju, ali kad se skrola do sredine
      spiska ode sa ekrana — a zaglavlje ostaje. Zato ista stvar, u dvije
-     riječi, stoji i gore: ime vakta i vrijeme, uz avion i temu.
+     riječi, stoji i gore: ime vakta i vrijeme.
 
-     Ovo JESTE dugme, za razliku od te dvije oznake pored (vidi komentar uz
-     `.salaam-theme` u style.css): one ne rade ništa na dodir pa i ne smiju
-     izgledati kao dugme, a ova vodi na karticu — pa ima pilulu, i pritisak
-     koji obeća i ispuni.
+     Ovo JESTE dugme: klik vodi na karticu — pa ima pilulu, i pritisak koji
+     obeća i ispuni.
 
      Trake sa selamom nema dok ime nije upisano; tada nema ni ove oznake.
      Kartica ispod zaglavlja svejedno stoji.
@@ -825,14 +823,19 @@
   /* Spisak se crta jednom po danu; odbrojavanje i oznake se ispisuju svake
      sekunde (vidi `kucni()`). Prekrajanje šest redova svake sekunde bi bilo
      trošenje ni zbog čega. */
-  function nacrtajSpisak() {
+  function nacrtajSpisak(force) {
     if (!drawerBody) { return; }
 
     var s = stanje();
-    /* Po ovome `otvori()` zna je li ploča koja već stoji od DANAS i je li u
-       njoj išta osim poruke da vaktije nema. Vodi se odvojeno od `crtaniDan`
-       (koji prati karticu): ploča i kartica se ne crtaju u istim trenucima. */
-    spisakDan = (s && drawerBody) ? s.dan : "";
+    var dan = (s && drawerBody) ? s.dan : "";
+
+    /* Već nacrtano za danas — ne diraj DOM (otvaranje ostaje trenutno). */
+    if (!force && dan && spisakDan === dan &&
+        drawerBody.redovi && drawerBody.vakatNow) {
+      return;
+    }
+
+    spisakDan = dan;
 
     drawerBody.textContent = "";
     drawerBody.redovi = null;
@@ -884,13 +887,20 @@
     drawerBody.vakatNow = { label: label, ime: ime, kad: kad, ostalo: ostalo };
   }
 
+  /* Samo vremena u već nacrtanom spisku — bez brisanja DOM-a. */
+  function azurirajSpisak(s) {
+    if (!drawerBody || !drawerBody.redovi || !s) { return; }
+    drawerBody.redovi.forEach(function (row, i) {
+      var vrijeme = row.querySelector(".vakat-vrijeme");
+      if (vrijeme) { vrijeme.textContent = s.danas[i] || "—"; }
+    });
+  }
+
   function otvori() {
     if (!drawer) { napraviDrawer(); }
-    /* Spisak se crta iz onoga što je već u memoriji — ništa se ne čeka. Ako
-       vaktije nema (prvo pokretanje bez mreže), stoji jedna rečenica umjesto
-       praznog ekrana. */
+    /* Spisak je već u kešu (`pripremiStranu`) — samo otkrij ploču. */
     if (!spisakDan || spisakDan !== danKljuc(sarajevo())) {
-      nacrtajSpisak();
+      nacrtajSpisak(true);
     }
     kucni();
 
@@ -899,12 +909,6 @@
     document.body.classList.add("no-scroll");
     if (card) { card.classList.add("is-on"); }
     drawer.querySelector(".drawer-close").focus();
-
-    /* Vaktija je mogla ostati od prošlog mjeseca — pokušaj dopuniti, pa ako
-       nešto stigne, iscrtaj ponovo. */
-    osiguraj().then(function (novo) {
-      if (novo) { nacrtajSpisak(); kucni(); }
-    });
   }
 
   function zatvori() {
@@ -937,7 +941,7 @@
       /* I kad je strana zatvorena: ploča stoji sklopljena unaprijed
          (`pripremiStranu()`), pa bi inače sačekala korisnika sa jučerašnjim
          vremenima. */
-      if (drawer) { nacrtajSpisak(); }
+      if (drawer) { nacrtajSpisak(true); }
     }
 
     if (!imaSta) { return; }
@@ -1049,12 +1053,16 @@
   function dopuni() {
     return osiguraj().then(function (novo) {
       if (!novo) { return; }
-      /* Nov mjesec u kešu može promijeniti i luk dana i spisak. Ploča se
-         crta i zatvorena: sklopljena je unaprijed, pa u njoj do maloprije
-         stajalo "vaktija nije preuzeta". */
       crtaniDan = "";
       zadnjiIndex = -1;
-      if (drawer) { nacrtajSpisak(); }
+      if (drawer) {
+        if (otvoren) {
+          azurirajSpisak(stanje());
+        } else {
+          spisakDan = "";
+          nacrtajSpisak(true);
+        }
+      }
       kucni();
     });
   }
@@ -1069,7 +1077,7 @@
   function pripremiStranu() {
     if (drawer) { return; }
     napraviDrawer();
-    nacrtajSpisak();
+    nacrtajSpisak(true);
   }
 
   /* Ono što treba odmah — pa tek onda, u pozadini, ostatak.
@@ -1079,12 +1087,19 @@
      toj sekundi. */
   function osvjezi() {
     return dopuni().then(function () {
+      pripremiStranu();
       setTimeout(function () {
-        pripremiStranu();
         zagrij().then(function (novo) {
           if (!novo) { return; }
           crtaniDan = "";
-          if (drawer) { nacrtajSpisak(); }
+          if (drawer) {
+            if (otvoren) {
+              azurirajSpisak(stanje());
+            } else {
+              spisakDan = "";
+              nacrtajSpisak(true);
+            }
+          }
           kucni();
         });
       }, 2500);

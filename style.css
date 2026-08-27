@@ -321,36 +321,18 @@ h1, h2, h3, p {
 }
 
 /* --------------------------------------------------------------------------
-   3c. Oznake na desnom rubu trake — putovanje i tema
+   3c. Okvir na desnom rubu trake
 
-   Stoji tu gdje je prije stajao mlađak, i sam je mlađak: sunce = dnevna,
-   mlađak = noćna, po tome koja tema TRENUTNO stoji. Ostalo radi theme.js.
-
-   Nema podlogu, nema pilulu i nije dugme — prije je to bilo dugme sa
-   natpisom koje je vrtjelo tri režima, ali izgled dugmeta je obećavao da se
-   pritiskom bira tema, a ikonica je pokazivala onu koja već stoji, pa se
-   čitalo naopako. Sad je gola ikonica, i tako se ne nudi pritisak kojeg
-   nema: tema se bira u postavkama.
-
-   Boja je --band-muted, ista kojom je i "Es-selamu alejkum" u istoj traci:
-   oznaka stoji uz ime a ne iznad njega.
-
-   Uz nju, dok je putovanje uključeno, stoji avion (vidi 2c). Oboje je u
-   zajedničkom okviru `.salaam-marks` — bez njega bi ih `space-between` u
-   traci razvukao po njenoj širini.
+   Prije su ovdje stajale i oznake za putovanje i temu (avion, sunce/mlađak) —
+   uklonjene su iz headera, i tema i putovanje se biraju samo u postavkama.
+   Okvir ostaje jer u njega vaktija.js ubacuje oznaku narednog vakta
+   (`.salaam-vakat`, vidi dalje).
    -------------------------------------------------------------------------- */
 .salaam-marks {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-}
-
-.salaam-theme {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  color: var(--band-muted);
 }
 
 /* --- vakat: oznaka koja JESTE dugme -------------------------------------- */
@@ -457,37 +439,6 @@ h1, h2, h3, p {
     content: "";
     margin: 0 0 0 3px;
   }
-}
-
-/* --- putovanje: avion ---------------------------------------------------- */
-/* Ista boja i ista veličina kao oznaka teme pored — to su dva znaka istog
-   reda, a ne dva različita elementa. Vidljivost nosi CSS, ne JavaScript:
-   stanje je jedno, `data-putovanje` na <html> (vidi 2c). */
-.salaam-travel {
-  display: none;
-  flex-shrink: 0;
-  align-items: center;
-  color: var(--band-muted);
-}
-
-:root[data-putovanje] .salaam-travel {
-  display: inline-flex;
-}
-
-.salaam-travel-icon {
-  flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-}
-
-.salaam-theme-icon {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-}
-
-.salaam-theme-icon[hidden] {
-  display: none;
 }
 
 /* --------------------------------------------------------------------------
@@ -881,9 +832,9 @@ h1, h2, h3, p {
 .vcard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
-  padding: 14px 16px 13px;
+  padding: 16px 18px 15px;
   font-family: inherit;
   text-align: left;
   color: var(--text);
@@ -899,6 +850,7 @@ h1, h2, h3, p {
 .vcard:hover,
 .vcard.is-on {
   border-color: var(--accent-soft);
+  background: var(--background-alt);
 }
 
 .vcard:focus-visible {
@@ -907,7 +859,7 @@ h1, h2, h3, p {
 }
 
 .vcard:active {
-  opacity: 0.75;
+  background: var(--background-alt);
 }
 
 /* --- gornji red: šta je ovo i koliko ga ima ------------------------------ */
@@ -919,11 +871,11 @@ h1, h2, h3, p {
 }
 
 .vcard-label {
-  font-size: 0.625rem;
-  font-weight: 600;
+  font-size: 0.6875rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--muted);
+  color: var(--accent);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -931,8 +883,8 @@ h1, h2, h3, p {
 
 .vcard-left {
   flex-shrink: 0;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 0.9375rem;
+  font-weight: 700;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
@@ -951,15 +903,15 @@ h1, h2, h3, p {
 }
 
 .vcard-icon-svg {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
 }
 
 .vcard-name {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.375rem;
+  font-weight: 700;
   line-height: 1.2;
-  color: var(--primary);
+  color: var(--text);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -968,9 +920,10 @@ h1, h2, h3, p {
 .vcard-time {
   margin-left: auto;
   flex-shrink: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.375rem;
+  font-weight: 700;
   line-height: 1.2;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -984,7 +937,7 @@ h1, h2, h3, p {
    da se vrijeme vratilo. -------------------------------------------------- */
 .vcard-track {
   display: block;
-  height: 4px;
+  height: 5px;
   border-radius: 999px;
   background: var(--background-alt);
   overflow: hidden;
@@ -1010,6 +963,12 @@ h1, h2, h3, p {
 
 .vcard.is-soon .vcard-left {
   animation: vakat-dise 2.4s ease-in-out infinite;
+}
+
+/* Dok je strana otvorena, kartica iza ne treba da diše — izgleda kao miganje. */
+.vcard.is-on.is-soon .vcard-left {
+  animation: none;
+  opacity: 1;
 }
 
 /* Prva tri minuta poslije vakta — kartica to i kaže. */
@@ -1038,13 +997,13 @@ h1, h2, h3, p {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  color: var(--muted);
+  color: var(--accent);
   transition: color 0.4s ease, opacity 0.4s ease;
 }
 
 .vdot-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 /* Ime vakta između znaka i vremena. Sitnije od vremena i bez prelamanja: šest
@@ -1053,26 +1012,34 @@ h1, h2, h3, p {
    stubac i pomjeri sve ostale. */
 .vdot-name {
   max-width: 100%;
-  font-size: 0.5625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
   line-height: 1.25;
+  color: var(--text);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .vdot-time {
-  font-size: 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 /* Prošlo danas — ostaje u luku, samo tiše. */
 .vdot.is-past {
-  opacity: 0.35;
+  opacity: 0.65;
 }
 
 .vdot.is-next {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.vdot.is-next .vdot-time {
+  color: var(--accent);
 }
 
 /* Bljesak kad se dođe sa oznake iz zaglavlja. Kartica je odmah pod
@@ -1130,11 +1097,11 @@ h1, h2, h3, p {
 }
 
 .vakat-now-label {
-  font-size: 0.625rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--muted);
+  color: var(--accent);
 }
 
 .vakat-now-head {
@@ -1146,21 +1113,22 @@ h1, h2, h3, p {
 }
 
 .vakat-now-name {
-  font-size: 1.375rem;
-  font-weight: 600;
-  color: var(--primary);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
 }
 
 .vakat-now-time {
-  font-size: 1.375rem;
+  font-size: 1.5rem;
+  font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 .vakat-now-left {
   margin-top: 6px;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
@@ -1174,8 +1142,8 @@ h1, h2, h3, p {
 .vakat-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 13px 12px;
+  gap: 14px;
+  padding: 16px 12px;
   margin: 0 -12px;
   border-radius: var(--radius-sm);
   border-bottom: 1px solid var(--line);
@@ -1188,30 +1156,38 @@ h1, h2, h3, p {
 
 .vakat-icon {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  color: var(--muted);
-  transition: color 0.3s ease;
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+  opacity: 0.9;
+  transition: color 0.3s ease, opacity 0.3s ease;
 }
 
 .vakat-naziv {
   flex: 1;
   min-width: 0;
-  font-size: 0.9375rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
   color: var(--text);
 }
 
 .vakat-vrijeme {
   flex-shrink: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
+  font-size: 1.0625rem;
+  font-weight: 800;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 /* Prošlo danas — ostaje na spisku, samo tiše. */
 .vakat-row.is-past {
-  opacity: 0.45;
+  opacity: 0.7;
+}
+
+.vakat-row.is-past .vakat-naziv,
+.vakat-row.is-past .vakat-vrijeme,
+.vakat-row.is-past .vakat-icon {
+  color: var(--accent);
 }
 
 .vakat-row.is-next {
@@ -1220,12 +1196,34 @@ h1, h2, h3, p {
 
 .vakat-row.is-next .vakat-icon {
   color: var(--accent);
+  opacity: 1;
 }
 
 .vakat-row.is-next .vakat-naziv,
 .vakat-row.is-next .vakat-vrijeme {
-  font-weight: 600;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+/* Danju — crnja od --text, za naziv i vrijeme u kartici, luku dana i vaktiji. */
+:root:not([data-theme="noc"]) .vcard-name,
+:root:not([data-theme="noc"]) .vcard-time,
+:root:not([data-theme="noc"]) .vdot-name,
+:root:not([data-theme="noc"]) .vdot-time,
+:root:not([data-theme="noc"]) .vakat-now-name,
+:root:not([data-theme="noc"]) .vakat-now-time,
+:root:not([data-theme="noc"]) .vakat-naziv,
+:root:not([data-theme="noc"]) .vakat-vrijeme {
+  color: #000;
+}
+
+:root[data-theme="noc"] .vdot {
   color: var(--primary);
+}
+
+:root[data-theme="noc"] .vdot.is-next,
+:root[data-theme="noc"] .vdot.is-next .vdot-time {
+  color: var(--accent);
 }
 
 .vakat-prazno {
@@ -3992,11 +3990,11 @@ body.has-update .celebrate-fab {
   /* Na širem ekranu ima mjesta, pa ime vakta ne mora biti najsitnije slovo na
      strani. */
   .vdot-name {
-    font-size: 0.625rem;
+    font-size: 0.75rem;
   }
 
   .vdot-time {
-    font-size: 0.6875rem;
+    font-size: 0.8125rem;
   }
 
   .app-header {
