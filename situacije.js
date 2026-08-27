@@ -41,14 +41,20 @@
 (function () {
   "use strict";
 
-  /* Zadnje otvoreni tab. Pamti se jer se strana otvara u stanju u kojem
-     čovjek jeste, a to se ne mijenja svaki dan: ko je otvara zbog nemira,
-     otvara je zbog nemira i sutra. Bez ovoga bi svaki put počinjala od prve
-     skupine i tražilo bi se ponovo.
+  /* Strana se UVIJEK otvara na "Strah i nemir", ma koja skupina bila zadnje
+     otvorena.
 
-     Samo lokalno, kao i tema: ne ide na server jer nije spisak koji se
-     dijeli, nego mjesto na kojem je ostao OVAJ ekran. */
-  var TAB_KEY = "moj-zikr-stanje";
+     Prije se zadnji tab pamtio u localStorage. Ispalo je pogrešno: ova se
+     strana ne otvara po navici nego kad zatreba, a kad zatreba — najčešće
+     zbog nemira. Zapamćena "Zahvalnost" od prošle sedmice tada stoji na putu
+     i prava se skupina mora tražiti ponovo.
+
+     Unutar jednog otvaranja se skupina slobodno mijenja; zatvaranje vraća na
+     početnu, isto kao što briše i kvačice (vidi `zatvori()`).
+
+     Skupine nema (isključena u postavkama, obrisana iz data.js) -> prva sa
+     trake, da strana nikad ne ostane prazna. */
+  var POCETNA = "stanje-strah";
 
   var drawer = null;
   var tabsBox = null;
@@ -61,12 +67,10 @@
   var ucene = Object.create(null);
 
   var otvoren = false;
-  var aktivna = "";
+  var aktivna = POCETNA;
   /* Config se promijenio dok je strana bila zatvorena — crtanje čeka
      otvaranje, da se ne crta ekran koji nitko ne gleda. */
   var trebaCrtanje = true;
-
-  try { aktivna = localStorage.getItem(TAB_KEY) || ""; } catch (e) { aktivna = ""; }
 
   function prefs() {
     return (window.mojZikrConfig && window.mojZikrConfig.prefs()) || {};
@@ -91,19 +95,15 @@
     });
   }
 
-  /* Skupina koja se prikazuje. Zapamćena ako još postoji, inače prva —
-     skupina obrisana iz data.js ne smije ostaviti praznu stranu. */
+  /* Skupina koja se prikazuje: ona koja je izabrana ako još postoji, inače
+     prva sa trake — skupina isključena u postavkama ili obrisana iz data.js
+     ne smije ostaviti praznu stranu. */
   function tekuca(lista) {
     var i;
     for (i = 0; i < lista.length; i += 1) {
       if (lista[i].id === aktivna) { return lista[i]; }
     }
     return lista[0] || null;
-  }
-
-  function zapamtiTab(id) {
-    aktivna = id;
-    try { localStorage.setItem(TAB_KEY, id); } catch (e) { /* private mode */ }
   }
 
   /* ------------------------------------------------------------------------
@@ -415,7 +415,7 @@
 
   function izaberi(id, fokus) {
     if (id !== aktivna) {
-      zapamtiTab(id);
+      aktivna = id;
       nacrtaj();
       /* Nova skupina počinje od svoje prve dove, a ne od mjesta na kojem je
          stao skrol u prethodnoj. */
@@ -448,9 +448,10 @@
     }
 
     body.setAttribute("aria-labelledby", "duas-tab-" + izabrana.id);
-    /* Zapamćeni tab je mogao ispasti iz data.js — tada `tekuca()` vrati prvu,
-       pa se pamti ona, da se pri sljedećem otvaranju ne traži ponovo. */
-    if (izabrana.id !== aktivna) { zapamtiTab(izabrana.id); }
+    /* Izabrana skupina je mogla ispasti sa trake (isključena, obrisana) —
+       tada `tekuca()` vrati prvu, pa se ona i vodi kao izabrana, da tabovi i
+       sadržaj ne govore dvije stvari. */
+    aktivna = izabrana.id;
 
     /* Izabrana skupina uvijek ima stavki: prazne ne dobiju tab (vidi
        `skupine()`), pa se ovdje ne može zateći nijedna. */
@@ -579,6 +580,9 @@
        stajale prekrižene iako u `ucene` više nema ničega. */
     ucene = Object.create(null);
     trebaCrtanje = true;
+    /* I skupina se vraća na početnu: sljedeće otvaranje kreće od "Strah i
+       nemir" kao i svako prije njega (vidi `POCETNA`). */
+    aktivna = POCETNA;
 
     document.body.classList.remove("no-scroll");
     if (btn) {
