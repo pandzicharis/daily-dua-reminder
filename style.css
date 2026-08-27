@@ -120,6 +120,81 @@
             0 8px 24px -16px rgba(0, 0, 0, 0.75);
 }
 
+/* --------------------------------------------------------------------------
+   2c. Putovanje
+
+   Ista aplikacija, isti raspored — samo se vidi da je scope kraći. Znak stoji
+   na <html>, u `data-putovanje`, i piše ga settings.js (`primijeniPut()`):
+   putovanje je polje configa, pa se stanje vodi tamo gdje i sve ostalo iz
+   configa, a ne u još jednom ključu.
+
+   Mijenjaju se samo boje i vidljivost — ni jedna mjera rasporeda, da se na
+   putu ništa ne pomjeri sa mjesta:
+
+     1. traka sa selamom pređe iz pješčane u nebesku (`--band*`)
+     2. naglasak (`--accent`) pređe iz zlatne u prigušeno plavu — po njemu su
+        hidžretski datum, znakovi sekcija, fokus i brojka djelimične sekcije,
+        pa se putovanje vidi i kad se traka sa selamom otkotrlja iz vida
+     3. „gotovo“ (`--done`) pređe iz zelene u plavu — kvačica, puna traka,
+        brojka završene sekcije, izbrojana pilula
+     4. zelena aplikacije (`--primary` i `--primary-soft`) pređe u plavu — po
+        njoj su trake napretka u toku, puna dugmad i naglašen tekst
+     5. donja ivica zaglavlja postane crtkana, kao put na karti
+     6. pored oznake teme stane avion — to je jedino od ovog što ne stoji
+        ovdje nego uz same oznake (vidi 3c)
+
+   Sve su to VARIJABLE, ni jedno novo pravilo: traka napretka u toku je
+   `--primary` a završena `--done`, pa se plava dobije zamjenom boje na jednom
+   mjestu i ni jedno pravilo se ne piše dvaput. Zato se `--surface` ne dira —
+   ono je tekst NA punom dugmetu, pa se par (podloga, tekst) sam poklopi.
+
+   Zašto DVA bloka, a ne jedan sa `--band` po temi: noćna tema mora ostati
+   tamna i na putu. Oba bloka postavljaju TAČNO iste varijable, pa noćni
+   (specifičniji, sa dva atributa) uredno prepiše sve što je dnevni upisao —
+   bez obzira na to kojim su redom napisani. Dnevni je namjerno pisan bez
+   `[data-theme="dan"]`: ako theme.js nekim čudom nije učitan i atributa nema,
+   putovanje se svejedno vidi.
+   -------------------------------------------------------------------------- */
+:root[data-putovanje] {
+  --band: #d7e2e6;
+  --band-text: #1c4048;
+  --band-muted: rgba(28, 64, 72, 0.7);
+
+  --accent: #4f7f8c;
+  --accent-soft: #cddce1;
+
+  /* Svaka je iste svjetline kao zelena koju smjenjuje (#2f7a55, #1e4438,
+     #37624f), pa ni jedan element ne postane ni tamniji ni svjetliji — samo
+     druge boje. Zbog toga se kontrast nigdje ne mora provjeravati iznova. */
+  --done: #2f6f8f;
+  --done-soft: #dfe9ef;
+
+  --primary: #1c3f52;
+  --primary-soft: #345c6e;
+}
+
+:root[data-theme="noc"][data-putovanje] {
+  --band: #142025;
+  --band-text: #e4e9ea;
+  --band-muted: rgba(228, 233, 234, 0.6);
+
+  --accent: #8fb6c0;
+  --accent-soft: #6c8f99;
+
+  --done: #5fb0cc;
+  --done-soft: #16303a;
+
+  --primary: #cbdfe8;
+  --primary-soft: #a3c1cc;
+}
+
+/* Crtkana ivica ispod zaglavlja — jedina linija u aplikaciji koja nije puna.
+   Boja i debljina ostaju iste (`--line`, 1px): mijenja se samo uzorak, pa se
+   raspored ne pomjera ni za piksel. */
+:root[data-putovanje] .app-header {
+  border-bottom-style: dashed;
+}
+
 /* Stranica mushafa noću — bijela slova na tamnom listu.
 
    Prije je ovaj drawer po noći vraćao DNEVNE boje, pa se usred tamne
@@ -246,7 +321,7 @@ h1, h2, h3, p {
 }
 
 /* --------------------------------------------------------------------------
-   3c. Tema — oznaka na desnom rubu trake
+   3c. Oznake na desnom rubu trake — putovanje i tema
 
    Stoji tu gdje je prije stajao mlađak, i sam je mlađak: sunce = dnevna,
    mlađak = noćna, po tome koja tema TRENUTNO stoji. Ostalo radi theme.js.
@@ -259,12 +334,44 @@ h1, h2, h3, p {
 
    Boja je --band-muted, ista kojom je i "Es-selamu alejkum" u istoj traci:
    oznaka stoji uz ime a ne iznad njega.
+
+   Uz nju, dok je putovanje uključeno, stoji avion (vidi 2c). Oboje je u
+   zajedničkom okviru `.salaam-marks` — bez njega bi ih `space-between` u
+   traci razvukao po njenoj širini.
    -------------------------------------------------------------------------- */
+.salaam-marks {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .salaam-theme {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   color: var(--band-muted);
+}
+
+/* --- putovanje: avion ---------------------------------------------------- */
+/* Ista boja i ista veličina kao oznaka teme pored — to su dva znaka istog
+   reda, a ne dva različita elementa. Vidljivost nosi CSS, ne JavaScript:
+   stanje je jedno, `data-putovanje` na <html> (vidi 2c). */
+.salaam-travel {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--band-muted);
+}
+
+:root[data-putovanje] .salaam-travel {
+  display: inline-flex;
+}
+
+.salaam-travel-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
 }
 
 .salaam-theme-icon {
@@ -2082,6 +2189,31 @@ main {
 
 .set-acc.is-empty .set-acc-count {
   color: var(--accent);
+}
+
+/* Zaključan spisak (putovanje uključeno).
+
+   Spisak OSTAJE i dalje čitljiv i dalje se rasklapa — na putu se najviše i
+   gleda šta je danas na spisku. Ugašene su samo kontrole, i to onim istim
+   `:disabled` koje im daje settings.js, da se stanje ne vodi na dva mjesta.
+
+   Nema prigušenog cijelog akordeona: to je već značenje `is-empty` (sve
+   isključeno), pa bi zaključan spisak izgledao kao ugašen. Zašto se ne dira
+   piše rečenicom, pod zaglavljem „Dnevni spisak“. */
+.set-acc.is-locked .check:disabled,
+.set-acc.is-locked .set-edit:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Kvačica koja se ne može prebaciti ne smije reagovati ni na prelaz mišem. */
+.set-acc.is-locked .set-pick-main {
+  cursor: default;
+}
+
+.set-acc.is-locked .set-edit:disabled:hover {
+  color: var(--muted);
+  border-color: var(--line);
 }
 
 /* Šiljak: dvije ivice kvadrata rotirane 45°. Bez SVG-a jer mu je jedina

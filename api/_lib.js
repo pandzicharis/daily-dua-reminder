@@ -387,9 +387,13 @@ function subId(endpoint) {
 /* ------------------------------------------------------------------------
    Config korisnika
 
-   Četiri polja:
+   Polja:
 
      transkript   ekran pokazuje transliteraciju umjesto arapskog
+     putovanje    kraći dnevni spisak za put. Za scheduler nije poseban
+                  slučaj: `sectionsForDate()` mu vrati već svedene sekcije, pa
+                  se sam račun (`taskTally()`) ne mijenja ni jednom linijom —
+                  totali su manji, a podsjetnik ućuti kad se to malo završi.
      skriveno     spisak id-eva stavki koje korisnik ne želi vidjeti
      izmjene      korisnikove izmjene stavki iz data.js (naslov, tekstovi,
                   broj ponavljanja) — pamti se samo ono što se razlikuje

@@ -32,7 +32,7 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `manifest.webmanifest` | ime, boje, ikonice, `display: standalone` |
 | `service-worker.js` | prima push, prikazuje obavijest, obrađuje klik, offline keš |
 | `notifications.js` | dozvola, pretplata, uključi/isključi |
-| `settings.js` | config korisnika (ime, transkripcija, spisak, izmjene stavki, vlastite stavke, redoslijed) + drawer u kojem se podešava |
+| `settings.js` | config korisnika (ime, transkripcija, putovanje, spisak, izmjene stavki, vlastite stavke, redoslijed) + drawer u kojem se podešava |
 | `sync.js` | zajedničko stanje kroz uređaje: slanje promjena, povlačenje, offline red |
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
 | `badge.js` | broj na ikonici aplikacije: koliko je dova ostalo u podsjetnicima koji su nastupili |
@@ -62,7 +62,8 @@ iPhone PWA  ←→  localStorage (offline keš)
 - `style.css` — `.item-source` i `.notify*` stilovi, `.app-glass` (staklena
   ploča zaglavlja, vidi 2) i stilovi strane sa dovama za stanja (`.duas-*`,
   `.dua*`).
-- `data.js` — `source` polja (izvor dove/sure) i `module.exports` na kraju,
+- `data.js` — `PUTNI_SCOPE` (fiksan spisak za putovanje, vidi 4b) uz
+  `naPutu()` i `putniScope()`; `source` polja (izvor dove/sure) i `module.exports` na kraju,
   da server može računati koliko je od sekcije urađeno iz istog spiska.
   Uz to sekcija **Petak** (`days: [5]`) i dvije čiste funkcije koje su jedini
   izvor istine o tome koje sekcije postoje kojeg dana: `weekdayFromKey()` i
@@ -309,6 +310,7 @@ Zupčanik u headeru otvara drawer sa dna (`settings.js`):
 |---|---|---|
 | **Ime** | *(samo localStorage)* | određuje čiji je spisak. Isto ime na dva uređaja = jedan spisak. |
 | **Transkripcija** | `transkript` | umjesto arapskog teksta prikazuje transliteraciju iz `data.js`. Zamjena, ne dodatak — prevod ostaje ispod. |
+| **Putovanje** | `putovanje` | kraći dnevni spisak za put. Spisak je fiksan i stoji u `data.js`, ne u configu; dok je uključen, spisak ispod se samo čita. |
 | **Šta se prikazuje** | `skriveno` | kvačica po stavci, u akordeonu po sekciji, plus prekidač za cijelu sekciju u zaglavlju akordeona. Isključena dova nestaje i sa ekrana i iz računa podsjetnika. |
 | **Uredi stavku** | `izmjene` | **svaka** stavka, i ona iz `data.js`: naslov, tekstovi, izvor, broj ponavljanja. |
 | **Stranica dnevno** | `stranice` | koliko se stranica mushafa uči u jednom danu (1–20) — iza olovke na kur'anskoj stavci. |
@@ -617,6 +619,72 @@ ostaje `quran`, pa se na serveru ne mijenja ništa.
 
 U postavkama je kur'anska sekcija akordeon kao i svaka druga, sa jednom
 stavkom u sebi; broj stranica se podešava iza njene olovke, klizačem 1–20.
+
+### Putovanje (`putovanje`)
+
+Na putu se ne uči koliko kod kuće. Prekidač **Putovanje** u postavkama svede
+dnevni spisak na kratak, unaprijed određen popis:
+
+| sekcija | šta ostaje |
+|---|---|
+| **Kur'an** | stranica (dnevna porcija kakva je u configu) |
+| **Zikr** | Salavat, Estagfirullah, Elhamdulillah — isti brojevi |
+| **Dove** | Fatiha, pa DOVA #1, #2, #3, #5, #7, #13, #19, #28 |
+| **Navečer** | El-Mulk, DOVA #1, DOVA #2, El-Ihlas, El-Felek, En-Nas, salavati (isti broj), šehadet |
+| **Petak** | cijela, nepromijenjena — petkom je petak i na putu |
+
+Spisak stoji u `PUTNI_SCOPE` u `data.js`, **ne u configu**. To je i cijela
+svrha prekidača: da se na putu ne bira šta se uči, nego da odluka bude već
+donesena. Config nosi samo prekidač (`putovanje: true`), pa ga i drugi uređaj
+istog korisnika zatekne uključenog.
+
+**Šta prekidač ne mijenja.** `izmjene`, `stranice` i `redoslijed` vrijede i
+dalje: to nije scope nego sadržaj i poredak. „Isti broj salavata" znači onaj
+broj koji korisnik ima, a ne onaj iz `data.js`. Numeracija dova se ne mijenja —
+„DOVA #7" je i na putu #7, jer `itemTitles()` broji preko cijelog spiska
+sekcije (`fullSections()`), kroz koji putni filter ne prolazi; u spisku se
+vidi rupa, što je tačan opis stanja.
+
+**`skriveno` se za te četiri sekcije ne gleda.** Jedno sito, ne dva: dova koju
+je korisnik isključio kod kuće na putu svejedno stoji. Da se gleda, „fiksan
+spisak" bi značio nešto drugo na svakom uređaju. Zapis se pri tome **ne dira** —
+isključeno putovanje vraća korisnikov spisak tačno kakav je bio. Sekcija koje
+na putnom spisku nema (Petak) ide kroz `skriveno` kao i svaki drugi dan.
+
+**Postavke se zaključaju.** Dok je putovanje uključeno, cijeli **Dnevni
+spisak** i sve skupine **Dova za stanja** se samo čitaju: kvačice, prekidači
+sekcija, olovke, povlačenje reda i „Dodaj svoju stavku" su ugašeni. Spisak
+ostaje čitljiv i rasklapa se — na putu se najviše i gleda šta je danas na
+spisku — a zašto se ne dira piše rečenicom pod zaglavljem. Kvačice tada
+pokazuju **putni** spisak, a ne `skriveno`: inače bi u postavkama stajao jedan
+spisak a na ekranu drugi. Brojka pored sekcije to i kaže — `9 / 34`.
+
+Skupine dova za stanja su zaključane iako putovanje njihov sadržaj ne mijenja
+(sama strana radi kao i svaki drugi dan) — dok je scope fiksan, ništa se ne
+prekraja.
+
+**Vidi se u temi**, i u dnevnoj i u noćnoj. Znak je `data-putovanje` na
+`<html>`, koji piše `settings.js` (`primijeniPut()`), a `style.css` na njega
+mijenja samo boje i vidljivost — ni jednu mjeru rasporeda, da se na putu ništa
+ne pomjeri sa mjesta. Sve su to **varijable**, ni jedno novo pravilo; svaka je
+iste svjetline kao zelena koju smjenjuje, pa se kontrast nigdje ne mijenja:
+
+1. traka sa selamom pređe iz pješčane u nebesku (`--band*`)
+2. pored oznake teme stane **avion** (skriva ga CSS, ne JavaScript — stanje je
+   jedno i nema gdje da se raziđe)
+3. naglasak (`--accent`) pređe iz zlatne u prigušeno plavu — po njemu su
+   hidžretski datum, znakovi sekcija, fokus i brojka djelimične sekcije, pa se
+   putovanje vidi i kad se traka sa selamom otkotrlja iz vida
+4. „gotovo" (`--done`) pređe iz zelene u plavu — kvačica, puna traka, brojka
+   završene sekcije, izbrojana pilula
+5. zelena aplikacije (`--primary`, `--primary-soft`) pređe u plavu — po njoj su
+   trake napretka u toku, puna dugmad i naglašen tekst
+6. donja ivica zaglavlja postane crtkana, kao put na karti
+
+**Server ne zna da putovanje postoji.** Podsjetnici i broj na ikonici idu
+kroz `sectionsForDate()`, koji već vrati svedene sekcije — pa se `taskTally()`
+ne mijenja ni jednom linijom: totali su manji, a podsjetnik ućuti kad se to
+malo završi. Isto vrijedi i za trake napretka i za završni ekran.
 
 ## 5. Kako radi satna logika
 

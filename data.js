@@ -968,6 +968,93 @@
     { id: "stanje-oslonac",    title: "Oslonac",         icon: "hands",  kind: "stanje", items: stanjeOslonac }
   ];
 
+  /* --------------------------------------------------------------------------
+     PUTOVANJE — smanjen dnevni spisak
+
+     Prekidač „Putovanje“ u postavkama (`putovanje` u configu) ne mijenja ni
+     jednu dovu i ništa ne briše — samo kaže koje stavke tih dana ulaze u
+     dnevni spisak. Na putu se ne uči koliko kod kuće, a ono što ostaje mora
+     biti isto svaki dan i kratko.
+
+     Spisak je FIKSAN i stoji OVDJE, a ne u configu: to je i cijela svrha
+     prekidača — da se na putu ne bira šta se uči, nego da odluka bude već
+     donesena. Zato su, dok je uključen, kvačice u postavkama zaključane
+     (settings.js) — inače bi „fiksan“ značio nešto drugo na svakom uređaju.
+
+     ŠTA VRIJEDI, A ŠTA NE:
+       skriveno     NE vrijedi za sekcije sa ovog spiska — jedno sito, ne dva.
+                    Dova koju je korisnik isključio kod kuće na putu svejedno
+                    stoji, jer je scope fiksan a ne njegov.
+       izmjene      vrijede. To nije scope nego sadržaj: „isti broj salavata“
+                    znači onaj broj koji korisnik ima, a ne onaj iz ovog fajla.
+       stranice     vrijede — kur'anska stavka na putu ostaje, sa svojom
+                    dnevnom porcijom.
+       redoslijed   vrijedi. Poredak je korisnikov i ovdje se ne dira: ovaj
+                    spisak kaže ŠTA ostaje, ne kojim redom. Redom ide onako
+                    kako sekcija stoji.
+       dodatno      vlastite stavke nisu na spisku, pa ih na putu nema.
+
+     Numeracija dova se NE mijenja: „DOVA #7“ je i na putu #7, jer
+     `itemTitles()` broji preko `fullSections()`, kroz koji ovaj filter ne
+     prolazi. U spisku se vidi rupa — tačan opis stanja.
+
+     Sekcija koje ovdje NEMA ostaje cijela. Zato Petak nije na spisku: petkom
+     je petak i na putu, pa mu se spisak ne krati. Isto pravilo štiti i svaku
+     buduću sekciju — nova se ne može tiho izgubiti zato što je neko zaboravio
+     dopisati je ovdje.
+
+     Id-evi, a ne naslovi: naslov dove je samo broj koji se mijenja sa
+     redoslijedom, id se ne mijenja nikad. Broj koji korisnik VIDI stoji u
+     komentaru pored, jer se iz id-a ne može pročitati.
+     -------------------------------------------------------------------------- */
+  var PUTNI_SCOPE = {
+    /* Stranica mushafa — jedina stavka kur'anske sekcije. */
+    quran: ["quran"],
+
+    /* Salavat, Estagfirullah, Elhamdulillah — bez Hasbunallaha. */
+    zikr: [
+      "zikr-salavat-50",
+      "zikr-estagfirullah-10",
+      "zikr-elhamdulillah-10"
+    ],
+
+    dove: [
+      "dove-fatiha",               /* Fatiha */
+      "dove-reditu-billahi",       /* DOVA #1 */
+      "dove-sejjidul-istigfar",    /* DOVA #2 */
+      "dove-hemm-hazen",           /* DOVA #3 */
+      "dova-a3",                   /* DOVA #5 */
+      "dova-a6",                   /* DOVA #7 */
+      "dova-a12",                  /* DOVA #13 */
+      "dova-a18",                  /* DOVA #19 */
+      "dova-a29"                   /* DOVA #28 */
+    ],
+
+    navecer: [
+      "navecer-mulk",              /* Sura El-Mulk */
+      "navecer-hemm-hazen",        /* DOVA #1 */
+      "navecer-sejjidul-istigfar", /* DOVA #2 */
+      "navecer-ihlas",
+      "navecer-felek",
+      "navecer-nas",
+      "navecer-salavat-20",        /* isti broj kao i kod kuće */
+      "navecer-sehadet"
+    ]
+  };
+
+  function naPutu(prefs) {
+    return !!(prefs && prefs.putovanje === true);
+  }
+
+  /* Id-evi koji na putu ostaju u toj sekciji, ili null ako se sekcija na putu
+     ne krati. Kopija, da pozivalac ne može promijeniti spisak pod nama —
+     `sections` je zajednički, a na serveru kroz istu instancu prolaze configi
+     više korisnika. */
+  function putniScope(sectionId) {
+    var ids = PUTNI_SCOPE[sectionId];
+    return ids ? ids.slice() : null;
+  }
+
   /* Dan sedmice iz ključa "YYYY-MM-DD": 0 = nedjelja … 5 = petak.
 
      Ide preko Date.UTC, a NIKAD preko new Date("2026-08-21").getDay(): taj
@@ -984,9 +1071,11 @@
      CONFIG KORISNIKA
 
      Config je jedini način da se spisak promijeni bez deploya, pa je i jedino
-     mjesto na kojem sadržaj nije u ovom fajlu. Četiri polja:
+     mjesto na kojem sadržaj nije u ovom fajlu. Polja:
 
        transkript   ekran pokazuje transliteraciju umjesto arapskog
+       putovanje    smanjen dnevni spisak — fiksan spisak stoji u
+                    `PUTNI_SCOPE` iznad, ne u configu
        skriveno     spisak id-eva stavki koje korisnik ne želi vidjeti
        izmjene      { idStavke: { polje: vrijednost } } — korisnikove izmjene
                     stavki IZ OVOG FAJLA. Pamti se samo ono što je stvarno
@@ -1252,8 +1341,8 @@
 
   function defaultPrefs() {
     return {
-      transkript: false, skriveno: [], izmjene: {}, stranice: 1, dodatno: [],
-      redoslijed: {}
+      transkript: false, putovanje: false, skriveno: [], izmjene: {},
+      stranice: 1, dodatno: [], redoslijed: {}
     };
   }
 
@@ -1266,6 +1355,7 @@
     if (!raw || typeof raw !== "object") { return out; }
 
     if (typeof raw.transkript === "boolean") { out.transkript = raw.transkript; }
+    if (typeof raw.putovanje === "boolean") { out.putovanje = raw.putovanje; }
 
     out.dodatno = cleanCustom(raw.dodatno);
     var known = knownItemIds(out.dodatno);
@@ -1434,9 +1524,33 @@
     return copy;
   }
 
+  /* Sekcija svedena na putni spisak (vidi `PUTNI_SCOPE`). Stoji uz
+     `bezSkrivenih()` i radi isto, samo drugim sitom: ono prosijava kroz
+     korisnikov `skriveno`, ovo kroz fiksan spisak iz ovog fajla.
+
+     Poredak se ne dira — ostaje onaj kojim sekcija stoji, pa i korisnikov
+     `redoslijed`: putni spisak kaže ŠTA ostaje, ne kojim redom. */
+  function samoPutne(section, ids) {
+    if (!section.items) { return section; }
+
+    var kept = section.items.filter(function (item) {
+      return ids.indexOf(item.id) !== -1;
+    });
+    if (kept.length === section.items.length) { return section; }
+
+    /* KOPIJA, ne izmjena zatečenog objekta — vidi `withConfig()`. */
+    var copy = {};
+    Object.keys(section).forEach(function (k) { copy[k] = section[k]; });
+    copy.items = kept;
+    return copy;
+  }
+
   function sectionsForDate(dateKey, prefs) {
     var wd = weekdayFromKey(dateKey);
     var skriveno = (prefs && Array.isArray(prefs.skriveno)) ? prefs.skriveno : [];
+    /* Putovanje je uključeno — sekcije sa putnog spiska idu kroz njega, a ne
+       kroz `skriveno`. Sve ostalo je isto kao svaki drugi dan. */
+    var put = naPutu(prefs);
 
     return fullSections(prefs).filter(function (section) {
       /* Dove za stanja nisu dnevni spisak: imaju svoju stranu i ne čekiraju
@@ -1445,8 +1559,14 @@
       if (section.kind === "stanje") { return false; }
       if (section.days && section.days.indexOf(wd) === -1) { return false; }
       /* Kur'anska sekcija nema `items` pa je ne može isprazniti filter ispod —
-         gasi je njena jedina stavka, pod id-em "quran". */
-      if (section.kind === "quran") { return skriveno.indexOf("quran") === -1; }
+         gasi je njena jedina stavka, pod id-em "quran". Na putu o njoj
+         odlučuje putni spisak (stranica na njemu jeste), pa `skriveno` tada ne
+         može ugasiti ono što je putovanje uključilo. */
+      if (section.kind === "quran") {
+        var putniQ = put ? putniScope(section.id) : null;
+        if (putniQ) { return putniQ.indexOf("quran") !== -1; }
+        return skriveno.indexOf("quran") === -1;
+      }
       return true;
     /* Sekcija kojoj je isključeno sve nema šta prikazati na glavnoj listi, ali
        u postavkama jeste — njenu stavku je moguće opet uključiti. Dakle,
@@ -1455,7 +1575,11 @@
        biva ispražnjena.
        Na ekranu će se tada umjesto liste stavki prikazati "nema dova" + dugme. */
     }).map(function (section) {
-      return bezSkrivenih(section, skriveno);
+      var putni = put ? putniScope(section.id) : null;
+      /* Dva sita, nikad oba nad istom sekcijom: na putu spisak sekcije nije
+         korisnikov nego fiksan. Sekcija koje na putnom spisku nema (Petak) ide
+         kroz `skriveno` kao i svaki drugi dan. */
+      return putni ? samoPutne(section, putni) : bezSkrivenih(section, skriveno);
     });
   }
 
@@ -1566,6 +1690,11 @@ if (typeof module !== "undefined" && module.exports) {
        (nema ih u `sectionsForDate()`), ali njihove stavke prolaze kroz istu
        validaciju kao i sve ostale jer stoje u nizu `sections`. */
     stanjeSections: stanjeSections,
+    /* Putovanje — je li uključeno i šta tada ostaje od sekcije. Postavkama
+       treba da bi kvačice pokazale putni spisak umjesto korisnikovog; server
+       ovo ne zove jer mu je sve već prosijano kroz `sectionsForDate()`. */
+    naPutu: naPutu,
+    putniScope: putniScope,
     /* Sekcije čije se stavke smiju isključiti — iz ovoga se gradi spisak
        ispravnih id-eva za polje `skriveno` u configu. */
     pickableSections: pickableSections,

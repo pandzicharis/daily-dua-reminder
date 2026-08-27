@@ -194,7 +194,13 @@
         (u.devices === 1 ? " uređaj" : " uređaja");
       /* Isključene stavke su čest razlog tišine: one smanjuju `total`, pa
          podsjetnik zna biti "done" a da ništa ne izgleda urađeno. Neka se
-         vidi bez kopanja po bazi. */
+         vidi bez kopanja po bazi.
+
+         Putovanje je isti razlog, samo krupniji — svede spisak na desetak
+         stavki — pa stoji tu gdje se prvo gleda zašto je tiho. */
+      if (u.prefs && u.prefs.putovanje) {
+        head.textContent += " · putovanje";
+      }
       var skriveno = (u.prefs && u.prefs.skriveno) || [];
       if (skriveno.length) {
         head.textContent += " · isključeno stavki: " + skriveno.length;

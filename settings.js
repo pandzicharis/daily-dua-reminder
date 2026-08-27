@@ -1,7 +1,7 @@
 /* ==========================================================================
    settings.js — config korisnika i drawer u kojem se podešava.
 
-   Sedam stvari:
+   Osam stvari:
 
      ime           određuje ČIJI je spisak. Svi uređaji sa istim imenom vide
                    isto čekirano; dva imena su dva odvojena spiska. Ime nije
@@ -16,6 +16,15 @@
 
      transkripcija umjesto arapskog teksta prikazuje transliteraciju iz
                    data.js. ZAMJENA, ne dodatak — ispod je i dalje prevod.
+
+     putovanje     kraći dnevni spisak za put. Prekidač NE nosi spisak — on
+                   stoji u `PUTNI_SCOPE` u data.js i fiksan je, pa se dok je
+                   uključen spisak ispod samo čita: kvačice, prekidači
+                   sekcija, olovke, povlačenje i „Dodaj“ su ugašeni (vidi
+                   `zakljucano()`). Zaključane su i skupine dova za stanja,
+                   iako njihov sadržaj putovanje ne mijenja. Kvačice tada
+                   pokazuju putni spisak, a ne `skriveno` — inače bi u
+                   postavkama stajao jedan spisak a na ekranu drugi.
 
      spisak stavki kvačica po dovi, u akordeonu po sekciji. Ko ne radi dio
                    dnevnog ili večernjeg zikra ne mora ga ni gledati.
@@ -44,8 +53,8 @@
 
    Prekidača za cijelu sekciju nema. Postojao je (petak), ali kvačice rade
    isto i na jednom mjestu: isključi svih pet petačkih stavki i sekcije nema,
-   kao ni njenog podsjetnika. Zbog toga je `transkript` jedini prekidač u
-   configu — tema ima svoj, ali njeno stanje pamti theme.js.
+   kao ni njenog podsjetnika. Zbog toga su `transkript` i `putovanje` jedina
+   dva prekidača u configu — tema ima svoj, ali njeno stanje pamti theme.js.
 
    Spisak sekcija se NE nabraja ovdje — akordeoni se prave iz
    `pickableSections()` u data.js, pa nova sekcija sa spiskom sama dobije svoj.
@@ -130,6 +139,61 @@
     return (typeof sectionItems === "function")
       ? sectionItems(section)
       : (section.items || []);
+  }
+
+  /* ------------------------------------------------------------------------
+     Putovanje — zaključan spisak
+
+     Dok je „Putovanje“ uključeno, dnevni spisak je fiksan i stoji u data.js
+     (`PUTNI_SCOPE`), pa se u postavkama NE mijenja: kvačica, prekidač
+     sekcije, olovka, povlačenje reda i „Dodaj svoju stavku“ su ugašeni. Sve
+     to i dalje STOJI na ekranu, samo prigušeno — spisak se mora moći
+     pročitati i sa puta, a ugašena kontrola kaže zašto se ne dira.
+
+     Zaključane su i skupine dova za stanja, iako putovanje njihov sadržaj ne
+     mijenja: dok je scope fiksan, ništa se ne prekraja.
+
+     Kvačice tada NE pokazuju `skriveno` nego putni spisak — to je ono što se
+     tih dana stvarno prikazuje. Da pokazuju `skriveno`, u postavkama bi
+     stajao jedan spisak a na ekranu drugi.
+     ------------------------------------------------------------------------ */
+  function naPutuSad() {
+    return (typeof naPutu === "function") ? naPutu(config) : config.putovanje === true;
+  }
+
+  /* Isto što i `naPutuSad()`. Stoji pod svojim imenom jer se čita na mjestima
+     gdje pitanje nije „je li čovjek na putu“ nego „smije li se ovo dirati“. */
+  function zakljucano() {
+    return naPutuSad();
+  }
+
+  /* Putni spisak sekcije, ili null ako se ona na putu ne krati (Petak, skupine
+     dova za stanja) — tada kvačice i dalje pokazuju `skriveno`. */
+  function putniZa(sectionId) {
+    if (!naPutuSad() || typeof putniScope !== "function") { return null; }
+    return putniScope(sectionId);
+  }
+
+  /* Je li stavka na spisku koji se TOG dana prikazuje. Jedino mjesto koje zna
+     da postoje dva izvora te odluke — putni spisak i `skriveno`. */
+  function ukljucena(sectionId, itemId) {
+    var putni = putniZa(sectionId);
+    if (putni) { return putni.indexOf(itemId) !== -1; }
+    return !jeSkriveno(itemId);
+  }
+
+  /* Znak putovanja na <html>, po kojem CSS oboji traku sa selamom i pokaže
+     avion u zaglavlju (style.css, `[data-putovanje]`). Atribut, a ne klasa na
+     <body>: tema stoji na istom elementu (`data-theme`), pa su dva stanja koja
+     boje cijelu aplikaciju na jednom mjestu.
+
+     Piše se OVDJE jer je putovanje polje configa, a config živi u ovom fajlu.
+     Ne treba mu ni jedan slušalac: svaka promjena prolazi kroz `primijeniPut()`. */
+  function primijeniPut() {
+    var html = document.documentElement;
+    if (!html) { return; }
+    if (config.putovanje === true) { html.setAttribute("data-putovanje", "1"); }
+    else { html.removeAttribute("data-putovanje"); }
   }
 
   /* Podrazumijevani config i njegovo čišćenje su u data.js, ne ovdje.
@@ -437,6 +501,11 @@
   /* Vraća true samo ako se stanje stvarno promijenilo — pozivalac po tome zna
      treba li iscrtavati i slati. */
   function postaviPrikaz(id, prikazi) {
+    /* Na putu je spisak fiksan. Kvačice su ugašene, pa se ovdje u praksi ne
+       dolazi — ali zapis se ne dira ni preko tastature ni iz koda, jer bi se
+       inače `skriveno` tiho mijenjalo pod zaključanim spiskom. */
+    if (zakljucano()) { return false; }
+
     var i = config.skriveno.indexOf(id);
     if (prikazi && i !== -1) { config.skriveno.splice(i, 1); return true; }
     if (!prikazi && i === -1) { config.skriveno.push(id); config.skriveno.sort(); return true; }
@@ -569,6 +638,9 @@
       e.stopPropagation();
       otvoriFormu(section, item.id);
     });
+    /* Na putu se stavka ne mijenja — dugme ostaje na svom mjestu, ugašeno, da
+       se red ne prekraja svaki put kad se prekidač upali. */
+    btn.disabled = zakljucano();
     return btn;
   }
 
@@ -674,6 +746,7 @@
        spisku, pa bi novi poredak ispao bez njega. Isto pravilo kao u
        `dodirRed()`. */
     if (forma) { return; }
+    if (zakljucano()) { return; }
 
     var red = btn.closest(".set-pick");
     var body = red && red.parentNode;
@@ -697,6 +770,8 @@
      dova), javi ekranu i pošalji odmah — kao i svaka druga izmjena stavke. */
   function primiRedoslijed(sekcija, ids, fokus) {
     if (!sekcija) { return; }
+    /* Zaključan spisak se ne preraspoređuje — vidi `zakljucano()`. */
+    if (zakljucano()) { return; }
     if (!config.redoslijed) { config.redoslijed = {}; }
     config.redoslijed[sekcija] = ids;
     spremiPromjenu(fokus);
@@ -710,6 +785,9 @@
     /* Samo lijevi taster / prvi prst. */
     if (e.button !== undefined && e.button > 0) { return; }
     if (vuca || priprema) { return; }
+    /* Zaključan spisak: hvatišta u redovima ionako nema, ali povlačenje kreće
+       i sa bilo kojeg drugog mjesta u redu, pa se zaustavlja ovdje. */
+    if (zakljucano()) { return; }
 
     /* Olovka je radnja za sebe: povlačenje sa nje bi značilo da se forma
        otvori na kraju svakog promašenog prevlaka. */
@@ -989,7 +1067,10 @@
     var input = document.createElement("input");
     input.type = "checkbox";
     input.className = "check";
-    input.checked = !jeSkriveno(item.id);
+    /* Ne `!jeSkriveno()` nego `ukljucena()`: na putu spisak nije korisnikov
+       nego fiksan, pa kvačica mora pokazati ono što se stvarno prikazuje. */
+    input.checked = ukljucena(section.id, item.id);
+    input.disabled = zakljucano();
 
     var text = document.createElement("span");
     text.className = "set-pick-text";
@@ -1051,8 +1132,10 @@
       ? itemTitles(section.id, config) : {};
     var items = stavke(section);
 
+    var lock = zakljucano();
+
     var box = document.createElement("div");
-    box.className = "set-acc";
+    box.className = "set-acc" + (lock ? " is-locked" : "");
 
     var head = document.createElement("div");
     head.className = "set-acc-head";
@@ -1120,7 +1203,10 @@
 
     var inputs = {};
 
-    var redanje = items.length > 1;
+    /* Zaključan spisak se ne povlači, pa ni tačke lijevo ne stoje: znak koji
+       ništa ne obećava je gori od njegovog nedostatka (isto pravilo kao za
+       sekciju sa jednom stavkom). */
+    var redanje = items.length > 1 && !lock;
 
     items.forEach(function (item) {
       var red = redStavke(section, item, titles[item.id] || item.title, redanje);
@@ -1133,9 +1219,13 @@
 
        Kur'anska sekcija ga nema: ona nije lista nego jedna stavka (nema
        `items`, vidi `sectionItems()` u data.js), pa se u nju nema gdje
-       dopisati. Sve ostalo na njoj je isto — akordeon, red, olovka. */
+       dopisati. Sve ostalo na njoj je isto — akordeon, red, olovka.
+
+       Nema ga ni zaključan spisak: na putu ni „Dodaj svoju stavku“ ni „Vrati
+       zadani redoslijed“ nemaju šta raditi, pa se ne prazni red za dugme koje
+       se ne može pritisnuti. */
     var foot = null;
-    if (section.kind !== "quran") {
+    if (section.kind !== "quran" && !lock) {
       foot = document.createElement("div");
       foot.className = "set-acc-foot";
       body.appendChild(foot);
@@ -1242,6 +1332,11 @@
   /* `id` null = nova stavka (forma ide u podnožje), inače izmjena postojeće
      (forma ide na mjesto tog reda, da se vidi šta se mijenja). */
   function otvoriFormu(section, id) {
+    /* Zaključan spisak: olovka i „Dodaj“ su ugašeni, pa se dovde ne dolazi
+       klikom — ali forma je jedini put do izmjene i brisanja, pa stoji i
+       zabrana. */
+    if (zakljucano()) { return; }
+
     zatvoriFormu();
 
     var acc = akordeonPoId(section.id);
@@ -1851,8 +1946,21 @@
   function strukturaSada() {
     return JSON.stringify([
       config.dodatno || [], config.izmjene || {}, config.stranice || 1,
-      config.redoslijed || {}
+      config.redoslijed || {},
+      /* Putovanje mijenja i šta u redovima PIŠE (kvačice idu po putnom
+         spisku) i šta se u njima može dirati, pa prekidač upaljen na drugom
+         uređaju mora prekrojiti spisak, ne samo osvježiti kvačice. */
+      config.putovanje === true
     ]);
+  }
+
+  /* Napomena pod zaglavljem „Dnevni spisak“. Na putu kaže zašto se ne dira:
+     red ugašenih kvačica bez ijedne rečenice izgleda kao greška. */
+  function notaDnevnog() {
+    return zakljucano()
+      ? "Putovanje je uključeno, pa je spisak fiksan — ovdje se samo čita. " +
+        "Isključi „Putovanje“ da bi ga mijenjao."
+      : "Odaberi šta se prikazuje, promijeni broj ponavljanja ili dodaj svoje.";
   }
 
   /* Zaglavlje nad skupinama dova za stanja. Nastaje ovdje a ne u `build()`
@@ -1861,9 +1969,13 @@
     var box = document.createElement("div");
     box.className = "set-group-head";
     box.appendChild(p("set-label", "Dove za stanja"));
+
+    /* Putovanje ne mijenja SADRŽAJ ovih skupina — strana sa dovama radi kao i
+       svaki drugi dan — ali dok je scope fiksan, ništa se ne prekraja. */
     box.appendChild(p("set-note",
       "Skupine sa strane koju otvara ikonica sa rukama u zaglavlju. " +
-      "Ništa se ne čekira — samo se prouči."));
+      "Ništa se ne čekira — samo se prouči." +
+      (zakljucano() ? " Zaključano dok je putovanje uključeno." : "")));
     return box;
   }
 
@@ -1878,6 +1990,11 @@
 
     strukturaPotpis = strukturaSada();
     el.picks.textContent = "";
+
+    /* Zaglavlje „Dnevni spisak“ nastaje u `build()` i ne crta se iznova, pa
+       mu se napomena mijenja odavde — inače bi na putu pisalo „dodaj svoje“
+       nad spiskom u kojem se ništa ne dodaje. */
+    if (el.pickNote) { el.pickNote.textContent = notaDnevnog(); }
 
     /* Dva spiska, jedan ispod drugog: dnevne sekcije pa skupine dova za
        stanja. Razdvojene su zato što se različito i koriste — dnevne se
@@ -1938,11 +2055,13 @@
   /* Ovdje je jedino mjesto gdje se piše stanje prekidača sekcije — on ga ne
      pamti nego ga uvijek dobije iz kvačica. */
   function primijeniStanje() {
+    var lock = zakljucano();
+
     akordeoni.forEach(function (acc) {
       var gore = 0;
 
       acc.items.forEach(function (item) {
-        var on = !jeSkriveno(item.id);
+        var on = ukljucena(acc.id, item.id);
         if (on) { gore += 1; }
         /* Red kojeg je zamijenila otvorena forma nema svoju kvačicu. */
         var input = acc.inputs[item.id];
@@ -1956,7 +2075,7 @@
          djelimično, ostaje upaljen — da je nešto isključeno kaže brojka, a ne
          prekidač. Prazna sekcija (nema nijedne stavke) ga nema čime upaliti. */
       acc.sw.checked = gore > 0;
-      acc.sw.disabled = sve === 0;
+      acc.sw.disabled = sve === 0 || lock;
 
       /* Stanja i za oko: puna sekcija je obična, djelimična nosi zlatnu
          brojku, a prazna je cijela prigušena — ta se uopšte ne pojavljuje na
@@ -2205,6 +2324,37 @@
     el.switches.transkript = t.input;
     body.appendChild(t.row);
 
+    /* Putovanje — jedini prekidač koji mijenja SPISAK, a ne prikaz. Zato je
+       ovdje, uz transkripciju (oba su polja configa i oba idu na server), a ne
+       u spisku ispod: spisak je ono na što djeluje, pa ne može sadržavati
+       svoju vlastitu sklopku.
+
+       Šta se sve mijenja kad se upali:
+         data.js        dnevni spisak se svede na `PUTNI_SCOPE` — i na ekranu,
+                        i u trakama napretka, i u broju na ikonici, i u računu
+                        podsjetnika na serveru (sve to ide kroz
+                        `sectionsForDate()`)
+         ovaj drawer    spisak ispod se zaključa i kvačice pređu na putni
+                        spisak (`nacrtajAkordeone()`)
+         style.css      traka sa selamom se oboji i pored teme stane avion
+                        (`primijeniPut()` piše `data-putovanje` na <html>) */
+    var pt = redPrekidac("putovanje", "Putovanje",
+      "Kraći dnevni spisak za put: stranica, tri zikra, devet dova i " +
+      "večernji. Dok je uključeno, spisak se ne mijenja.",
+      config.putovanje === true,
+      function (on) {
+        config.putovanje = on;
+        zapamtiConfig();
+        primijeniPut();
+        /* Ne `osvjeziStavke()`: mijenja se i sastav redova i to šta se u njima
+           smije dirati, pa se spisak crta iznova. */
+        nacrtajAkordeone();
+        javi();
+        posalji();
+      });
+    el.switches.putovanje = pt.input;
+    body.appendChild(pt.row);
+
     /* Podsjetnici — red pravi ovaj fajl, dugme u njega stavlja
        notifications.js (traži ga po id-u `notifyBtn`). */
     var notifyRow = document.createElement("div");
@@ -2238,8 +2388,8 @@
     var pickHead = document.createElement("div");
     pickHead.className = "set-group-head";
     pickHead.appendChild(p("set-label", "Dnevni spisak"));
-    pickHead.appendChild(p("set-note",
-      "Odaberi šta se prikazuje, promijeni broj ponavljanja ili dodaj svoje."));
+    el.pickNote = p("set-note", notaDnevnog());
+    pickHead.appendChild(el.pickNote);
     body.appendChild(pickHead);
 
     el.picks = document.createElement("div");
@@ -2425,6 +2575,9 @@
     Object.keys(el.switches || {}).forEach(function (id) {
       el.switches[id].checked = config[id] === true;
     });
+    /* Putovanje uključeno na drugom uređaju mora obojiti i ovaj ekran, ne samo
+       prebaciti prekidač. */
+    primijeniPut();
     osvjeziStavke();
   }
 
@@ -2462,6 +2615,11 @@
   /* ------------------------------------------------------------------------
      Start
      ------------------------------------------------------------------------ */
+
+  /* Znak putovanja ide na <html> prije prvog crtanja spiska, iz configa koji
+     je već pročitan iz localStorage-a: kad bi se čekao odgovor sa servera,
+     traka sa selamom bi na putu prvo bljesnula u svojoj boji. */
+  primijeniPut();
 
   build();
 
