@@ -61,20 +61,25 @@ const OTVORI = "shortcuts://run-shortcut?name=Zikr";
 
 /* ------------------------------------------------------------------------ */
 
-/* Boje su iste one iz style.css. Prepisane su jer widget ne može čitati CSS
-   aplikacije; kad se paleta tamo promijeni, ovdje se prepiše. */
+/* Boje su iste one iz style.css, i u istim ulogama: podloga je boja strane,
+   naslov je --primary, odbrojavanje --accent, traka zikra ista kao trake
+   napretka u zaglavlju aplikacije (--primary dok traje, --done kad je
+   gotovo). Prepisane su jer widget ne može čitati CSS aplikacije; kad se
+   paleta tamo promijeni, ovdje se prepiše. */
 const PALETA = {
   dan: {
-    pozadina: "#faf7f0",
-    tekst: "#1c1c19",
-    glavna: "#1e4438",
-    zlatna: "#b8925a",
-    tiha: "#7a746a",
-    gotovo: "#2f7a55",
-    linija: "#e7e0d2"
+    pozadina: "#faf7f0",     /* --background */
+    podloga: "#f3efe4",      /* --background-alt: prazan dio trake */
+    tekst: "#1c1c19",        /* --text */
+    glavna: "#1e4438",       /* --primary: naslovi i popunjena traka */
+    zlatna: "#b8925a",       /* --accent: odbrojavanje, naredni vakat */
+    tiha: "#7a746a",         /* --muted */
+    gotovo: "#2f7a55",       /* --done: završeno */
+    linija: "#e7e0d2"        /* --line */
   },
   noc: {
     pozadina: "#0f1512",
+    podloga: "#182220",
     tekst: "#e9e5db",
     glavna: "#cfe3d6",
     zlatna: "#d8b27c",
@@ -115,7 +120,7 @@ function paleta(data) {
 /* Jedina mjera koja se pogađa: koliko je widget širok iznutra. Treba samo
    popunjenom dijelu trake — njeni rubovi su rubovi widgeta, pa se greška ne
    vidi kao neporavnatost. */
-const RUB = 14;
+const RUB = 18;
 
 function unutrasnjaSirina(mali) {
   const tabela = {
@@ -319,19 +324,28 @@ function blokDan(w, data, boje, sirina) {
   });
 }
 
-/* 3. Postotak zikra. */
+/* 3. Postotak zikra.
+
+   Boje su iste kao na trakama napretka u aplikaciji (`.pgroup` u style.css),
+   da widget i zaglavlje ne govore u dvije boje o istoj stvari:
+
+     prazan dio    --background-alt
+     popunjen dio  --primary dok traje, --done kad je gotovo
+     natpis        --muted dok traje, --done kad je gotovo
+*/
 function blokZikr(w, data, boje, sirina) {
   const dio = postotak(data.zikr);
+  const zavrseno = dio >= 100;
 
   const red = w.addStack();
   red.layoutHorizontally();
-  tekst(red, imeZikra(data.zikr), boje.tiha, 10, true);
+  tekst(red, imeZikra(data.zikr), zavrseno ? boje.gotovo : boje.tiha, 10, true);
   red.addSpacer();
-  tekst(red, dio + " %", dio >= 100 ? boje.gotovo : boje.tekst, 13, true);
+  tekst(red, dio + " %", zavrseno ? boje.gotovo : boje.tekst, 13, true);
 
   w.addSpacer(4);
   traka(w, dio / 100, sirina, 5,
-    dio >= 100 ? boje.gotovo : boje.zlatna, boje.linija);
+    zavrseno ? boje.gotovo : boje.glavna, boje.podloga);
 }
 
 /* ----------------------------- raspored --------------------------------- */
@@ -343,7 +357,7 @@ function nacrtaj(data) {
 
   const w = new ListWidget();
   w.backgroundColor = boja(boje.pozadina);
-  w.setPadding(12, RUB, 12, RUB);
+  w.setPadding(15, RUB, 15, RUB);
   w.url = OTVORI || APP;
 
   if (!data) {

@@ -871,7 +871,11 @@ Odabran je Scriptable: `widget/vaktija-widget.js`.
 | 2. dan | sva vremena, svako sa svojom ikonicom (SF Symbols: mlađak, izlazak, puno sunce, sunce na zalasku, zalazak, mlađak) |
 | 3. zikr | postotak urađenog, sa trakom — i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
 
-Boje su iz palete aplikacije, a **temu bira sama aplikacija**: režim iz
+Boje su iz palete aplikacije i u **istim ulogama** kao tamo: podloga je boja
+strane (`--background`), ime vakta `--primary`, odbrojavanje `--accent`, a
+traka zikra je ista kao trake napretka u zaglavlju aplikacije — prazan dio
+`--background-alt`, popunjen `--primary` dok traje i `--done` kad je gotovo.
+Temu pri tome **bira sama aplikacija**: režim iz
 postavki (`auto` / `dan` / `noc`) putuje kroz config na server i stiže
 widgetu uz sve ostalo. Kad je `auto`, boju bira doba dana — isti sat po kojem
 se prelama i aplikacija. Tako widget i aplikacija nikad ne stoje u dvije
