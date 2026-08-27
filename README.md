@@ -862,35 +862,42 @@ JavaScript i smije crtati widget.
 
 Odabran je Scriptable: `widget/vaktija-widget.js`.
 
-**Šta pokazuje**
+**Šta pokazuje** — tri bloka, jedan ispod drugog, i ništa više:
 
 | | |
 |---|---|
-| naredni vakat | ime, vrijeme i koliko ga još ima |
-| linija dana | svih šest vremena na **pravim razmacima** — jutro gusto, popodne rijetko, kako dan i teče — sa oznakom dokle se stiglo |
-| prsten zikra | koliki je dio današnjeg zikra urađen, u postotku, i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
-| dan / noć | boje prate **režim telefona** (`Device.isUsingDarkAppearance()`) |
+| 1. vakat | koji namaz nastupa i za koliko |
+| 2. dan | sva vremena, svako sa svojom ikonicom (SF Symbols: mlađak, izlazak, puno sunce, sunce na zalasku, zalazak, mlađak) |
+| 3. zikr | postotak urađenog, sa trakom — i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
 
-**Srednji** widget nosi sve; na **mali** šest brojeva na 128 piksela se ne
-može pročitati, pa on nosi vakat, odbrojavanje i prsten.
+Boje su iz palete aplikacije, a dan/noć prati **režim telefona**
+(`Device.isUsingDarkAppearance()`). Na **mali** widget šest stubaca ne stane
+a da se pročita, pa on nosi vakat i zikr.
 
-### Zašto se linija dana i prsten crtaju kao slika
+### Zašto stupci nemaju imena vakata
 
-Scriptable slaže sadržaj u redove i stupce, a razmak između njih se **rasteže
-po ekranu**. Brojevi ispod tačaka bi se pri tome razišli sa tačkama, i to
-različito na svakom telefonu — što se i vidjelo. U slici (`DrawContext`) se
-koordinate računaju same, pa tačka i broj ispod nje stoje na istom pikselu
-svugdje.
+Prva verzija je uz vrijeme pisala i ime („Zora", „Izlazak sunca", „Ikindija").
+Imena su različite dužine, pa su razvlačila stupce i red je izgledao
+razbacano — a širina stupca se u Scriptable-u ne može zaključati.
 
-Prsten je iz istog razloga slika, a ne traka: traka bi u desnom stupcu bila
-uska i kratka, a krug nosi isti podatak i popuni prostor koji bi ostao
-prazan. Scriptable nema luk, pa se crta kao niz kratkih linija po kružnici —
-dovoljno gusto da se na šezdeset piksela ne vidi razlika.
+Sada je u stupcu samo **ikonica i vrijeme**: oboje je iste širine u svakom
+stupcu, pa se šest stubaca poravna samo od sebe, na svakom telefonu.
 
-Širina slike se računa iz širine ekrana (Appleove mjere widgeta po veličini
-ekrana): widget nema način da pita koliko ga ima, a slika mora dobiti tačnu
-širinu u pikselima. Nepoznat ekran dobija najuži raspored, koji stane
-svugdje.
+Bila je i međuverzija koja je cijeli dan crtala kao **sliku** (`DrawContext`),
+da bi brojevi sjeli tačno ispod tačaka. Radila je, ali je slika morala dobiti
+širinu u pikselima — a widget svoju širinu ne zna — pa je sve bilo poravnato
+prema pogođenoj mjeri, a ne prema samom widgetu. Slaganje redovima i
+stupcima se razvuče koliko widget stvarno ima.
+
+Jedina mjera koja se i dalje pogađa (iz `Device.screenSize()`) je dužina
+**popunjenog** dijela trake zikra; rubovi trake su rubovi widgeta, pa se
+greška ne vidi kao neporavnatost.
+
+### Osvježavanje
+
+`refreshAfterDate` se traži svake minute dok je do vakta manje od pola sata,
+inače svake tri. iOS to uzima kao molbu, ne kao naredbu — zato odbrojavanje
+ide u minutama, a ne u sekundama.
 
 ### Dodir otvara aplikaciju, ne Safari
 
@@ -1186,7 +1193,9 @@ Bez ispravnog secreta `/api/cron` vraća 401.
 >   ne cron: slot se šalje samo jednom, ma koliko puta cron kucnuo.
 >
 >   Zato: ako cron kuca svake minute a zikr stiže svake minute, varijabla je
->   ostala na `1` od testiranja — vrati je na `60`.
+>   ostala na `1` od testiranja. To se sada **ne može desiti u produkciji**:
+>   `intervalMinutes()` prihvata vrijednost ispod 60 samo uz
+>   `REMINDER_TIME_TRAVEL=1`, koji stoji isključivo u `.env.local`.
 
 ## 8. Kako generisati VAPID ključeve
 
@@ -1208,7 +1217,7 @@ podsjetnike.
 | `KV_REST_API_URL` | da | Upstash Redis REST URL |
 | `KV_REST_API_TOKEN` | da | Upstash Redis REST token |
 | `CRON_SECRET` | da | `openssl rand -hex 32`; bez njega cron vraća 401 |
-| `REMINDER_INTERVAL_MINUTES` | ne | **60** u produkciji, `1` za testiranje |
+| `REMINDER_INTERVAL_MINUTES` | ne | **60** u produkciji, `1` za testiranje. Vrijednost **ispod 60 vrijedi samo uz `REMINDER_TIME_TRAVEL=1`** — zaboravljena `1` na Vercelu bi inače slala podsjetnik svake minute (vidi 5) |
 | `REMINDER_START_TIME` | ne | samo za test: pomjera startTime svih zadataka |
 | `ZIKR_SPACE` | ne | ime zajedničkog prostora u bazi (default `zajedno`) |
 

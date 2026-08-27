@@ -490,7 +490,23 @@ async function removeSubscription(id) {
 function intervalMinutes() {
   const raw = parseInt(process.env.REMINDER_INTERVAL_MINUTES || "60", 10);
   if (!isFinite(raw) || raw < 1) { return 60; }
-  return Math.min(raw, 1440);
+  const trazeno = Math.min(raw, 1440);
+
+  /* Interval KRAĆI OD SATA je alat za testiranje i ne smije se zateći u
+     produkciji. Zna se desiti: `REMINDER_INTERVAL_MINUTES=1` ostane na
+     Vercelu poslije probe, cron kuca svake minute — i podsjetnik za zikr
+     stiže svake minute dok se dan ne završi.
+
+     Zato vrijedi samo tamo gdje vrijedi i putovanje kroz vrijeme
+     (REMINDER_TIME_TRAVEL=1, a to se stavlja isključivo u .env.local). U
+     produkciji ostaje satni ritam, ma šta u varijabli pisalo; koliko često
+     cron kuca na to ne utiče, jer se slot šalje samo jednom.
+
+     Izvještaj `/api/cron` nosi `interval`, pa se ovo vidi bez kopanja po
+     varijablama. */
+  if (trazeno < 60 && process.env.REMINDER_TIME_TRAVEL !== "1") { return 60; }
+
+  return trazeno;
 }
 
 /* Ako zadatak nema svoj endTime, poslije ovog vremena se šuti. */

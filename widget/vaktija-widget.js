@@ -1,25 +1,32 @@
 /* ==========================================================================
    widget/vaktija-widget.js — widget za iPhone (Scriptable)
 
-   Šta stoji na njemu:
+   Tri bloka, jedan ispod drugog, i ništa više:
 
-     naredni vakat   ime, vrijeme i koliko ga još ima
-     linija dana     svih šest vremena na PRAVIM razmacima — jutro je gusto,
-                     popodne rijetko, tačno kako dan i teče — sa oznakom
-                     dokle se stiglo
-     prsten zikra    koliki je dio današnjeg zikra urađen, u postotku
+     1. koji namaz nastupa i za koliko
+     2. sva vremena dana, svako sa svojom ikonicom
+     3. postotak zikra, sa trakom
+
+   MINIMALIZAM JE OVDJE PRAVILO, NE UKUS. Widget se gleda u prolazu, sekundu
+   ili dvije: sve što nije jedno od to troje samo oduzima mjesto onome što
+   jeste.
+
+   ZAŠTO NEMA CRTANJA U SLIKU. Prethodna verzija je dan crtala kao sliku, da
+   bi brojevi sjeli tačno ispod tačaka. Cijena je bila to što slika mora
+   dobiti širinu u pikselima, a widget svoju širinu ne zna — pa je sve
+   ostalo poravnato prema pogođenoj mjeri, a ne prema samom widgetu.
+
+   Sada se sve slaže Scriptable-ovim redovima i stupcima, koji se sami
+   razvuku koliko widget ima. Stupci su jednaki jer im je sadržaj jednak:
+   ikonica i vrijeme, bez imena — imena su različite dužine, pa su upravo ona
+   razvlačila stupce i činila da red izgleda razbacano.
+
+   Jedina mjera koja se i dalje pogađa je dužina POPUNJENOG dijela trake;
+   njeni rubovi su rubovi widgeta, pa se greška ne vidi kao neporavnatost.
 
    NIJEDNO PRAVILO NIJE OVDJE. Koji je vakat na redu, koji se zikr trenutno
-   uči (dnevni danju, večernji uveče, petkom prijepodne petački), koliko ga je
-   urađeno i koliki je dio tekućeg vakta istekao — sve dolazi gotovo sa
-   `/api/widget`, iz istog `data.js` i `notification-tasks.js` po kojima radi
-   i aplikacija. Widget samo crta.
-
-   ZAŠTO SE LINIJA DANA I PRSTEN CRTAJU KAO SLIKA. Scriptable slaže sadržaj u
-   redove i stupce, a razmak između njih se rasteže — brojevi ispod tačaka bi
-   se pri tome razišli sa tačkama, i to različito na svakom telefonu. U slici
-   se koordinate računaju same, pa tačka i broj ispod nje stoje na istom
-   pikselu na svakom ekranu.
+   uči i koliko ga je urađeno — sve dolazi gotovo sa `/api/widget`, iz istog
+   `data.js` i `notification-tasks.js` po kojima radi i aplikacija.
 
    POSTAVLJANJE
 
@@ -31,8 +38,6 @@
         -> Scriptable -> izaberi SREDNJI widget -> Add Widget
      5. Drži prst na novom widgetu -> Edit Widget -> Script: Vaktija,
         When Interacting: Run Script
-
-   DODIR OTVARA APLIKACIJU, NE SAFARI. Vidi `OTVORI` ispod.
    ========================================================================== */
 
 /* ---------------------------- POSTAVKE ---------------------------------- */
@@ -42,29 +47,25 @@ const IME = "Haris";
 
 /* Šta se otvara na dodir.
 
-   Obična https adresa bi otvorila Safari, a ne aplikaciju sa početnog
-   ekrana: iOS nema način da se web aplikacija pozove adresom. Zaobilazi se
-   prečicom — Shortcuts ume otvoriti instaliranu PWA kao svaku drugu
+   Obična https adresa otvara Safari, a ne aplikaciju sa početnog ekrana:
+   iOS nema način da se web aplikacija pozove adresom. Zaobilazi se
+   prečicom — Shortcuts umije otvoriti instaliranu PWA kao svaku drugu
    aplikaciju:
 
      Shortcuts -> "+" -> Add Action -> "Open App" -> izaberi "Zikr"
      (aplikacija sa početnog ekrana) -> nazovi prečicu "Zikr" -> Done
 
-   Ime prečice mora biti isto kao ovdje. Na dodir kratko bljesne Shortcuts pa
-   se otvori aplikacija.
-
-   Ostavi li se prazno (""), dodir otvara APP u Safariju. */
+   Ime prečice mora biti isto kao ovdje. Prazno ("") vraća otvaranje u
+   Safariju. */
 const OTVORI = "shortcuts://run-shortcut?name=Zikr";
 
 /* ------------------------------------------------------------------------ */
 
-/* Boje su iste one iz style.css — dvije palete, jedna za dan, jedna za noć.
-   Prepisane su jer widget ne može čitati CSS aplikacije; kad se paleta tamo
-   promijeni, ovdje se prepiše. */
+/* Boje su iste one iz style.css. Prepisane su jer widget ne može čitati CSS
+   aplikacije; kad se paleta tamo promijeni, ovdje se prepiše. */
 const PALETA = {
   dan: {
     pozadina: "#faf7f0",
-    ploca: "#fffdf8",
     tekst: "#1c1c19",
     glavna: "#1e4438",
     zlatna: "#b8925a",
@@ -74,7 +75,6 @@ const PALETA = {
   },
   noc: {
     pozadina: "#0f1512",
-    ploca: "#16201c",
     tekst: "#e9e5db",
     glavna: "#cfe3d6",
     zlatna: "#d8b27c",
@@ -84,16 +84,21 @@ const PALETA = {
   }
 };
 
-/* Tema prati POSTAVKU TELEFONA, ne sat.
+/* Ikonice vakata — SF Symbols, isti skup koji koristi i sam iOS, pa izgledaju
+   kao da su odavde. Put dana u šest znakova: noć, izlazak, puno sunce, sunce
+   na zalasku, zalazak, noć. */
+const ZNAKOVI = {
+  zora: "moon.stars.fill",
+  izlazak: "sunrise.fill",
+  podne: "sun.max.fill",
+  ikindija: "sun.min.fill",
+  aksam: "sunset.fill",
+  jacija: "moon.fill"
+};
 
-   Prije je boju birao server, po dobu dana (07:00–19:00). To znači da je
-   widget ostajao svijetao i kad je cijeli telefon prešao u tamni režim, i
-   obrnuto — a upravo se to mijenja rukom i očekuje da se odmah vidi. iOS
-   widget ponovo iscrta čim se režim promijeni, pa je ovo i jedino što se
-   primijeni odmah.
-
-   `doba` sa servera ostaje kao rezerva za okruženje koje ne zna reći koji je
-   režim. */
+/* Tema prati REŽIM TELEFONA, ne sat: to se mijenja rukom i očekuje da se
+   vidi odmah, a iOS widget ponovo iscrta čim se režim promijeni. `doba` sa
+   servera ostaje kao rezerva. */
 function paleta(data) {
   try {
     return Device.isUsingDarkAppearance() ? PALETA.noc : PALETA.dan;
@@ -102,13 +107,12 @@ function paleta(data) {
   }
 }
 
-/* Koliko je widget širok. Scriptable to ne može pitati, a slike moraju dobiti
-   tačnu širinu u pikselima — pa se čita iz širine ekrana. Brojevi su
-   Appleove mjere widgeta po veličini ekrana; nepoznat ekran dobija najuži
-   raspored, koji stane svugdje. */
+/* Jedina mjera koja se pogađa: koliko je widget širok iznutra. Treba samo
+   popunjenom dijelu trake — njeni rubovi su rubovi widgeta, pa se greška ne
+   vidi kao neporavnatost. */
 const RUB = 14;
 
-function sirinaWidgeta(mali) {
+function unutrasnjaSirina(mali) {
   const tabela = {
     440: { mali: 170, srednji: 364 },
     430: { mali: 170, srednji: 364 },
@@ -144,20 +148,14 @@ async function ucitaj() {
   }
 }
 
-/* "2 h 13 min" daleko, "12 min" blizu — isto pravilo kao u aplikaciji, samo
-   bez sekundi: widget se ne osvježava svake sekunde, pa bi broj koji stoji
-   lagao. */
+/* "2 h 13 min" daleko, "12 min" blizu. Bez sekundi: widget se ne osvježava
+   svake sekunde, pa bi broj koji stoji lagao. */
 function preostalo(sekundi) {
   const ukupno = Math.max(0, sekundi || 0);
   const h = Math.floor(ukupno / 3600);
   const m = Math.round((ukupno % 3600) / 60);
   if (h > 0) { return h + " h " + m + " min"; }
   return Math.max(1, m) + " min";
-}
-
-function uMinute(hhmm) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
-  return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
 }
 
 function postotak(zikr) {
@@ -175,288 +173,174 @@ function imeZikra(zikr) {
     .toUpperCase();
 }
 
-/* ---------------------------- crtanje ----------------------------------- */
+/* ---------------------------- graditelji -------------------------------- */
 
 function boja(hex) { return new Color(hex); }
 
-function red(stack, tekst, hex, velicina, tezina) {
-  const t = stack.addText(tekst);
+function tekst(stack, sadrzaj, hex, velicina, masno) {
+  const t = stack.addText(sadrzaj);
   t.textColor = boja(hex);
-  t.font = tezina === "bold"
+  t.font = masno
     ? Font.semiboldSystemFont(velicina)
     : Font.systemFont(velicina);
   t.lineLimit = 1;
   return t;
 }
 
-/* --- linija dana ---------------------------------------------------------
-   Šest tačaka na PRAVIM razmacima između zore i jacije: jutro je gusto,
-   popodne rijetko, i dan se vidi onakav kakav jeste. Ispod svake tačke stoji
-   njeno vrijeme, u istoj slici — pa se broj i tačka ne mogu razići.
-
-   Prošli dio linije je pun, ostatak prazan, a na mjestu "sada" stoji prsten:
-   to je isti podatak koji na kartici u aplikaciji nosi traka isteka, samo
-   ovdje razvučen preko cijelog dana.
-   ------------------------------------------------------------------------- */
-
-function nacrtajDan(sirina, data, boje) {
-  const VISINA = 34;
-  const LINIJA_Y = 8;
-  /* Krajnje oznake ("4:19", "21:04") moraju stati cijele, pa linija ne ide
-     do samog ruba slike. Razmak prati veličinu slova ispod tačaka. */
-  const RUB_X = 19;
-
-  const ctx = new DrawContext();
-  ctx.size = new Size(sirina, VISINA);
-  ctx.opaque = false;
-  ctx.respectScreenScale = true;
-
-  const tacke = (data.vakti || []).map(function (v) {
-    return { v: v, m: uMinute(v.vrijeme) };
-  }).filter(function (t) { return t.m !== null; });
-
-  if (tacke.length < 2) { return ctx.getImage(); }
-
-  const prvi = tacke[0].m;
-  const zadnji = tacke[tacke.length - 1].m;
-  const raspon = Math.max(1, zadnji - prvi);
-  const sirinaLinije = sirina - 2 * RUB_X;
-
-  function x(minuta) {
-    const k = Math.max(0, Math.min(1, (minuta - prvi) / raspon));
-    return RUB_X + k * sirinaLinije;
-  }
-
-  /* Gdje je "sada": iz narednog vakta i koliko ga je ostalo. Poslije jacije
-     je naredni sutrašnja zora, pa se marker drži na kraju linije. */
-  let sada = null;
-  if (data.vakat) {
-    const cilj = uMinute(data.vakat.vrijeme);
-    if (cilj !== null) {
-      sada = data.vakat.sutra
-        ? zadnji
-        : cilj - Math.round(data.vakat.preostalo / 60);
-    }
-  }
-
-  /* prazna linija */
-  ctx.setFillColor(boja(boje.linija));
-  ctx.fillRect(new Rect(RUB_X, LINIJA_Y - 1, sirinaLinije, 2));
-
-  /* prošli dio */
-  if (sada !== null) {
-    const do_ = x(sada);
-    ctx.setFillColor(boja(boje.zlatna));
-    ctx.fillRect(new Rect(RUB_X, LINIJA_Y - 1, Math.max(0, do_ - RUB_X), 2));
-  }
-
-  tacke.forEach(function (t) {
-    const tx = x(t.m);
-    const naredni = data.vakat && !data.vakat.sutra && t.v.id === data.vakat.id;
-    const r = naredni ? 4.5 : 3;
-
-    /* Naredni vakat je pun zlatni krug sa svijetlim okvirom, prošlo je
-       prigušeno, a ono što tek dolazi je obična tačka. */
-    ctx.setFillColor(boja(naredni ? boje.zlatna : (t.v.proslo ? boje.tiha : boje.linija)));
-    ctx.fillEllipse(new Rect(tx - r, LINIJA_Y - r, 2 * r, 2 * r));
-
-    if (naredni) {
-      ctx.setStrokeColor(boja(boje.pozadina));
-      ctx.setLineWidth(1.5);
-      ctx.strokeEllipse(new Rect(tx - r - 1, LINIJA_Y - r - 1, 2 * r + 2, 2 * r + 2));
-    }
-
-    /* Vrijeme ispod tačke: dovoljno krupno da se pročita u prolazu, i
-       polumasno — na tankom pismu se sitne cifre stapaju sa podlogom. */
-    ctx.setFont(naredni ? Font.boldSystemFont(11) : Font.mediumSystemFont(11));
-    ctx.setTextColor(boja(naredni ? boje.zlatna : (t.v.proslo ? boje.tiha : boje.tekst)));
-    ctx.setTextAlignedCenter();
-    ctx.drawTextInRect(t.v.vrijeme, new Rect(tx - 21, LINIJA_Y + 8, 42, 15));
-  });
-
-  return ctx.getImage();
-}
-
-/* --- prsten zikra --------------------------------------------------------
-   Krug umjesto trake: traka bi u desnom stupcu bila uska i kratka, a krug
-   nosi isti podatak i popuni prostor koji bi inače ostao prazan. Postotak
-   stoji u sredini, pa se čita bez traženja.
-
-   Scriptable nema luk, pa se crta kao niz kratkih linija po kružnici —
-   dovoljno gusto da se na 54 piksela ne vidi da nije luk.
-   ------------------------------------------------------------------------- */
-
-function nacrtajPrsten(velicina, dio, boje) {
-  const DEBLJINA = 5;
-
-  const ctx = new DrawContext();
-  ctx.size = new Size(velicina, velicina);
-  ctx.opaque = false;
-  ctx.respectScreenScale = true;
-
-  const sredina = velicina / 2;
-  const r = sredina - DEBLJINA / 2 - 1;
-
-  ctx.setLineWidth(DEBLJINA);
-  ctx.setStrokeColor(boja(boje.linija));
-  ctx.strokeEllipse(new Rect(sredina - r, sredina - r, 2 * r, 2 * r));
+/* Traka: okvir se rasteže koliko widget ima (`Size(0, h)` znači "uzmi svu
+   širinu"), a unutra stoji popunjeni dio. Zato su joj rubovi uvijek tačno
+   rubovi widgeta, ma koliko telefon bio širok. */
+function traka(w, dio, sirina, visina, punaBoja, praznaBoja) {
+  const okvir = w.addStack();
+  okvir.size = new Size(0, visina);
+  okvir.backgroundColor = boja(praznaBoja);
+  okvir.cornerRadius = visina / 2;
+  okvir.setPadding(0, 0, 0, 0);
 
   const koliko = Math.max(0, Math.min(1, dio));
   if (koliko > 0) {
-    const put = new Path();
-    const koraka = Math.max(2, Math.round(koliko * 60));
-
-    for (let i = 0; i <= koraka; i += 1) {
-      /* Kreće od vrha (-90°) i ide u smjeru kazaljke. */
-      const ugao = -Math.PI / 2 + (i / koraka) * koliko * 2 * Math.PI;
-      const tacka = new Point(sredina + r * Math.cos(ugao), sredina + r * Math.sin(ugao));
-      if (i === 0) { put.move(tacka); } else { put.addLine(tacka); }
-    }
-
-    ctx.setStrokeColor(boja(koliko >= 1 ? boje.gotovo : boje.zlatna));
-    ctx.addPath(put);
-    ctx.strokePath();
+    const puna = okvir.addStack();
+    puna.size = new Size(Math.max(visina, Math.round(koliko * sirina)), visina);
+    puna.backgroundColor = boja(punaBoja);
+    puna.cornerRadius = visina / 2;
   }
 
-  ctx.setFont(Font.boldSystemFont(velicina > 50 ? 17 : 15));
-  ctx.setTextColor(boja(koliko >= 1 ? boje.gotovo : boje.tekst));
-  ctx.setTextAlignedCenter();
-  ctx.drawTextInRect(Math.round(koliko * 100) + "%",
-    new Rect(0, sredina - 11, velicina, 22));
-
-  return ctx.getImage();
+  okvir.addSpacer();
+  return okvir;
 }
 
-function dodajSliku(stack, slika, sirina, visina) {
-  const img = stack.addImage(slika);
-  img.imageSize = new Size(sirina, visina);
-  return img;
+/* Jedan stubac dana: ikonica pa vrijeme. Bez imena vakta — imena su različite
+   dužine i upravo su ona razvlačila stupce, pa je red izgledao razbacano.
+   Ikonica kaže isto, a svaka je iste širine. */
+function stubac(red, v, naredni, boje) {
+  const kol = red.addStack();
+  kol.layoutVertically();
+  kol.centerAlignContent();
+
+  const bojaZnaka = naredni
+    ? boje.zlatna
+    : (v.proslo ? boje.tiha : boje.glavna);
+
+  try {
+    const znak = SFSymbol.named(ZNAKOVI[v.id] || "circle.fill");
+    znak.applyFont(Font.systemFont(13));
+    const img = kol.addImage(znak.image);
+    img.imageSize = new Size(14, 14);
+    img.tintColor = boja(bojaZnaka);
+    img.resizable = true;
+  } catch (e) {
+    /* Starije okruženje bez tog znaka — stubac ostaje bez ikonice, vrijeme
+       je i dalje tu. */
+  }
+
+  kol.addSpacer(3);
+
+  const t = tekst(kol, v.vrijeme,
+    naredni ? boje.zlatna : (v.proslo ? boje.tiha : boje.tekst),
+    11, true);
+  t.centerAlignText();
+
+  if (v.proslo && !naredni) { t.textOpacity = 0.6; }
+  return kol;
 }
 
-/* --- rasporedi ----------------------------------------------------------- */
+/* ----------------------------- blokovi ---------------------------------- */
 
-function nacrtajSiri(w, data, boje) {
-  const SIRINA = sirinaWidgeta(false);
-  const PRSTEN = 62;
-
-  const gore = w.addStack();
-  gore.layoutHorizontally();
-  gore.centerAlignContent();
-
-  /* lijevo: vakat */
-  const lijevo = gore.addStack();
-  lijevo.layoutVertically();
-
-  red(lijevo, data.putovanje ? "NA PUTU" : "NAREDNI VAKAT", boje.tiha, 10, "bold");
-  lijevo.addSpacer(4);
-
+/* 1. Koji namaz nastupa i za koliko. */
+function blokVakat(w, data, boje, veliko) {
   if (data.putovanje) {
-    red(lijevo, "Vaktija isključena", boje.tekst, 17, "bold");
-  } else if (data.vakat) {
-    const ime = lijevo.addStack();
-    ime.layoutHorizontally();
-    ime.bottomAlignContent();
-    red(ime, data.vakat.naziv, boje.glavna, 20, "bold");
-    ime.addSpacer(8);
-    red(ime, data.vakat.vrijeme, boje.tekst, 22, "bold");
-
-    lijevo.addSpacer(2);
-    red(lijevo, "za " + preostalo(data.vakat.preostalo), boje.zlatna, 12, "bold");
-  } else {
-    red(lijevo, "Vaktija nije preuzeta", boje.tiha, 14);
+    tekst(w, "NA PUTU", boje.tiha, 10, true);
+    w.addSpacer(3);
+    tekst(w, "Vaktija isključena", boje.tekst, veliko ? 17 : 15, true);
+    return;
   }
 
-  gore.addSpacer();
-
-  /* desno: prsten zikra */
-  if (data.zikr) {
-    const desno = gore.addStack();
-    desno.layoutVertically();
-    desno.centerAlignContent();
-
-    dodajSliku(desno, nacrtajPrsten(PRSTEN, postotak(data.zikr) / 100, boje),
-      PRSTEN, PRSTEN);
-    desno.addSpacer(3);
-
-    const ispod = desno.addStack();
-    ispod.layoutHorizontally();
-    ispod.addSpacer();
-    red(ispod, imeZikra(data.zikr), boje.tiha, 9, "bold");
-    ispod.addSpacer();
+  if (!data.vakat) {
+    tekst(w, "VAKTIJA", boje.tiha, 10, true);
+    w.addSpacer(3);
+    tekst(w, "nije preuzeta", boje.tiha, veliko ? 15 : 13, true);
+    return;
   }
 
-  if (!data.putovanje && (data.vakti || []).length) {
-    w.addSpacer();
-    dodajSliku(w, nacrtajDan(SIRINA, data, boje), SIRINA, 34);
-  } else {
-    w.addSpacer();
-  }
+  const red = w.addStack();
+  red.layoutHorizontally();
+  red.bottomAlignContent();
+
+  tekst(red, data.vakat.naziv, boje.glavna, veliko ? 20 : 17, true);
+  red.addSpacer();
+  tekst(red, data.vakat.vrijeme, boje.tekst, veliko ? 20 : 17, true);
+
+  w.addSpacer(2);
+  tekst(w, "za " + preostalo(data.vakat.preostalo), boje.zlatna, veliko ? 12 : 11, true);
 }
 
-/* Mali widget: linija dana sa šest brojeva na 128 piksela se ne može
-   pročitati, pa nosi vakat, odbrojavanje i prsten — ono što se i traži
-   pogledom u prolazu. */
-function nacrtajMali(w, data, boje) {
-  const PRSTEN = 50;
+/* 2. Sva vremena dana, svako sa svojom ikonicom. */
+function blokDan(w, data, boje) {
+  const red = w.addStack();
+  red.layoutHorizontally();
 
-  red(w, data.putovanje ? "NA PUTU" : "NAREDNI VAKAT", boje.tiha, 10, "bold");
+  (data.vakti || []).forEach(function (v, i) {
+    if (i) { red.addSpacer(); }
+    const naredni = data.vakat && !data.vakat.sutra && v.id === data.vakat.id;
+    stubac(red, v, naredni, boje);
+  });
+}
+
+/* 3. Postotak zikra. */
+function blokZikr(w, data, boje, sirina) {
+  const dio = postotak(data.zikr);
+
+  const red = w.addStack();
+  red.layoutHorizontally();
+  tekst(red, imeZikra(data.zikr), boje.tiha, 9, true);
+  red.addSpacer();
+  tekst(red, dio + " %", dio >= 100 ? boje.gotovo : boje.tekst, 11, true);
+
   w.addSpacer(4);
-
-  if (data.putovanje) {
-    red(w, "Vaktija", boje.tekst, 15, "bold");
-    red(w, "isključena", boje.tekst, 15, "bold");
-  } else if (data.vakat) {
-    red(w, data.vakat.naziv, boje.glavna, 17, "bold");
-    red(w, data.vakat.vrijeme, boje.tekst, 26, "bold");
-    w.addSpacer(2);
-    red(w, "za " + preostalo(data.vakat.preostalo), boje.zlatna, 11, "bold");
-  } else {
-    red(w, "Vaktija nije", boje.tiha, 13);
-    red(w, "preuzeta", boje.tiha, 13);
-  }
-
-  w.addSpacer();
-
-  if (data.zikr) {
-    const dno = w.addStack();
-    dno.layoutHorizontally();
-    dno.centerAlignContent();
-
-    const tekst = dno.addStack();
-    tekst.layoutVertically();
-    red(tekst, imeZikra(data.zikr), boje.tiha, 9, "bold");
-
-    dno.addSpacer();
-    dodajSliku(dno, nacrtajPrsten(PRSTEN, postotak(data.zikr) / 100, boje),
-      PRSTEN, PRSTEN);
-  }
+  traka(w, dio / 100, sirina, 5,
+    dio >= 100 ? boje.gotovo : boje.zlatna, boje.linija);
 }
+
+/* ----------------------------- raspored --------------------------------- */
 
 function nacrtaj(data) {
   const boje = paleta(data);
   const mali = config.widgetFamily === "small";
+  const sirina = unutrasnjaSirina(mali);
 
   const w = new ListWidget();
   w.backgroundColor = boja(boje.pozadina);
   w.setPadding(13, RUB, 13, RUB);
-  /* Dodir otvara aplikaciju sa početnog ekrana, ne Safari — vidi `OTVORI`. */
   w.url = OTVORI || APP;
 
   if (!data) {
-    red(w, "NEMA VEZE", boje.tiha, 9, "bold");
+    tekst(w, "NEMA VEZE", boje.tiha, 10, true);
     w.addSpacer(4);
-    red(w, "Vaktija nije", boje.tekst, mali ? 14 : 16, "bold");
-    red(w, "dostupna", boje.tekst, mali ? 14 : 16, "bold");
-    w.refreshAfterDate = new Date(Date.now() + 5 * 60 * 1000);
+    tekst(w, "Vaktija nije dostupna", boje.tekst, mali ? 13 : 15, true);
+    w.refreshAfterDate = new Date(Date.now() + 3 * 60 * 1000);
     return w;
   }
 
-  if (mali) { nacrtajMali(w, data, boje); } else { nacrtajSiri(w, data, boje); }
+  blokVakat(w, data, boje, !mali);
 
-  /* Pred vakat se traži češće osvježavanje. iOS ovo uzima kao molbu, ne kao
-     naredbu. */
+  /* Dan stane samo na širi widget: šest stubaca na 130 piksela se ne može
+     pročitati. */
+  if (!mali && !data.putovanje && (data.vakti || []).length) {
+    w.addSpacer();
+    blokDan(w, data, boje);
+  }
+
+  if (data.zikr) {
+    w.addSpacer();
+    blokZikr(w, data, boje, sirina);
+  } else {
+    w.addSpacer();
+  }
+
+  /* Osvježavanje se TRAŽI često — iOS to uzima kao molbu i sam odlučuje.
+     Pred vakat svake minute, inače svake tri. */
   const blizu = data.vakat && !data.putovanje && data.vakat.preostalo < 30 * 60;
-  w.refreshAfterDate = new Date(Date.now() + (blizu ? 2 : 10) * 60 * 1000);
+  w.refreshAfterDate = new Date(Date.now() + (blizu ? 60 : 180) * 1000);
 
   return w;
 }
@@ -468,7 +352,6 @@ const widget = nacrtaj(await ucitaj());
 if (config.runsInWidget) {
   Script.setWidget(widget);
 } else {
-  /* Pokretanje iz same aplikacije Scriptable — da se vidi kako izgleda. */
   await widget.presentMedium();
 }
 
