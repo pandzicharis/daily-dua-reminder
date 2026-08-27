@@ -1,17 +1,26 @@
 /* ==========================================================================
    service-worker.js
    --------------------------------------------------------------------------
-   Service worker radi SAMO četiri stvari:
+   Service worker radi SAMO pet stvari:
      1. prima push poruku i prikazuje obavijest
      2. postavlja broj na ikonici aplikacije (broj stiže uz push)
      3. obrađuje klik na obavijest (otvara / fokusira aplikaciju)
      4. drži offline kopiju statičkih fajlova
+     5. čeka da mu aplikacija kaže kad smije preuzeti (nova verzija)
 
    NIKAKVO zakazivanje se ne dešava ovdje. Kad je PWA zatvorena, service
    worker ne radi — zakazivanje je isključivo na serveru (Vercel Cron).
    ========================================================================== */
 
-var CACHE = "moj-zikr-v5";
+/* Ime keša je ujedno i OZNAKA IZDANJA — podigni broj pri svakom deployu.
+
+   Browser provjeru nove verzije radi nad OVIM fajlom i ni nad jednim drugim:
+   ako se `service-worker.js` nije promijenio ni u jednom bajtu, nova verzija
+   za njega ne postoji, pa se traka "Instaliraj" (update.js) neće ni pojaviti
+   — makar se promijenio svaki drugi fajl u projektu. Podignut broj je
+   najmanja moguća promjena koja to rješava, a usput baci staru ljusku iz
+   keša (vidi `activate`). */
+var CACHE = "moj-zikr-v7";
 
 /* Stranice mushafa (PAGES/001.png …) idu u SVOJ keš, odvojen od ljuske
    aplikacije. Dva razloga:
@@ -40,10 +49,21 @@ var PAGES_LIMIT = 60;
    aplikacije — ostatak fajlova se kešira sam, kroz `fetch`. */
 var NOTIFICATION_ICONS = ["/icons/icon-192.png", "/icons/icon-96.png"];
 
-/* Nova verzija preuzima odmah, bez čekanja da se zatvore svi tabovi. */
-self.addEventListener("install", function (event) {
-  self.skipWaiting();
+/* Nova verzija se NE ubacuje sama.
 
+   Prije je ovdje stajao `skipWaiting()`: nova verzija bi preuzela u trenutku
+   u kojem se skine, dok korisnik gleda staru stranu. Fajlovi ispod nje bi se
+   promijenili usred rada — spisak iscrtan starim script.js-om, a keš i
+   obavijesti već novi.
+
+   Sada nova verzija ČEKA (`registration.waiting`), a aplikacija o njoj javi
+   trakom sa dugmetom "Instaliraj" (update.js). Pritisak na to dugme pošalje
+   poruku ispod, i tek tada se preuzima i strana ponovo učitava — u trenutku
+   koji je korisnik izabrao.
+
+   Bez toga bi nova verzija čekala do zatvaranja SVIH prozora aplikacije, a
+   instalirana PWA na telefonu se ne zatvara nego se ostavi u pozadini. */
+self.addEventListener("install", function (event) {
   event.waitUntil(
     caches.open(CACHE)
       .then(function (cache) { return cache.addAll(NOTIFICATION_ICONS); })
@@ -63,6 +83,14 @@ self.addEventListener("activate", function (event) {
       })
       .then(function () { return self.clients.claim(); })
   );
+});
+
+/* Jedina poruka koju aplikacija šalje: "preuzmi sad". Šalje je update.js kad
+   korisnik pritisne "Instaliraj"; poslije `skipWaiting()` browser javi
+   `controllerchange`, a strana se tamo ponovo učita. */
+self.addEventListener("message", function (event) {
+  var data = event.data || {};
+  if (data.type === "preuzmi") { self.skipWaiting(); }
 });
 
 /* ------------------------------------------------------------------------

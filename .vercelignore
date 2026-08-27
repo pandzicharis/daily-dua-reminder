@@ -16,6 +16,10 @@ dev-server.js
 # Ručne skripte — pokreću se sa računara, ne sa servera.
 scripts/
 
+# Widget za iPhone (Scriptable) — ne izvršava ga server nego telefon,
+# kopira se rukom u aplikaciju Scriptable.
+widget/
+
 # Testni panel — alat za lokalni rad. script.js ga učitava samo kad je
 # hostname localhost, pa u produkciji ne postoji ni zahtjev za njim.
 dev-panel.js

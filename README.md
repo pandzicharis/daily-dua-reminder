@@ -37,17 +37,23 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `notification-tasks.js` | **jedini** spisak podsjetnika — čita ga i browser i server |
 | `badge.js` | broj na ikonici aplikacije: koliko je dova ostalo u podsjetnicima koji su nastupili |
 | `situacije.js` | strana „Dove za stanja“ — tabovi po stanju (strah, tuga, zahvalnost, zaštita, oslonac) |
+| `vakti.js` | **jedini** spisak vakata (imena, tekstovi obavijesti, lokacija) — čita ga i browser i server |
+| `vaktija.js` | vaktija za Sarajevo: kartica iznad spiska (naredni vakat, istek, luk dana) + strana sa svih šest vremena |
+| `update.js` | „Nova verzija · Instaliraj“ — traka na dnu kad service worker skine novo izdanje |
 | `icons/*.png` | 96, 192, 512, maskable 192/512, apple-touch 180, favicon 32 |
 | `api/config.js` | `GET` → javni VAPID ključ |
 | `api/subscribe.js` | `POST` upiši pretplatu, `DELETE` obriši |
 | `api/state.js` | `GET` pročitaj / `POST` promijeni zajednički spisak čekiranog |
 | `api/prefs.js` | `GET`/`POST` config korisnika (`cfg:<ime>`), dijeljen kroz njegove uređaje |
 | `api/cron.js` | scheduler; jedino mjesto koje odlučuje šalje li se push |
+| `api/widget.js` | `GET` → sve što widget treba u jednom odgovoru (vakat, zikr, doba dana) |
+| `widget/vaktija-widget.js` | widget za iPhone (Scriptable) — vakat i zikr na početnom ekranu |
 | `api/_lib.js` | Redis, vrijeme po Sarajevu, validacija, `dueSlot()`, `taskStatus()` |
 | `api/_dev-store.js` | fajl-baza za lokalni rad kad KV varijable fale (na Vercelu puca namjerno) |
 | `dev-server.js` | lokalni server: statični fajlovi + `/api/*` na portu 3000 |
 | `dev-panel.js` | **testni panel — samo localhost:** glumi dan i vrijeme, okida podsjetnik |
 | `scripts/check-schedule.js` | cijeli dan podsjetnika na papiru + provjera pravila (`npm run raspored`) |
+| `scripts/check-vaktija.js` | isto za vakte: kad bi koja obavijest stigla i koliko bi kasnila (`npm run vaktija`) |
 | `vercel.json` | cron svakih 15 min + headeri |
 | `package.json` | `web-push`, `@upstash/redis` |
 | `.env.example` | spisak varijabli |
@@ -58,16 +64,23 @@ iPhone PWA  ←→  localStorage (offline keš)
   tri nova `<script>` taga (`sync.js` **prije** `script.js`). Postojeći
   raspored nije diran.
 - `script.js` — slanje promjene checkboxa (`pushChange`), primanje stanja
-  sa servera (`applyRemoteState`) i prikaz `item.source` u ćošku headera.
+  sa servera (`applyRemoteState`), prikaz `item.source` u ćošku headera i
+  povlačenje prsta nadole, koje novu verziju sada preuzima kroz `update.js`.
 - `style.css` — `.item-source` i `.notify*` stilovi, `.app-glass` (staklena
   ploča zaglavlja, vidi 2) i stilovi strane sa dovama za stanja (`.duas-*`,
   `.dua*`).
+- `service-worker.js` — nova verzija više ne preuzima sama (`skipWaiting()`
+  je izbačen iz `install`) nego čeka dugme „Instaliraj“; uz to prima poruku
+  `{ type: "preuzmi" }` kojom se to dugme javlja. Vidi 2.
+- `settings.js` — dva reda za vaktiju (prikaz i obavijest), ispod
+  podsjetnika.
 - `data.js` — `PUTNI_SCOPE` (fiksan spisak za putovanje, vidi 4b) uz
   `naPutu()` i `putniScope()`; `source` polja (izvor dove/sure) i `module.exports` na kraju,
   da server može računati koliko je od sekcije urađeno iz istog spiska.
   Uz to sekcija **Petak** (`days: [5]`) i dvije čiste funkcije koje su jedini
   izvor istine o tome koje sekcije postoje kojeg dana: `weekdayFromKey()` i
-  `sectionsForDate()`.
+  `sectionsForDate()`. U configu su i dva polja za vaktiju (`vaktija`,
+  `vaktijaObavijest`, vidi 4d).
 
 ---
 
@@ -81,6 +94,39 @@ Service worker se registruje pri svakom otvaranju (`notifications.js`), ne
 tek kad se uključe podsjetnici — tako i offline radi. Keširanje je
 **network-first**: uvijek se prvo ide na mrežu, a keš služi samo kad nema
 interneta, pa se nikad ne servira zastarjeli sadržaj.
+
+### Nova verzija (`update.js`)
+
+Instalirana PWA se ne zatvara — ostavi se u pozadini i tako stoji sedmicama.
+Zato nova verzija nikad nije ni stizala sama od sebe: service worker koji
+čeka preuzima tek kad se **zatvore svi** prozori aplikacije.
+
+Sada je to izričito:
+
+1. `service-worker.js` u `install` više **ne** zove `skipWaiting()` — nova
+   verzija se skine, instalira i stane u `registration.waiting`. Ništa se ne
+   mijenja pod prstima usred učenja.
+2. `update.js` to primijeti (`updatefound` → `statechange: installed`, uz
+   postojeći `controller`) i pokaže traku na dnu: **Nova verzija ·
+   Instaliraj**. Uz nju je i „✕“ — traka se skloni do sljedećeg otvaranja, a
+   verzija i dalje čeka.
+3. Klik na **Instaliraj** pošalje service workeru poruku `{ type: "preuzmi" }`,
+   on pozove `skipWaiting()`, browser javi `controllerchange` — i strana se
+   učita ponovo, sada nova. Ako poruka ne stigne za 4 sekunde, strana se
+   svejedno učita.
+
+Provjera ide pri svakom otvaranju, pri svakom povratku u aplikaciju (ne
+češće od 5 minuta) i svakih 30 minuta dok stoji otvorena.
+
+> **Podigni `CACHE` u `service-worker.js` pri svakom deployu.** Browser
+> provjeru nove verzije radi nad tim fajlom i ni nad jednim drugim: ako se
+> `service-worker.js` nije promijenio, nova verzija za njega ne postoji i
+> traka se neće pojaviti — makar se promijenio svaki drugi fajl. Podignut
+> broj (`moj-zikr-v7` → `v8`) je najmanja promjena koja to rješava.
+
+**Prva instalacija nije nova verzija.** Traka se pokazuje samo kad već
+postoji `navigator.serviceWorker.controller` — inače bi svaki novi uređaj pri
+prvom otvaranju dobio ponudu da instalira ono što upravo instalira.
 
 ### Povlačenje prsta nadole
 
@@ -96,10 +142,12 @@ Ne radi ono što radi browserovo osvježavanje, i to je namjerno:
 1. povuče se zajedničko stanje (`sync.js`) i config (`settings.js`), a ekran
    se sam iscrta tamo gdje se nešto stvarno promijenilo — bez bijelog
    treptaja i bez gubitka skrola;
-2. usput se pita service worker ima li **nova verzija** aplikacije. Ako je
-   nađe (`installing` ili `waiting`), tek tada slijedi pravo ponovno
-   učitavanje. Instalirana aplikacija se u praksi nikad ne zatvara, pa bi
-   inače znala danima ostati na staroj verziji.
+2. usput se pita ima li **nova verzija** aplikacije
+   (`window.mojZikrUpdate.provjeri()`). Ako je ima, povlačenje je izričit
+   zahtjev da se osvježi — pa se ne čeka traka sa dugmetom nego se preuzima
+   odmah (`preuzmi()`) i strana se učita ponovo. Obično ponovno učitavanje
+   ovdje više ne bi značilo ništa: service worker koji čeka njime ne
+   preuzima.
 
 Kad se ništa nije promijenilo, oba su prazna — pa se ovo ne može zavrtjeti u
 krug ponovnih učitavanja.
@@ -316,6 +364,8 @@ Zupčanik u headeru otvara drawer sa dna (`settings.js`):
 | **Stranica dnevno** | `stranice` | koliko se stranica mushafa uči u jednom danu (1–20) — iza olovke na kur'anskoj stavci. |
 | **Vlastite stavke** | `dodatno` | svoja dova ili svoj zikr, u bilo koju sekciju osim kur'anske, bez deploya. |
 | **Redoslijed** | `redoslijed` | red se povuče i spusti gdje treba; poredak vrijedi i na ekranu, i u postavkama, i u numeraciji dova. |
+| **Vaktija** | `vaktija` | kartica sa narednim vaktom iznad spiska (podrazumijevano uključeno). Zaključava se dok je putovanje uključeno. Vidi 4d. |
+| **Obavijest o vaktu** | `vaktijaObavijest` | obavijest kad nastupi namaz — šalje je server, pa vrijedi i kad je aplikacija zatvorena. Podrazumijevano **isključeno**; na putu ćuti. |
 
 Uz njih je i dugme za podsjetnike (zvono), preseljeno iz glavnog ekrana.
 
@@ -686,6 +736,173 @@ kroz `sectionsForDate()`, koji već vrati svedene sekcije — pa se `taskTally()
 ne mijenja ni jednom linijom: totali su manji, a podsjetnik ućuti kad se to
 malo završi. Isto vrijedi i za trake napretka i za završni ekran.
 
+## 4d. Vaktija (Sarajevo)
+
+**Kartica iznad spiska**, odmah pod zaglavljem: naredni vakat, njegovo
+vrijeme, odbrojavanje, traka isteka i luk dana sa svih šest vremena i njihovim
+znakovima. Klik po njoj otvara stranu sa istim danom raspisanim red po red.
+Pravi je `vaktija.js`, a imena vakata i tekstovi obavijesti su u `vakti.js`.
+
+**Zašto nije u zaglavlju.** Zaglavlje je sticky i stoji preko cijelog dana
+rada — svaki red u njemu se plaća visinom koja nikad ne ode sa ekrana.
+Vaktija se gleda pri otvaranju, kao i datum, pa joj je mjesto tu: prvo što se
+vidi, a skrola se zajedno sa spiskom i sama se skloni kad se krene raditi.
+Kartica stoji kao vlastiti element **prije** `#sectionsRoot`, a ne u njemu —
+script.js taj čvor pri svakom crtanju prazni, pa se dva fajla ne otimaju o
+isto mjesto.
+
+**Šta se animira** — ništa ukrasno, sve pokazuje istek:
+
+| | |
+|---|---|
+| traka | puni se od prethodnog vakta do narednog, glatko (jedan otkucaj u sekundi, klizanje traje tačno toliko) |
+| odbrojavanje | `2 h 13 min` dok je daleko, `12:34` u zadnjem satu — sekunde se pokažu tek kad znače |
+| zadnjih 15 min | kartica pređe u zlatno i odbrojavanje diše (`is-soon`) |
+| nastupanje | prva tri minuta poslije vakta kartica to i kaže (`is-nastupio`) |
+| ponoć | kad vakat nastupi, traka **skoči** na nulu umjesto da klizi unazad (`is-skok`) |
+
+Uz `prefers-reduced-motion` sve to stoji mirno — podaci su isti, samo bez
+disanja i klizanja.
+
+**Oznaka u traci sa selamom.** Kartica ode sa ekrana čim se krene skrolati, a
+zaglavlje ostaje — pa ista stvar, u dvije riječi (znak, ime vakta, vrijeme),
+stoji i gore, uz avion i temu. Klik po njoj **skrola nazad na karticu** i
+kartica kratko bljesne (`is-blic`): put je često kratak, pa bez bljeska klik
+izgleda kao da nije primljen.
+
+Za razliku od aviona i mlađaka pored, ovo **jeste** dugme i tako i izgleda
+(pilula, podloga) — oznaka koja ne radi ništa ne smije obećavati pritisak, a
+ova ga ispunjava. Trake sa selamom nema dok ime nije upisano; tada nema ni
+oznake, a kartica ispod zaglavlja svejedno stoji.
+
+**Na putu vaktije nema.** Vaktija je vezana za jedan grad; putovanje znači da
+se taj grad ne gleda kroz prozor, a tuđa vremena prikazana kao svoja su gora
+od nikakvih. Zato putovanje gasi **sve troje**: karticu i oznaku u zaglavlju
+(`vaktija.js`), obavijest o vaktu (`api/cron.js`) i widget
+(`api/widget.js` vrati `putovanje: true`). Prekidači u postavkama se pri tome
+ne skrivaju nego zaključavaju, kao i spisak dova — ugašen prekidač uz
+napomenu kaže zašto se ne dira.
+
+**Keš se zagrijava jednom na dan.** `osiguraj()` skida samo ono što treba tog
+trenutka; pri prvom otvaranju u danu se, u pozadini i sa dvije i po sekunde
+zakašnjenja, dopuni i **sljedeći** mjesec (`zagrij()`). Tako se čeka onaj ko
+ništa ne gleda, a klik na vaktiju je uvijek trenutan — i prvog dana u novom
+mjesecu. Oznaka dana stoji u `moj-zikr-vaktija-dan` i piše se tek kad sve
+prođe, da neuspio pokušaj (nema mreže) ne otkaže i sutrašnji.
+
+Vremena dolaze sa **api.vaktija.ba**, lokacija Sarajevo (`id 77`). Ništa se
+ne računa ovdje — vaktija je gotov podatak, kakav stoji i na vaktija.ba.
+
+**Mjesec odjednom, ne dan.** `GET /vaktija/v1/77/<godina>/<mjesec>` vrati
+cijeli mjesec jednim pozivom; on ide u `localStorage` i tamo stoji. Otud
+troje: radi bez interneta do kraja mjeseca, API se gađa jednom mjesečno (ima
+ograničenje broja zahtjeva), i sutrašnja zora se zna već večeras — pa
+poslije jacije traka pokaže koliko ima do nje, a ne prazninu. Zadnjeg dana u
+mjesecu se skine i sljedeći. Drže se najviše dva mjeseca, ostalo se briše.
+
+**Sat je sarajevski, ne uređajev.** Vaktija su vremena po Sarajevu; telefon u
+drugoj zoni bi po svom satu odbrojavao pogrešno. Zato se „sada“ uvijek čita
+kroz `Europe/Sarajevo` — isto pravilo po kojem i server odlučuje o
+obavijestima (`sarajevoNow()`).
+
+### Obavijest kad nastupi vakat
+
+Zakazivanje je **na serveru**, kao i za zikr: kad je aplikacija zatvorena,
+`vaktija.js` ne radi, a upravo tada obavijest i treba. Isti ciklus
+(`/api/cron`) na kraju svakog korisnika provjeri je li mu upaljeno
+`vaktijaObavijest` i je li neki vakat upravo nastupio.
+
+| | podsjetnik za zikr | obavijest o vaktu |
+|---|---|---|
+| kada | prozor koji se ponavlja (slot) | tačan trenutak |
+| dedup | `sent:<uređaj>:<zadatak>:<datum>` | `vakat:<uređaj>:<vakat>:<datum>` |
+| broj na ikonici | ide uz obavijest | **ne dira se** — vakat nije dova |
+| TTL pusha | 55 min | 20 min |
+
+`vaktijaZa(date)` skine dan sa api.vaktija.ba i ostavi ga u Redisu
+(`vaktija:<datum>`), pa se tuđi server gađa **jednom dnevno** za sve
+korisnike zajedno. Ako ne odgovori, ciklus samo preskoči vaktiju —
+podsjetnici za zikr su već otišli i ne zavise od njega.
+
+**Izlazak sunca ne dobija obavijest** (`namaz: false` u `vakti.js`) — stoji
+na spisku jer se po njemu zna kad zora ističe, ali nije namaz.
+
+> **Koliko je gust cron, toliko je tačna obavijest.** Vakat je tačan
+> trenutak, a ciklus se vrti onako kako je podešen: sa ciklusom svake minute
+> obavijest stiže u minut, sa ciklusom svakih 15 minuta zna kasniti do 15.
+> Tolerancija je 20 minuta (`VAKAT_TOLERANCIJA` u `api/_lib.js`) — koliko se
+> najduže smije kasniti, i mora biti veća od razmaka ciklusa, inače bi se
+> vakat preskočio. Ko hoće obavijest u minut, neka vanjski cron (cron-job.org)
+> gađa `/api/cron` **svake minute**: podsjetnici za zikr od toga ne trpe, oni
+> idu po slotovima i ne mogu se poslati dvaput.
+
+## 4e. Widget na iPhone-u (Scriptable)
+
+**PWA ne može dati widget.** iOS widgete izdaje samo native aplikacija kroz
+WidgetKit; Safari toj kutiji nema pristup, i to se ne zaobilazi ni
+manifestom ni service workerom. (Isto vrijedi i za Android — Chrome nema
+widget API za PWA.) Ostaju tri puta: native omotač (Xcode + Apple Developer
+nalog), ništa, ili **Scriptable** — besplatna aplikacija koja izvršava
+JavaScript i smije crtati widget.
+
+Odabran je Scriptable: `widget/vaktija-widget.js`.
+
+**Šta pokazuje**
+
+| | |
+|---|---|
+| naredni vakat | ime, vrijeme i koliko ga još ima |
+| zikr | ono što je **sada** na redu — dnevni danju, večernji uveče, petkom prijepodne petački — i koliko je od njega ostalo, sa trakom |
+| dan / noć | boje prate isto pravilo po kojem se boji i aplikacija (dan od 07:00, noć od 19:00) |
+
+Mali widget nosi vakat i zikr; srednji uz to i svih šest vremena.
+
+**Nijedno pravilo nije u widgetu.** Šta je danas na spisku, koliko je
+urađeno, koji je vakat na redu i je li dan ili noć — sve dolazi gotovo sa
+`GET /api/widget`, iz istog `data.js` i `notification-tasks.js` po kojima
+radi i aplikacija:
+
+```json
+{
+  "grad": "Sarajevo",
+  "datum": "2026-08-27",
+  "doba": "dan",
+  "vakat": { "id": "ikindija", "naziv": "Ikindija", "vrijeme": "16:34",
+             "preostalo": 7980, "sutra": false },
+  "vakti": [ { "id": "zora", "naziv": "Zora", "vrijeme": "4:19", "proslo": true }, "…" ],
+  "zikr":  { "id": "dan", "naslov": "Dnevni zikr ☀️", "done": 7, "total": 12,
+             "ostalo": 5, "gotovo": false },
+  "badge": 5
+}
+```
+
+Ime ide u zaglavlju `X-Zikr-User` (prihvata se i `?user=`). **Bez imena**
+widget i dalje radi — vrati se samo vaktija, a zikr izostane jer se ne zna
+čiji bi bio. Endpoint samo **čita**; nijedan poziv odavde ne pomjera spisak.
+
+**Na putu** se vraća `"putovanje": true` i prazan spisak vremena, pa widget
+pokaže „Na putu" umjesto sarajevske vaktije — a zikr ostaje, njega putovanje
+samo skrati. Po polju `datum` widget prepoznaje da je odgovor **stigao**
+(makar bez vaktije) i ne pada na rezervu, koja bi pokazala tuđa vremena.
+
+**Postavljanje**
+
+1. App Store → **Scriptable** (besplatno).
+2. Scriptable → `+` → nalijepi `widget/vaktija-widget.js` → nazovi ga
+   „Vaktija".
+3. U vrhu fajla upiši `APP` (adresa tvog Vercel deploya) i `IME` (isto ono iz
+   postavki aplikacije).
+4. Početni ekran → drži prst → `+` → Scriptable → mali ili srednji widget →
+   **Edit Widget** → Script: Vaktija.
+
+**Osvježavanje odlučuje iOS**, ne widget. Skripta traži osvježavanje svakih
+10 minuta, a pred vakat svake 2 (`refreshAfterDate`) — sistem to uzima kao
+molbu, pa odbrojavanje u widgetu ide u minutama i nikad ne pokazuje sekunde
+koje bi ionako stajale. Klik po widgetu otvara aplikaciju.
+
+**Kad aplikacija ne odgovori** (deploy u toku, nema mreže do Vercela), widget
+padne na `api.vaktija.ba` direktno i pokaže bar vakat, bez zikra.
+
 ## 5. Kako radi satna logika
 
 Sve je u čistoj funkciji `dueSlot()` (`api/_lib.js`):
@@ -874,6 +1091,10 @@ Bez ispravnog secreta `/api/cron` vraća 401.
 >   pokrenuti unutar predviđenog prozora. Zato scheduler **nikad ne pita
 >   "je li sad tačno 8"**, nego računa slot. Ako cron zakasni do 07:32,
 >   podsjetnik za 07:00 stiže u 07:32, a sljedeći tek u 08:00+.
+> - **Obavijest o vaktu je izuzetak od te mirnoće**: vakat je tačan trenutak,
+>   pa je obavijest tačna onoliko koliko je gust cron. Za obavijest u minut
+>   treba ciklus svake minute — vidi 4d. Podsjetnici za zikr od gušćeg
+>   ciklusa ne trpe: slot se šalje samo jednom.
 
 ## 8. Kako generisati VAPID ključeve
 
@@ -956,6 +1177,7 @@ jedino mjesto sa kojeg se provjerava ono što se inače ne može bez čekanja:
 | **resetuj „poslano"** | uključeno: svaki okidač je nezavisan (pokazuje *prozor*). isključeno: pravi niz kroz dan (12:00 pošalje, 12:15 ćuti jer je slot 4 već poslan) |
 | **Okini — pošalji** | zove pravi `/api/cron` — obavijest stvarno stigne |
 | **samo pokaži** | isto, ali bez slanja i bez upisa (`dry=1`) |
+| **Vaktija** — dugme po vaktu | namjesti vrijeme na taj vakat i okine pravi ciklus: obavijest o namazu stigne na uređaj bez čekanja ikindije |
 
 Ispod se ispiše šta je server odlučio: koji podsjetnik, **tačan naslov i
 tekst**, pa prozori i status po podsjetniku i šta je koga zaklonilo. Panel
@@ -965,6 +1187,16 @@ pokazati jedno a produkcija uraditi drugo.
 **Recept za petak:** *prvi petak* → interval **60** → resetuj **isključi** →
 okidaj redom 07:00, 09:00, 12:00, 12:15, 13:00, 14:00. Očekivano: četiri
 petačke, zadnja u 12:00, tišina u 12:15, dnevni od 13:00.
+
+**Recept za vakat:** u sekciji **Vaktija** stoje današnja vremena onako kako
+ih vidi server (`/api/widget`, isti keš iz kojeg ih uzima i scheduler). Klik
+po vaktu okine pravi ciklus u tom trenutku — obavijest stigne na uređaj. Panel
+uz to javi zašto bi ćutalo: „Obavijest o vaktu" isključena u postavkama, ili
+putovanje uključeno (tada je vaktija ugašena svugdje). Izlazak sunca nema
+dugme jer nije namaz.
+
+Za ovo mora biti uključeno troje: podsjetnici (zvono), **Obavijest o vaktu**
+u postavkama, i putovanje **isključeno**.
 
 Kad se gleda dan koji nije današnji, na vrhu stoji žuta traka *„proba"*:
 kvačice tog dana idu u **odvojen lokalni prostor** (`moj-zikr-proba`), ne
@@ -999,6 +1231,32 @@ ispad od 3h) i vrati izlazni kod 1 ako nešto padne:
 4. `dan` petkom 13:00–23:00, ostalim danima 07:00–23:00
 
 Vrijedi pokrenuti prije deploya.
+
+### Cijeli dan vakata na papiru
+
+```bash
+npm run vaktija                 # danas, ciklus svakih 15 min
+npm run vaktija -- 1            # ciklus svake minute
+npm run vaktija -- 5 2026-09-01 # drugi ritam i drugi dan
+```
+
+Ispiše u koju bi minutu telefon javio koji vakat i **koliko bi kasnio**, pa
+provjeri četiri tvrdnje: svaki namaz tačno jednom, izlazak sunca nijednom,
+nijedna obavijest ne kasni više od jednog ciklusa, i tolerancija je veća od
+razmaka ciklusa (inače bi se vakat mogao preskočiti). Pada li ijedna, izlazni
+kod je 1.
+
+Odatle se i vidi cijena rijetkog crona — isti dan, dva ritma:
+
+```
+ciklus svakih 15 min                 ciklus svake minute
+  Zora      4:19  → 04:30  (+11)       Zora      4:19  → 04:19  (+0)
+  Podne    12:49  → 13:00  (+11)       Podne    12:49  → 12:49  (+0)
+  Ikindija 16:34  → 16:45  (+11)       Ikindija 16:34  → 16:34  (+0)
+```
+
+Ne šalje ništa i ne dira ničiji spisak; vaktiju skine jednom i ostavi u
+lokalnom kešu.
 
 ### Ručno, curl-om
 

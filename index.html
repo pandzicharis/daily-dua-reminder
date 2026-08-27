@@ -21,7 +21,7 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=43">
+  <link rel="stylesheet" href="style.css?v=47">
 
   <!-- Tema se bira PRIJE prvog crtanja, zato ove dvije skripte stoje ovdje a
        ne dolje sa ostalima: kad bi se čekalo dno strane, noću bi svijetla
@@ -226,5 +226,14 @@
        settings.js jer iz njega čita config (šta je uključeno, transkripcija) i
        prijavljuje se na `naPromjenu`. -->
   <script src="situacije.js"></script>
+  <!-- Vaktija: vakti.js je goli spisak imena vakata (isti onaj koji čita i
+       server), vaktija.js crta traku u headeru i stranu sa vremenima. Ide
+       poslije settings.js iz istog razloga kao i situacije.js — čita config
+       i prijavljuje se na `naPromjenu`. -->
+  <script src="vakti.js"></script>
+  <script src="vaktija.js"></script>
+  <!-- Nova verzija: traka na dnu sa dugmetom "Instaliraj". Ide poslije
+       notifications.js, koji service worker ionako registruje prvi. -->
+  <script src="update.js"></script>
 </body>
 </html>

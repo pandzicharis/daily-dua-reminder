@@ -16,6 +16,12 @@
               obavijest stigne na uređaj. "samo pokaži" (dry) ne pošalje i ne
               upiše ništa, samo javi šta bi bilo.
 
+     Vaktija  vremena za danas onako kako ih vidi SERVER (`/api/widget`), a
+              svaki vakat je dugme: klik namjesti vrijeme na taj vakat i
+              okine pravi ciklus, pa obavijest o namazu stigne na uređaj bez
+              čekanja ikindije. Panel uz to javi zašto bi ćutalo — obavijest
+              isključena u postavkama, ili putovanje.
+
    Ni jedno pravilo se ovdje ne prepisuje: šta se šalje i sa kojim tekstom
    odlučuje isključivo server (api/cron.js), a panel ispisuje njegov
    izvještaj. Zato panel ne može pokazati jedno a produkcija uraditi drugo.
@@ -173,7 +179,9 @@
     } else {
       r.sent.forEach(function (s) {
         var row = node("div", "devp-sent");
-        row.appendChild(node("span", "devp-tag", s.task));
+        /* Obavijest o vaktu nema `task` nego `vakat` — ista traka, drugi
+           izvor. */
+        row.appendChild(node("span", "devp-tag", s.task || s.vakat));
         var txt = node("span", "devp-sent-text");
         txt.appendChild(node("strong", null, s.title || ""));
         txt.appendChild(node("span", null, " " + (s.body || "")));
@@ -241,6 +249,91 @@
     el.result.textContent = "";
     el.result.appendChild(node("p", "devp-result-head", text));
     if (hint) { el.result.appendChild(node("p", "devp-warn", hint)); }
+  }
+
+  /* ------------------------------------------------------------------------
+     Vaktija
+
+     Ništa se ovdje ne računa: vremena su onakva kakva ih vidi server
+     (`/api/widget`, isti keš iz kojeg ih uzima i scheduler). Panel samo crta
+     dugmad i javlja zašto bi ciklus ćutao.
+     ------------------------------------------------------------------------ */
+
+  function korisnik() {
+    return (window.mojZikrConfig && window.mojZikrConfig.korisnik()) || "";
+  }
+
+  function ucitajVaktiju() {
+    if (!el.vaktijaState) { return; }
+
+    var glave = { "Accept": "application/json" };
+    var ime = korisnik();
+    if (ime) { glave["X-Zikr-User"] = ime; }
+
+    fetch("/api/widget", { headers: glave })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { nacrtajVaktiju(data); })
+      .catch(function (err) {
+        el.vaktijaState.className = "devp-warn";
+        el.vaktijaState.textContent = "vaktija nije dostupna: " +
+          String((err && err.message) || err);
+      });
+  }
+
+  function nacrtajVaktiju(data) {
+    el.vaktijaChips.textContent = "";
+
+    var prefs = (window.mojZikrConfig && window.mojZikrConfig.prefs()) || {};
+
+    /* Redoslijed razloga za tišinu je redoslijed kojim ih server i gleda:
+       putovanje gasi vaktiju u cijelosti, pa tek onda prekidač obavijesti. */
+    if (data && data.putovanje) {
+      el.vaktijaState.className = "devp-warn";
+      el.vaktijaState.textContent =
+        "putovanje je uključeno — vaktija je ugašena svugdje (kartica, " +
+        "obavijest, widget). Isključi ga u postavkama za probu.";
+      return;
+    }
+
+    if (!data || !Array.isArray(data.vakti) || !data.vakti.length) {
+      el.vaktijaState.className = "devp-warn";
+      el.vaktijaState.textContent =
+        "server nema vaktiju za danas — provjeri vezu prema api.vaktija.ba.";
+      return;
+    }
+
+    el.vaktijaState.className = prefs.vaktijaObavijest === true
+      ? "devp-silent" : "devp-warn";
+    el.vaktijaState.textContent = prefs.vaktijaObavijest === true
+      ? (data.grad || "Sarajevo") + " · obavijest uključena · klik po vaktu " +
+        "namjesti vrijeme i okine ciklus"
+      : "„Obavijest o vaktu“ je isključena u postavkama — okidanje neće " +
+        "poslati ništa. Upali je pa probaj.";
+
+    data.vakti.forEach(function (v) {
+      /* Izlazak sunca nije namaz i za njega obavijest ne ide (vakti.js), pa
+         nema ni dugmeta — dugme koje ništa ne pošalje izgleda kao kvar. */
+      if (v.id === "izlazak") { return; }
+
+      var chip = button("devp-chip", v.naziv + " " + v.vrijeme, function () {
+        okiniVakat(v.vrijeme);
+      });
+      if (v.proslo) { chip.classList.add("is-past"); }
+      el.vaktijaChips.appendChild(chip);
+    });
+  }
+
+  /* Namjesti vrijeme na taj vakat i okini PRAVI ciklus — obavijest o namazu
+     tada stigne na uređaj, kao da je vakat upravo nastupio.
+
+     Ciklus je jedan te isti, pa uz obavijest o vaktu ume otići i podsjetnik
+     za zikr, ako mu je slot tada na redu. Tako je i u produkciji, i zato se
+     baš tako i proba. */
+  function okiniVakat(vrijeme) {
+    atTime = vrijeme;
+    if (el.timeInput) { el.timeInput.value = vrijeme; }
+    syncTimeChips();
+    fire(false);
   }
 
   /* ------------------------------------------------------------------------
@@ -345,6 +438,19 @@
       el.panel.appendChild(el.themeState);
     }
 
+    /* --- vaktija ---
+
+       Vremena dolaze sa `/api/widget`, dakle iz istog keša iz kojeg ih čita i
+       scheduler — panel ih ne računa i ne skida sam. Klik po vaktu namjesti
+       vrijeme i odmah okine pravi ciklus. */
+    el.panel.appendChild(node("p", "devp-label", "Vaktija — obavijest o vaktu"));
+
+    el.vaktijaState = node("p", "devp-silent", "učitavam vaktiju…");
+    el.panel.appendChild(el.vaktijaState);
+
+    el.vaktijaChips = node("div", "devp-chips");
+    el.panel.appendChild(el.vaktijaChips);
+
     /* --- okidanje --- */
     var resetRow = node("label", "devp-check");
     el.reset = document.createElement("input");
@@ -429,7 +535,12 @@
   function toggle() {
     el.panel.hidden = !el.panel.hidden;
     el.fab.classList.toggle("is-open", !el.panel.hidden);
-    if (!el.panel.hidden) { syncTheme(); }
+    if (!el.panel.hidden) {
+      syncTheme();
+      /* Vaktija se čita pri svakom otvaranju: prekidač ili putovanje su se u
+         međuvremenu mogli promijeniti, a i dan je mogao preći. */
+      ucitajVaktiju();
+    }
   }
 
   /* Traka na vrhu ekrana dok se gleda dan koji nije današnji — da se proba
@@ -452,6 +563,15 @@
   syncTimeChips();
   syncIntervalChips();
   syncTheme();
+  ucitajVaktiju();
+
+  /* Promjena u postavkama (obavijest o vaktu, putovanje, ime) mijenja i ovo
+     što panel piše — inače bi stajalo staro objašnjenje zašto je tiho. */
+  if (window.mojZikrConfig && window.mojZikrConfig.naPromjenu) {
+    window.mojZikrConfig.naPromjenu(function () {
+      if (el.panel && !el.panel.hidden) { ucitajVaktiju(); }
+    });
+  }
 
   /* Režim se bira u postavkama, mimo panela — i tema se sama prelomi u 19:00.
      Oba puta theme.js javi, pa ispis nikad ne ostane star. */

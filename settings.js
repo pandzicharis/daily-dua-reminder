@@ -2349,6 +2349,8 @@
         /* Ne `osvjeziStavke()`: mijenja se i sastav redova i to šta se u njima
            smije dirati, pa se spisak crta iznova. */
         nacrtajAkordeone();
+        /* Vaktija se na putu zaključava — vidi `osvjeziVaktiju()`. */
+        osvjeziVaktiju();
         javi();
         posalji();
       });
@@ -2375,6 +2377,46 @@
     var status = p("notify-status", "");
     status.id = "notifyStatus";
     body.appendChild(status);
+
+    /* Vaktija — prikaz. Kartica iznad spiska sa narednim vaktom; klik po njoj
+       otvara stranu sa svih šest vremena (vaktija.js). Vremena dolaze sa
+       api.vaktija.ba, za Sarajevo. */
+    var vk = redPrekidac("vaktija", "Vaktija",
+      NOTA_VAKTIJA,
+      config.vaktija !== false,
+      function (on) {
+        config.vaktija = on;
+        zapamtiConfig();
+        javi();
+        posalji();
+      });
+    el.switches.vaktija = vk.input;
+    body.appendChild(vk.row);
+
+    /* Vaktija — obavijest. Ide odmah ispod prikaza jer je ista stvar, samo
+       kad aplikacija nije otvorena.
+
+       Šalje je server, u istom ciklusu koji šalje i podsjetnike za zikr
+       (api/cron.js), pa vrijedi i kad je aplikacija zatvorena — ali samo ako
+       su podsjetnici uključeni (red iznad): bez pretplate nema gdje stići. */
+    var vo = redPrekidac("vaktijaObavijest", "Obavijest o vaktu",
+      NOTA_VAKAT,
+      config.vaktijaObavijest === true,
+      function (on) {
+        config.vaktijaObavijest = on;
+        zapamtiConfig();
+        javi();
+        posalji();
+      });
+    el.switches.vaktijaObavijest = vo.input;
+    body.appendChild(vo.row);
+
+    /* Oba reda se zaključavaju na putu — vidi `osvjeziVaktiju()`. */
+    el.vaktija = [
+      { red: vk, nota: NOTA_VAKTIJA },
+      { red: vo, nota: NOTA_VAKAT }
+    ];
+    osvjeziVaktiju();
 
     /* Spisak stavki — na dnu jer je najduži dio postavki. Ime, prekidači i
        podsjetnici ostaju odmah pod rukom; spiskovi su ionako sklopljeni.
@@ -2571,10 +2613,36 @@
     });
   }
 
+  /* --- vaktija ------------------------------------------------------------
+     Vaktija je vezana za JEDAN grad (Sarajevo). Na putu bi pokazivala tuđa
+     vremena, a tuđa vaktija je gore od nikakve — zato putovanje gasi i
+     karticu, i obavijest, i widget (api/cron.js, api/widget.js).
+
+     Redovi se pri tome ne skrivaju nego ZAKLJUČAVAJU, isto kao spisak dova:
+     prekidač koji nestane ostavlja čovjeka da traži gdje je otišao, a
+     ugašen prekidač uz napomenu kaže zašto se ne dira. -------------------- */
+
+  var NOTA_VAKTIJA = "Naredni vakat iznad spiska, a klikom sva vremena za Sarajevo.";
+  var NOTA_VAKAT = "Kad nastupi namaz, stigne obavijest. Traži uključene podsjetnike.";
+  var NOTA_PUT = " Isključeno dok je putovanje uključeno — vaktija je sarajevska.";
+
+  function osvjeziVaktiju() {
+    if (!el.vaktija) { return; }
+    var lock = zakljucano();
+
+    el.vaktija.forEach(function (stavka) {
+      stavka.red.input.disabled = lock;
+      var nota = stavka.red.row.querySelector(".set-note");
+      if (nota) { nota.textContent = stavka.nota + (lock ? NOTA_PUT : ""); }
+    });
+  }
+
   function osvjeziPrekidace() {
     Object.keys(el.switches || {}).forEach(function (id) {
       el.switches[id].checked = config[id] === true;
     });
+    /* Config sa drugog uređaja može donijeti i upaljeno putovanje. */
+    osvjeziVaktiju();
     /* Putovanje uključeno na drugom uređaju mora obojiti i ovaj ekran, ne samo
        prebaciti prekidač. */
     primijeniPut();

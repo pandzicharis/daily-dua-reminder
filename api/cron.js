@@ -45,6 +45,16 @@
    u 13:00. Čim se petačke stavke završe, zaklon pada i dnevni nastavlja po
    uobičajenim pravilima, kao svaki drugi dan.
 
+   VAKTIJA. Uz podsjetnike za zikr, isti ciklus šalje i obavijest kad nastupi
+   namaski vakat — ali samo korisniku koji je to upalio (`vaktijaObavijest` u
+   configu). Vremena dolaze sa api.vaktija.ba, jednim pozivom dnevno, i drže
+   se u Redisu (`vaktijaZa()` u _lib.js).
+
+   Ovdje NEMA slotova: vakat je tačan trenutak, a ne prozor koji se ponavlja.
+   Šalje se onaj koji je upravo nastupio (`vaktiDue()`, tolerancija 20
+   minuta), a zapis po uređaju i vaktu pazi da ne ode dvaput. Koliko je gust
+   cron, toliko je tačna obavijest — sa ciklusom svake minute stiže u minut.
+
    PROBA. Tri parametra, svi zaštićeni istim CRON_SECRET-om:
 
      dry=1              vrati izvještaj, ali ne pošalji ni jedan push i ne
@@ -83,7 +93,8 @@ const {
   sarajevoNow, dueSlot, pushPayload, removeSubscription,
   intervalMinutes, cronAuthorized, taskStatus, badgeCount, blockedBy, lateFrom,
   quietFor, weekdayFromKey, parseTime, DEFAULT_END_TIME, validDate, validItemId,
-  SPACE, userKey, readPrefs, sectionsFor
+  SPACE, userKey, readPrefs, sectionsFor,
+  VAKTI, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika
 } = require("./_lib.js");
 
 function setupVapid() {
@@ -175,6 +186,18 @@ module.exports = async function handler(req, res) {
     removed: [],
     errors: []
   };
+
+  /* Vaktija se u jednom ciklusu čita JEDNOM, ma koliko korisnika imalo
+     upaljenu obavijest: dan je isti za sve (jedan grad). Bez ovoga bi svaki
+     korisnik bar jednom gađao Redis, a prvi tog dana i tuđi server — a
+     funkcija na Vercelu ima svoje sekunde i ne smije ih trošiti na isti
+     odgovor po korisniku. */
+  let vaktijaDanas;
+
+  async function vremenaDanas() {
+    if (vaktijaDanas === undefined) { vaktijaDanas = await vaktijaZa(now.date); }
+    return vaktijaDanas;
+  }
 
   try {
     /* --------------------------------------------------------------------
@@ -298,6 +321,9 @@ module.exports = async function handler(req, res) {
           for (const task of TASKS) {
             await redis.del(KEYS.sent(device.id, task.id, now.date));
           }
+          for (const vakat of VAKTI) {
+            await redis.del(KEYS.vakat(device.id, now.date, vakat.id));
+          }
         }
         report.reset = now.date;
       }
@@ -384,6 +410,77 @@ module.exports = async function handler(req, res) {
               user: user, device: id.slice(0, 8), task: task.id,
               code: code || "greška"
             });
+          }
+        }
+      }
+
+      /* ------------------------------------------------------------------
+         Vaktija — obavijest kad nastupi namaz
+
+         Odvojeno od podsjetnika za zikr i namjerno POSLIJE njih: vaktija
+         zavisi od tuđeg servera, pa ako on ćuti, podsjetnici su već otišli.
+
+         NA PUTU ĆUTI. Vaktija je sarajevska, a putovanje znači da se taj
+         grad ne gleda kroz prozor (`vaktijaZaKorisnika()`). Isti prekidač
+         gasi i karticu u aplikaciji i widget.
+
+         Zaklon (`requires`, `quietFor`) se ovdje ne gleda: on postoji da se
+         dvije obavijesti o istoj stvari ne poklope, a ovo je druga stvar i
+         nastupa u svoj trenutak.
+         ------------------------------------------------------------------ */
+      if (prefs.vaktijaObavijest === true && vaktijaZaKorisnika(prefs)) {
+        const vremena = await vremenaDanas();
+        const due = vremena ? vaktiDue(vremena, now.minutes) : [];
+
+        report.users[user].vaktija = !vremena
+          ? "nije dostupna"
+          : (due.map(function (d) { return d.vakat.id; }).join(", ") || "—");
+
+        for (const device of devices) {
+          for (const d of due) {
+            const vakatKey = KEYS.vakat(device.id, now.date, d.vakat.id);
+            const poslan = (resetSent && dry) ? null : await redis.get(vakatKey);
+            if (poslan) { continue; }
+
+            const payload = vakatPayload(d.vakat, d.vrijeme);
+            const shown = JSON.parse(payload);
+
+            if (dry) {
+              report.sent.push({
+                user: user, device: device.id.slice(0, 8), vakat: d.vakat.id,
+                title: shown.title, body: shown.body, dry: true
+              });
+              continue;
+            }
+
+            /* Zapis prije slanja — isto pravilo kao kod podsjetnika: bolje
+               propustiti jednu obavijest nego poslati duplikat. */
+            await redis.set(vakatKey, d.vrijeme, { ex: DAY_TTL });
+
+            try {
+              await webpush.sendNotification(
+                { endpoint: device.sub.endpoint, keys: device.sub.keys },
+                payload,
+                /* Kratak TTL: obavijest o ikindiji koja stigne u akšam nije
+                   obavijest nego smetnja. */
+                { TTL: 60 * 20, urgency: "high" }
+              );
+              report.sent.push({
+                user: user, device: device.id.slice(0, 8), vakat: d.vakat.id,
+                title: shown.title, body: shown.body
+              });
+            } catch (err) {
+              const code = err && err.statusCode;
+              if (code === 404 || code === 410) {
+                await removeSubscription(device.id);
+                report.removed.push(device.id.slice(0, 8));
+                break;
+              }
+              report.errors.push({
+                user: user, device: device.id.slice(0, 8), vakat: d.vakat.id,
+                code: code || "greška"
+              });
+            }
           }
         }
       }

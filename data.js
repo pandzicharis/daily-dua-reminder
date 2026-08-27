@@ -1342,7 +1342,13 @@
   function defaultPrefs() {
     return {
       transkript: false, putovanje: false, skriveno: [], izmjene: {},
-      stranice: 1, dodatno: [], redoslijed: {}
+      stranice: 1, dodatno: [], redoslijed: {},
+      /* Vaktija: traka u headeru stoji sama od sebe (podatak o danu, ne
+         spisak koji se odrađuje), a obavijest o nastupanju vakta se traži —
+         pet obavijesti dnevno niko ne smije dobiti a da ih nije upalio.
+         Oba polja čita i server: prikaz njega ne zanima, ali `obavijest`
+         odlučuje šalje li ciklus push (api/cron.js). */
+      vaktija: true, vaktijaObavijest: false
     };
   }
 
@@ -1356,6 +1362,10 @@
 
     if (typeof raw.transkript === "boolean") { out.transkript = raw.transkript; }
     if (typeof raw.putovanje === "boolean") { out.putovanje = raw.putovanje; }
+    if (typeof raw.vaktija === "boolean") { out.vaktija = raw.vaktija; }
+    if (typeof raw.vaktijaObavijest === "boolean") {
+      out.vaktijaObavijest = raw.vaktijaObavijest;
+    }
 
     out.dodatno = cleanCustom(raw.dodatno);
     var known = knownItemIds(out.dodatno);

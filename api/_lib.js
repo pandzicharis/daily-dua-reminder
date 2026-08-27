@@ -18,9 +18,18 @@ const weekdayFromKey = DATA.weekdayFromKey;
    bilo prepisano na oba mjesta i moglo se raziće. */
 const defaultPrefs = DATA.defaultPrefs;
 const cleanPrefs = DATA.cleanPrefs;
+/* Putovanje — scheduler ga inače ne gleda (spisak mu je već prosijan kroz
+   `sectionsForDate()`), ali vaktija je vezana za jedan grad, pa na putu ćuti.
+   Vidi `vaktiDue()` niže i api/cron.js. */
+const naPutu = DATA.naPutu;
 /* Vlastita stavka korisnika nema svoj id u data.js — prepoznaje se po
    obliku. Vidi `validItemId()` ispod. */
 const CUSTOM_ITEM_ID = DATA.CUSTOM_ITEM_ID;
+
+/* Vakti — isti spisak imena i tekstova koji čita i aplikacija (vakti.js).
+   Vremena za njih dolaze sa api.vaktija.ba; vidi `vaktijaZa()` niže. */
+const VAKTIJA = require("../vakti.js");
+const VAKTI = VAKTIJA.VAKTI;
 
 const TZ = "Europe/Sarajevo";
 
@@ -374,6 +383,16 @@ const KEYS = {
      uređaj svoju obavijest dobija sam za sebe. */
   sent: function (id, taskId, date) {
     return "sent:" + id + ":" + taskId + ":" + date;
+  },
+
+  /* Vaktija za jedan dan, kako je stigla sa api.vaktija.ba. Zajednička je za
+     sve korisnike (jedan grad), pa stoji pod datumom i ni pod čim drugim. */
+  vaktija: function (date) { return "vaktija:" + date; },
+
+  /* Poslan vakat — po uređaju, kao i `sent`. Bez ovoga bi svaki ciklus
+     unutar tolerancije poslao istu obavijest ponovo. */
+  vakat: function (id, date, vakatId) {
+    return "vakat:" + id + ":" + vakatId + ":" + date;
   }
 };
 
@@ -624,6 +643,130 @@ function cronAuthorized(req) {
   return crypto.timingSafeEqual(a, b);
 }
 
+/* ------------------------------------------------------------------------
+   Vaktija — vremena namaza za Sarajevo
+
+   Server ih traži iz jednog jedinog razloga: da obavijest o nastupanju vakta
+   stigne i kad je aplikacija zatvorena. Prikaz u aplikaciji ima svoju kopiju
+   (vaktija.js drži cijeli mjesec u localStorage) i ne zavisi od ovoga.
+
+   Jedan poziv po DANU, pa u Redis. api.vaktija.ba ima ograničenje broja
+   zahtjeva, a ciklus se vrti svakih nekoliko minuta — bez keša bi ga sam
+   scheduler potrošio do podne. Vremena se ne mijenjaju u toku dana, pa keš
+   nema šta da zastari.
+   ------------------------------------------------------------------------ */
+
+/* Koliko se čeka odgovor vaktije. Ciklus ne smije visiti na tuđem serveru:
+   podsjetnici za zikr su već poslani prije ovoga i ne zavise od njega. */
+const VAKTIJA_TIMEOUT_MS = 6000;
+
+/* Vremena za dati dan ("YYYY-MM-DD") ili null ako se ne mogu dobiti. */
+async function vaktijaZa(date) {
+  if (!validDate(date)) { return null; }
+
+  const kljuc = KEYS.vaktija(date);
+  const keširano = await redis.get(kljuc);
+  if (Array.isArray(keširano) && keširano.length >= VAKTI.length) {
+    return keširano;
+  }
+
+  const [g, m, d] = date.split("-").map(function (x) { return parseInt(x, 10); });
+  /* Mjesec u API-ju ide 1–12, isto kao u datumu. */
+  const adresa = VAKTIJA.VAKTIJA_API + "/" + VAKTIJA.VAKTIJA_LOKACIJA +
+    "/" + g + "/" + m + "/" + d;
+
+  let stop = null;
+  const opcije = {};
+  try {
+    stop = new AbortController();
+    opcije.signal = stop.signal;
+  } catch (e) { stop = null; }
+
+  const otkaz = stop ? setTimeout(function () { stop.abort(); }, VAKTIJA_TIMEOUT_MS) : null;
+
+  try {
+    const res = await fetch(adresa, opcije);
+    if (!res.ok) { throw new Error("vaktija " + res.status); }
+
+    const data = await res.json();
+    const vakat = (data && Array.isArray(data.vakat))
+      ? data.vakat.slice(0, VAKTI.length)
+      : null;
+    if (!vakat || vakat.length < VAKTI.length) { throw new Error("vaktija: prazan dan"); }
+
+    await redis.set(kljuc, vakat, { ex: DAY_TTL });
+    return vakat;
+  } catch (e) {
+    /* Bez vaktije se taj ciklus samo preskoči — obavijesti za zikr su
+       nezavisne i već su otišle. */
+    return null;
+  } finally {
+    if (otkaz) { clearTimeout(otkaz); }
+  }
+}
+
+/* Koliko se najduže KASNI sa obavijesti o vaktu. Ciklus se ne pokreće u
+   sekundu u sekundu, pa se obavijest šalje i kad je vakat nastupio malo
+   prije — ali samo malo: obavijest za ikindiju koja stigne u akšam nije
+   obavijest nego smetnja.
+
+   Praktično: koliko je gust cron, toliko je tačna obavijest. Sa ciklusom
+   svake minute stiže u minut, sa ciklusom svakih 15 minuta zna kasniti do
+   15. Tolerancija mora biti veća od razmaka ciklusa, inače bi se vakat
+   preskočio.  */
+const VAKAT_TOLERANCIJA = 20;
+
+/* Vakti koji su upravo nastupili: prošli su, a nisu prošli davno. Vraća niz
+   `{ vakat, vrijeme, minuta }`, obično prazan ili sa jednim članom.
+
+   Izlazak sunca se preskače — nije namaz (`namaz: false` u vakti.js). */
+function vaktiDue(vremena, minutes, tolerancija) {
+  const granica = (typeof tolerancija === "number") ? tolerancija : VAKAT_TOLERANCIJA;
+  const out = [];
+
+  VAKTI.forEach(function (vakat, i) {
+    if (!vakat.namaz) { return; }
+
+    const minuta = VAKTIJA.vakatMinute(vremena && vremena[i]);
+    if (minuta === null) { return; }
+
+    const kasnjenje = minutes - minuta;
+    if (kasnjenje < 0 || kasnjenje > granica) { return; }
+
+    out.push({ vakat: vakat, vrijeme: vremena[i], minuta: minuta });
+  });
+
+  return out;
+}
+
+/* Obavijest o vaktu. Namjerno BEZ `badge` polja: broj na ikonici govori
+   koliko je dova ostalo, a vakat sa tim nema veze — service worker poruku
+   bez tog polja ostavi ikonicu na miru.
+
+   `tag` je isti za sve vakte: dva vakta ne mogu nastupiti u istoj minuti, pa
+   nova obavijest zamijeni prethodnu i na zaključanom ekranu ne stoji spisak
+   svih današnjih namaza. */
+/* Traži li OVAJ korisnik vaktiju uopšte. Jedno pitanje, dva uslova, pa i
+   cron i widget odgovaraju isto:
+
+     vaktija (grad)   Sarajevo — a na putu se ne zna koji je grad, pa ćuti
+     prekidač         `vaktijaObavijest` za obavijest, `vaktija` za prikaz
+
+   Putovanje je namjerno jače od oba: ko je van Sarajeva ne treba sarajevsku
+   vaktiju ni na ekranu ni u obavijesti. */
+function vaktijaZaKorisnika(prefs) {
+  return !naPutu(prefs);
+}
+
+function vakatPayload(vakat, vrijeme) {
+  return JSON.stringify({
+    title: vakat.naziv + " · " + vrijeme,
+    body: vakat.poruka,
+    tag: "vaktija",
+    url: "/"
+  });
+}
+
 module.exports = {
   TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
@@ -634,5 +777,7 @@ module.exports = {
   readJson, validSubscription, validDate,
   removeSubscription, intervalMinutes, cronAuthorized, devUnlocked,
   /* korisnik i njegov config */
-  userKey, userFrom, defaultPrefs, cleanPrefs, readPrefs
+  userKey, userFrom, defaultPrefs, cleanPrefs, readPrefs, naPutu,
+  /* vaktija */
+  VAKTI, VAKAT_TOLERANCIJA, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika
 };

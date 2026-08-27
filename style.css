@@ -353,6 +353,112 @@ h1, h2, h3, p {
   color: var(--band-muted);
 }
 
+/* --- vakat: oznaka koja JESTE dugme -------------------------------------- */
+/* Naredni vakat u dvije riječi, uz avion i temu. Za razliku od njih dvoje,
+   ovo se pritiska — klik skrola nazad na karticu sa vaktijom (vaktija.js).
+   Zato ima pilulu i podlogu: pritisak koji postoji smije se i najaviti.
+
+   Podloga je prozirno crna/bijela iz same trake (`currentColor` ne bi radio
+   za pozadinu), pa oznaka ostaje u boji trake i danju i noću.
+
+   Vrijeme je `tabular-nums` i ne skraćuje se; ime se skraćuje prije njega —
+   "Ikindija 16:34" bez vremena ne bi značilo ništa. */
+.salaam-vakat {
+  flex-shrink: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--band-text);
+  background: rgba(35, 70, 57, 0.09);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, opacity 0.18s ease;
+}
+
+:root[data-theme="noc"] .salaam-vakat {
+  background: rgba(233, 229, 219, 0.1);
+}
+
+.salaam-vakat[hidden] {
+  display: none;
+}
+
+.salaam-vakat:hover {
+  background: rgba(35, 70, 57, 0.16);
+}
+
+:root[data-theme="noc"] .salaam-vakat:hover {
+  background: rgba(233, 229, 219, 0.17);
+}
+
+.salaam-vakat:active {
+  opacity: 0.6;
+}
+
+.salaam-vakat:focus-visible {
+  outline: 2px solid var(--band-text);
+  outline-offset: 2px;
+}
+
+.salaam-vakat-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--band-muted);
+}
+
+.salaam-vakat-svg {
+  width: 13px;
+  height: 13px;
+}
+
+.salaam-vakat-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.salaam-vakat-time {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Odbrojavanje — odvojeno tačkom, da se ne stopi sa vremenom vakta pored.
+   Tačka je razdvajač, ne znak, pa stoji u CSS-u. */
+.salaam-vakat-left {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--band-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.salaam-vakat-left::before {
+  content: "·";
+  margin: 0 5px 0 4px;
+  opacity: 0.65;
+}
+
+/* Uzak ekran: prvo pada vrijeme vakta, a odbrojavanje ostaje — ono se mijenja
+   i zbog njega se oznaka i gleda. Ime i odbrojavanje stanu uvijek. */
+@media (max-width: 400px) {
+  .salaam-vakat-time {
+    display: none;
+  }
+
+  .salaam-vakat-left::before {
+    content: "";
+    margin: 0 0 0 3px;
+  }
+}
+
 /* --- putovanje: avion ---------------------------------------------------- */
 /* Ista boja i ista veličina kao oznaka teme pored — to su dva znaka istog
    reda, a ne dva različita elementa. Vidljivost nosi CSS, ne JavaScript:
@@ -745,6 +851,376 @@ h1, h2, h3, p {
   .pgroup-fill {
     transition: none;
   }
+}
+
+/* --------------------------------------------------------------------------
+   5c. Vaktija — kartica iznad spiska (vaktija.js)
+
+   Ne u zaglavlju: zaglavlje je sticky i svaki red u njemu se plaća visinom
+   koja nikad ne ode sa ekrana. Vaktija se gleda pri otvaranju, kao i datum,
+   pa stoji prvo pod zaglavljem i skrola se zajedno sa spiskom — kad se krene
+   raditi, sama se skloni.
+
+   Cijela kartica je dugme (otvara stranu sa svim vremenima), pa su joj djeca
+   `<span>`-ovi: dugme prima samo tekstualni sadržaj.
+
+   Sve brojke su `tabular-nums`: odbrojavanje se mijenja svake sekunde, pa bi
+   se sa običnim ciframa red neprestano trzao u širini.
+   -------------------------------------------------------------------------- */
+.vaktija-wrap {
+  /* Razmak nadole daje prva sekcija svojim `margin-top`-om. */
+  padding-top: 16px;
+  padding-bottom: 0;
+}
+
+/* Nema vaktije (nije skinuta, ugašena u postavkama) — nema ni kartice. */
+.vaktija-wrap[hidden] {
+  display: none;
+}
+
+.vcard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px 13px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.25s ease, background 0.25s ease;
+}
+
+.vcard:hover,
+.vcard.is-on {
+  border-color: var(--accent-soft);
+}
+
+.vcard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.vcard:active {
+  opacity: 0.75;
+}
+
+/* --- gornji red: šta je ovo i koliko ga ima ------------------------------ */
+.vcard-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vcard-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vcard-left {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- glavni red: znak, ime, vrijeme -------------------------------------- */
+.vcard-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vcard-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.vcard-icon-svg {
+  width: 26px;
+  height: 26px;
+}
+
+.vcard-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vcard-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- traka isteka --------------------------------------------------------
+   Puni se od prethodnog vakta do narednog. Klizanje traje tačno sekundu,
+   koliko i razmak između dva otkucaja, pa se kreće bez zastajkivanja i
+   izgleda kao da vrijeme teče — a ne kao da skače.
+
+   `is-skok` je za trenutak kad vakat nastupi: traka se vraća na nulu, i to
+   mora biti skok, jer bi klizanje unazad preko cijelog ekrana izgledalo kao
+   da se vrijeme vratilo. -------------------------------------------------- */
+.vcard-track {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--background-alt);
+  overflow: hidden;
+}
+
+.vcard-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--done);
+  transition: width 1s linear, background 0.4s ease;
+}
+
+.vcard-fill.is-skok {
+  transition: none;
+}
+
+/* Zadnjih 15 minuta: traka pređe u zlatno, a odbrojavanje diše. */
+.vcard.is-soon .vcard-fill {
+  background: var(--accent);
+}
+
+.vcard.is-soon .vcard-left {
+  animation: vakat-dise 2.4s ease-in-out infinite;
+}
+
+/* Prva tri minuta poslije vakta — kartica to i kaže. */
+.vcard.is-nastupio {
+  border-color: var(--accent-soft);
+  background: var(--background-alt);
+}
+
+.vcard.is-nastupio .vcard-label {
+  color: var(--accent);
+  animation: vakat-javi 0.5s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+/* --- luk dana: šest znakova sa vremenima --------------------------------- */
+.vcard-day {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.vdot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  transition: color 0.4s ease, opacity 0.4s ease;
+}
+
+.vdot-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.vdot-time {
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prošlo danas — ostaje u luku, samo tiše. */
+.vdot.is-past {
+  opacity: 0.35;
+}
+
+.vdot.is-next {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Bljesak kad se dođe sa oznake iz zaglavlja. Kartica je odmah pod
+   zaglavljem, pa skrol često nema kuda — bez bljeska bi klik izgledao kao da
+   se ništa nije desilo. */
+.vcard.is-blic {
+  animation: vakat-blic 1.4s ease-out both;
+}
+
+@keyframes vakat-blic {
+  0%   { box-shadow: 0 0 0 0 rgba(184, 146, 90, 0); border-color: var(--accent); }
+  12%  { box-shadow: 0 0 0 4px rgba(184, 146, 90, 0.28); border-color: var(--accent); }
+  100% { box-shadow: var(--shadow); border-color: var(--line); }
+}
+
+@keyframes vakat-dise {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+@keyframes vakat-javi {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Ko traži manje animacija dobija iste podatke, samo mirne. */
+@media (prefers-reduced-motion: reduce) {
+  .vcard-fill {
+    transition: none;
+  }
+
+  .vcard.is-soon .vcard-left,
+  .vcard.is-nastupio .vcard-label,
+  .vcard.is-blic {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   5d. Vaktija — strana sa svim vremenima
+
+   Isti drawer kao svugdje (ista ploča, isto zaglavlje), a unutra dvije
+   stvari: naredni vakat krupno na vrhu i spisak svih šest ispod njega.
+   Prošli vakti su prigušeni, naredni je istaknut — dan se tako pročita bez
+   traženja.
+   -------------------------------------------------------------------------- */
+.drawer-vaktija .drawer-sheet {
+  max-width: 520px;
+}
+
+.vakat-now {
+  text-align: center;
+  padding: 20px 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.vakat-now-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.vakat-now-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.vakat-now-name {
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.vakat-now-time {
+  font-size: 1.375rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.vakat-now-left {
+  margin-top: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.vakat-list {
+  display: flex;
+  flex-direction: column;
+  padding-top: 6px;
+}
+
+.vakat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 12px;
+  margin: 0 -12px;
+  border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--line);
+  transition: background 0.3s ease, opacity 0.3s ease;
+}
+
+.vakat-row:last-child {
+  border-bottom: 0;
+}
+
+.vakat-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  transition: color 0.3s ease;
+}
+
+.vakat-naziv {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+.vakat-vrijeme {
+  flex-shrink: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prošlo danas — ostaje na spisku, samo tiše. */
+.vakat-row.is-past {
+  opacity: 0.45;
+}
+
+.vakat-row.is-next {
+  background: var(--background-alt);
+}
+
+.vakat-row.is-next .vakat-icon {
+  color: var(--accent);
+}
+
+.vakat-row.is-next .vakat-naziv,
+.vakat-row.is-next .vakat-vrijeme {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.vakat-prazno {
+  padding: 28px 0;
+  text-align: center;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--muted);
 }
 
 /* --------------------------------------------------------------------------
@@ -3357,6 +3833,142 @@ body.no-scroll .top-fab {
 }
 
 /* --------------------------------------------------------------------------
+   11c. Nova verzija — traka na dnu (update.js)
+
+   Pojavi se kad service worker skine novo izdanje i stane da čeka. Stoji na
+   dnu, kao i sva ostala lebdeća dugmad, i nosi isto "staklo" — traka je
+   ponuda, ne prekid: spisak ispod se i dalje čita i skrola.
+
+   Dok stoji, lebdeća dugmad se podignu za njenu visinu (`body.has-update`),
+   da "Na vrh" ne završi ispod nje. Šire od telefona ostaje ista traka, samo
+   ne preko cijele širine — poruka od dvije riječi razvučena preko 720px
+   izgleda kao greška.
+   -------------------------------------------------------------------------- */
+.update {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  z-index: 70;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 32px);
+  max-width: 440px;
+  padding: 12px 12px 12px 16px;
+  background: var(--glass-surface);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation: fab-in 0.4s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+/* Bez blura pozadina mora biti puna — inače se spisak providi kroz traku. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .update {
+    background: var(--surface);
+  }
+}
+
+/* Preko ekrana je drawer ili završni ekran — traka tada ne smije stajati
+   iznad njih, a ni u redu za tastaturu. */
+body.no-scroll .update {
+  display: none;
+}
+
+.update-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.update-note {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Puno dugme — jedina radnja u traci, pa nosi boju aplikacije. */
+.update-btn {
+  flex-shrink: 0;
+  padding: 9px 16px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--surface);
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.update-btn:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
+}
+
+.update-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.update-btn:focus-visible,
+.update-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* "Kasnije" — sitno i tiho, jer je odgoda, a ne izbor ravan instalaciji. */
+.update-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.update-close:hover {
+  color: var(--text);
+  background: var(--background-alt);
+}
+
+/* Lebdeća dugmad se sklone iznad trake dok ona stoji. `.duas-top` nije u
+   spisku: on živi u drawer-u, a preko drawer-a se traka ionako ne vidi. */
+body.has-update .top-fab,
+body.has-update .celebrate-fab {
+  bottom: max(88px, calc(env(safe-area-inset-bottom) + 84px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
    12. Responsive
    -------------------------------------------------------------------------- */
 @media (min-width: 640px) {
@@ -3611,6 +4223,12 @@ body.no-scroll .top-fab {
   background: var(--accent);
   color: #16160f;
   font-weight: 600;
+}
+
+/* Vakat koji je danas već prošao — dugme i dalje radi (proba se pravi kad se
+   stigne, ne kad vakat nastupi), samo se vidi da je iza nas. */
+.devp-chip.is-past {
+  opacity: 0.5;
 }
 
 .devp-time {

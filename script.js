@@ -2274,22 +2274,18 @@
     return pullBusy || document.body.classList.contains("no-scroll");
   }
 
-  /* Ima li nova verzija aplikacije. `installing` ili `waiting` znači da je
-     service worker na serveru drugačiji od instaliranog. Kad se ništa nije
-     promijenilo, oba su prazna — pa se ovo ne može zavrtjeti u krug
-     ponovnih učitavanja. */
+  /* Ima li nova verzija aplikacije. Pita se update.js — on drži registraciju
+     service workera i on je jedini koji zna kako se nova verzija preuzima
+     (obična `location.reload()` je više ne aktivira, jer service worker
+     čeka; vidi zaglavlje service-worker.js).
+
+     Kad se ništa nije promijenilo, vraća `false` — pa se ovo ne može
+     zavrtjeti u krug ponovnih učitavanja. */
   function novaVerzija() {
-    if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistration) {
+    if (!window.mojZikrUpdate || !window.mojZikrUpdate.provjeri) {
       return Promise.resolve(false);
     }
-    return navigator.serviceWorker.getRegistration()
-      .then(function (reg) {
-        if (!reg) { return false; }
-        return Promise.resolve(reg.update()).then(function () {
-          return !!(reg.installing || reg.waiting);
-        });
-      })
-      .catch(function () { return false; });
+    return window.mojZikrUpdate.provjeri();
   }
 
   function endPull() {
@@ -2329,8 +2325,10 @@
       return svjeza;
     }).then(function (ima) {
       /* Nova verzija je stigla dolje — od ovog trenutka ponovno učitavanje
-         nije gubitak nego jedini način da se vidi. */
-      if (ima) { window.location.reload(); return; }
+         nije gubitak nego jedini način da se vidi. Povlačenje je izričit
+         zahtjev da se osvježi, pa se ovdje ne čeka traka sa dugmetom
+         "Instaliraj" (update.js) nego se preuzima odmah. */
+      if (ima) { window.mojZikrUpdate.preuzmi(); return; }
       endPull();
     }).catch(endPull);
   }

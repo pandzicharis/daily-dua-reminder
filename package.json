@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "node dev-server.js",
     "test-push": "node scripts/send-test-push.js",
-    "raspored": "node scripts/check-schedule.js"
+    "raspored": "node scripts/check-schedule.js",
+    "vaktija": "node scripts/check-vaktija.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.3",
