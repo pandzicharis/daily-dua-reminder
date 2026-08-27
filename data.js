@@ -1348,7 +1348,15 @@
          pet obavijesti dnevno niko ne smije dobiti a da ih nije upalio.
          Oba polja čita i server: prikaz njega ne zanima, ali `obavijest`
          odlučuje šalje li ciklus push (api/cron.js). */
-      vaktija: true, vaktijaObavijest: false
+      vaktija: true, vaktijaObavijest: false,
+      /* Režim teme: "auto" (svijetla danju, tamna uveče), "dan" ili "noc".
+
+         Tema je inače stvar UREĐAJA i živi u localStorage (theme.js) — svaki
+         ekran svoju. Ovdje stoji zato što je widget na početnom ekranu ne
+         može pročitati odande: on je izvan browsera i vidi samo ono što mu
+         server pošalje. Cijena je da tema sada prati korisnika kroz sve
+         njegove uređaje; to je i bila izričita želja. */
+      tema: "auto"
     };
   }
 
@@ -1366,6 +1374,7 @@
     if (typeof raw.vaktijaObavijest === "boolean") {
       out.vaktijaObavijest = raw.vaktijaObavijest;
     }
+    if (["auto", "dan", "noc"].indexOf(raw.tema) !== -1) { out.tema = raw.tema; }
 
     out.dodatno = cleanCustom(raw.dodatno);
     var known = knownItemIds(out.dodatno);

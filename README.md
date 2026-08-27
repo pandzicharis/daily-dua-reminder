@@ -365,6 +365,7 @@ Zupčanik u headeru otvara drawer sa dna (`settings.js`):
 | **Stranica dnevno** | `stranice` | koliko se stranica mushafa uči u jednom danu (1–20) — iza olovke na kur'anskoj stavci. |
 | **Vlastite stavke** | `dodatno` | svoja dova ili svoj zikr, u bilo koju sekciju osim kur'anske, bez deploya. |
 | **Redoslijed** | `redoslijed` | red se povuče i spusti gdje treba; poredak vrijedi i na ekranu, i u postavkama, i u numeraciji dova. |
+| **Tema** | `tema` | `auto`, `dan` ili `noc`. Tema je i dalje stvar uređaja (theme.js, localStorage); ovo je **kopija zbog widgeta**, koji je izvan browsera i vidi samo ono što mu server pošalje. Posljedica: izabrana tema prati korisnika kroz sve njegove uređaje. |
 | **Vaktija** | `vaktija` | kartica sa narednim vaktom iznad spiska (podrazumijevano uključeno). Zaključava se dok je putovanje uključeno. Vidi 4d. |
 | **Obavijest o vaktu** | `vaktijaObavijest` | najava **15 minuta prije** namaza — šalje je server, pa vrijedi i kad je aplikacija zatvorena. Podrazumijevano **isključeno**; na putu ćuti. |
 
@@ -870,18 +871,27 @@ Odabran je Scriptable: `widget/vaktija-widget.js`.
 | 2. dan | sva vremena, svako sa svojom ikonicom (SF Symbols: mlađak, izlazak, puno sunce, sunce na zalasku, zalazak, mlađak) |
 | 3. zikr | postotak urađenog, sa trakom — i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
 
-Boje su iz palete aplikacije, a dan/noć prati **režim telefona**
-(`Device.isUsingDarkAppearance()`). Na **mali** widget šest stubaca ne stane
-a da se pročita, pa on nosi vakat i zikr.
+Boje su iz palete aplikacije, a **temu bira sama aplikacija**: režim iz
+postavki (`auto` / `dan` / `noc`) putuje kroz config na server i stiže
+widgetu uz sve ostalo. Kad je `auto`, boju bira doba dana — isti sat po kojem
+se prelama i aplikacija. Tako widget i aplikacija nikad ne stoje u dvije
+boje; promjena stigne pri prvom sljedećem osvježavanju, minutu do tri.
 
-### Zašto stupci nemaju imena vakata
+Na **mali** widget šest stubaca ne stane a da se pročita, pa on nosi vakat i
+zikr.
 
-Prva verzija je uz vrijeme pisala i ime („Zora", „Izlazak sunca", „Ikindija").
-Imena su različite dužine, pa su razvlačila stupce i red je izgledao
-razbacano — a širina stupca se u Scriptable-u ne može zaključati.
+### Zašto stupci imaju zaključanu širinu
 
-Sada je u stupcu samo **ikonica i vrijeme**: oboje je iste širine u svakom
-stupcu, pa se šest stubaca poravna samo od sebe, na svakom telefonu.
+U stupcu stoje ikonica, ime vakta i vrijeme. Imena su različite dužine
+(„Zora" prema „Ikindija"), pa bi svaki stubac bio svoje širine i razmaci bi
+ispali nejednaki — red je tako i izgledao razbacano.
+
+Rješenje je `kol.size = new Size(sirinaStupca, 0)`: širina je zaključana, a
+sadržaj centriran u njoj, pa se ikonica, ime i vrijeme poravnaju i međusobno
+i sa susjednim stupcem. Između stubaca stoje rastegljivi razmaci, pa se sitna
+greška u procjeni širine widgeta pojavi kao razmak koji se malo skupi, a
+nikad kao odsječen stubac. Najduže ime na najužem telefonu pokriva
+`minimumScaleFactor`.
 
 Bila je i međuverzija koja je cijeli dan crtala kao **sliku** (`DrawContext`),
 da bi brojevi sjeli tačno ispod tačaka. Radila je, ali je slika morala dobiti

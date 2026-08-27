@@ -4,7 +4,7 @@
    Tri bloka, jedan ispod drugog, i ništa više:
 
      1. koji namaz nastupa i za koliko
-     2. sva vremena dana, svako sa svojom ikonicom
+     2. sva vremena dana — ikonica, ime vakta i vrijeme
      3. postotak zikra, sa trakom
 
    MINIMALIZAM JE OVDJE PRAVILO, NE UKUS. Widget se gleda u prolazu, sekundu
@@ -17,9 +17,9 @@
    ostalo poravnato prema pogođenoj mjeri, a ne prema samom widgetu.
 
    Sada se sve slaže Scriptable-ovim redovima i stupcima, koji se sami
-   razvuku koliko widget ima. Stupci su jednaki jer im je sadržaj jednak:
-   ikonica i vrijeme, bez imena — imena su različite dužine, pa su upravo ona
-   razvlačila stupce i činila da red izgleda razbacano.
+   razvuku koliko widget ima. Stupci dana imaju ZAKLJUČANU širinu (`kol.size`)
+   i sadržaj centriran u njoj — bez toga bi ih imena vakata, koja su različite
+   dužine, razvukla svako na svoju mjeru i red bi izgledao razbacano.
 
    Jedina mjera koja se i dalje pogađa je dužina POPUNJENOG dijela trake;
    njeni rubovi su rubovi widgeta, pa se greška ne vidi kao neporavnatost.
@@ -96,15 +96,20 @@ const ZNAKOVI = {
   jacija: "moon.fill"
 };
 
-/* Tema prati REŽIM TELEFONA, ne sat: to se mijenja rukom i očekuje da se
-   vidi odmah, a iOS widget ponovo iscrta čim se režim promijeni. `doba` sa
-   servera ostaje kao rezerva. */
+/* Tema prati APLIKACIJU, ne telefon.
+
+   Režim izabran u postavkama ("auto", "dan", "noc") putuje kroz config na
+   server, pa ga widget dobija uz sve ostalo. Kad je "auto", boju bira doba
+   dana — isti sat po kojem se i aplikacija prelama (dan od 07:00, noć od
+   19:00), a taj račun je već napravljen na serveru (`doba`).
+
+   Tako widget i aplikacija nikad ne stoje u dvije boje. Promjena u
+   postavkama stigne do widgeta pri prvom sljedećem osvježavanju — minutu do
+   tri (vidi `refreshAfterDate`). */
 function paleta(data) {
-  try {
-    return Device.isUsingDarkAppearance() ? PALETA.noc : PALETA.dan;
-  } catch (e) {
-    return PALETA[(data && data.doba) === "noc" ? "noc" : "dan"];
-  }
+  const rezim = (data && data.tema) || "auto";
+  if (rezim === "dan" || rezim === "noc") { return PALETA[rezim]; }
+  return PALETA[(data && data.doba) === "noc" ? "noc" : "dan"];
 }
 
 /* Jedina mjera koja se pogađa: koliko je widget širok iznutra. Treba samo
@@ -209,38 +214,58 @@ function traka(w, dio, sirina, visina, punaBoja, praznaBoja) {
   return okvir;
 }
 
-/* Jedan stubac dana: ikonica pa vrijeme. Bez imena vakta — imena su različite
-   dužine i upravo su ona razvlačila stupce, pa je red izgledao razbacano.
-   Ikonica kaže isto, a svaka je iste širine. */
-function stubac(red, v, naredni, boje) {
+/* "Izlazak sunca" u stupac ne stane, a skraćeno se i dalje zna šta je. */
+function kratkoIme(naziv) {
+  return naziv === "Izlazak sunca" ? "Izlazak" : naziv;
+}
+
+/* Jedan stubac dana: ikonica, ime vakta, vrijeme.
+
+   ŠIRINA STUPCA JE ZAKLJUČANA (`kol.size`). To je jedini način da imena
+   ostanu unutra a red ne izgleda razbacano: imena su različite dužine, pa bi
+   inače svaki stubac bio svoje širine i razmaci bi ispali nejednaki. Sadržaj
+   se u zaključanoj kutiji centrira, pa se ikonica, ime i vrijeme poravnaju
+   sami — i međusobno, i sa susjednim stupcem.
+
+   `minimumScaleFactor` je zaštita za najduže ime na najužem telefonu: prije
+   nego što bi ispalo iz stupca, slovo se malo smanji. */
+function stubac(red, v, naredni, boje, sirinaStupca) {
   const kol = red.addStack();
   kol.layoutVertically();
   kol.centerAlignContent();
+  kol.size = new Size(sirinaStupca, 0);
 
-  const bojaZnaka = naredni
-    ? boje.zlatna
-    : (v.proslo ? boje.tiha : boje.glavna);
+  const jaka = naredni ? boje.zlatna : (v.proslo ? boje.tiha : boje.glavna);
+  const obicna = naredni ? boje.zlatna : (v.proslo ? boje.tiha : boje.tekst);
 
   try {
     const znak = SFSymbol.named(ZNAKOVI[v.id] || "circle.fill");
-    znak.applyFont(Font.systemFont(13));
+    znak.applyFont(Font.systemFont(15));
     const img = kol.addImage(znak.image);
-    img.imageSize = new Size(14, 14);
-    img.tintColor = boja(bojaZnaka);
+    img.imageSize = new Size(15, 15);
+    img.tintColor = boja(jaka);
     img.resizable = true;
   } catch (e) {
-    /* Starije okruženje bez tog znaka — stubac ostaje bez ikonice, vrijeme
-       je i dalje tu. */
+    /* Starije okruženje bez tog znaka — stubac ostaje bez ikonice, ime i
+       vrijeme su i dalje tu. */
   }
 
   kol.addSpacer(3);
 
-  const t = tekst(kol, v.vrijeme,
-    naredni ? boje.zlatna : (v.proslo ? boje.tiha : boje.tekst),
-    11, true);
-  t.centerAlignText();
+  const ime = tekst(kol, kratkoIme(v.naziv), naredni ? boje.zlatna : boje.tiha,
+    9.5, naredni);
+  ime.centerAlignText();
+  ime.minimumScaleFactor = 0.7;
 
-  if (v.proslo && !naredni) { t.textOpacity = 0.6; }
+  const kad = tekst(kol, v.vrijeme, obicna, 12.5, true);
+  kad.centerAlignText();
+  kad.minimumScaleFactor = 0.8;
+
+  if (v.proslo && !naredni) {
+    ime.textOpacity = 0.6;
+    kad.textOpacity = 0.6;
+  }
+
   return kol;
 }
 
@@ -266,23 +291,31 @@ function blokVakat(w, data, boje, veliko) {
   red.layoutHorizontally();
   red.bottomAlignContent();
 
-  tekst(red, data.vakat.naziv, boje.glavna, veliko ? 20 : 17, true);
+  tekst(red, data.vakat.naziv, boje.glavna, veliko ? 22 : 18, true);
   red.addSpacer();
-  tekst(red, data.vakat.vrijeme, boje.tekst, veliko ? 20 : 17, true);
+  tekst(red, data.vakat.vrijeme, boje.tekst, veliko ? 22 : 18, true);
 
   w.addSpacer(2);
-  tekst(w, "za " + preostalo(data.vakat.preostalo), boje.zlatna, veliko ? 12 : 11, true);
+  tekst(w, "za " + preostalo(data.vakat.preostalo), boje.zlatna, veliko ? 13 : 12, true);
 }
 
 /* 2. Sva vremena dana, svako sa svojom ikonicom. */
-function blokDan(w, data, boje) {
+function blokDan(w, data, boje, sirina) {
+  const vakti = data.vakti || [];
+  if (!vakti.length) { return; }
+
+  /* Zaključana širina stupca, uz malo zraka koju pokupe rastegljivi razmaci
+     između njih. Tako se sitna greška u procjeni širine widgeta pojavi kao
+     razmak koji se malo skupi, a nikad kao odsječen stubac. */
+  const sirinaStupca = Math.max(34, Math.floor(sirina / vakti.length) - 4);
+
   const red = w.addStack();
   red.layoutHorizontally();
 
-  (data.vakti || []).forEach(function (v, i) {
+  vakti.forEach(function (v, i) {
     if (i) { red.addSpacer(); }
     const naredni = data.vakat && !data.vakat.sutra && v.id === data.vakat.id;
-    stubac(red, v, naredni, boje);
+    stubac(red, v, naredni, boje, sirinaStupca);
   });
 }
 
@@ -292,9 +325,9 @@ function blokZikr(w, data, boje, sirina) {
 
   const red = w.addStack();
   red.layoutHorizontally();
-  tekst(red, imeZikra(data.zikr), boje.tiha, 9, true);
+  tekst(red, imeZikra(data.zikr), boje.tiha, 10, true);
   red.addSpacer();
-  tekst(red, dio + " %", dio >= 100 ? boje.gotovo : boje.tekst, 11, true);
+  tekst(red, dio + " %", dio >= 100 ? boje.gotovo : boje.tekst, 13, true);
 
   w.addSpacer(4);
   traka(w, dio / 100, sirina, 5,
@@ -310,7 +343,7 @@ function nacrtaj(data) {
 
   const w = new ListWidget();
   w.backgroundColor = boja(boje.pozadina);
-  w.setPadding(13, RUB, 13, RUB);
+  w.setPadding(12, RUB, 12, RUB);
   w.url = OTVORI || APP;
 
   if (!data) {
@@ -327,7 +360,7 @@ function nacrtaj(data) {
      pročitati. */
   if (!mali && !data.putovanje && (data.vakti || []).length) {
     w.addSpacer();
-    blokDan(w, data, boje);
+    blokDan(w, data, boje, sirina);
   }
 
   if (data.zikr) {

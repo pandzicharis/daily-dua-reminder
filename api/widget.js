@@ -27,7 +27,8 @@
      {
        "grad": "Sarajevo",
        "datum": "2026-08-27",
-       "doba": "dan" | "noc",          // isto pravilo po kojem se boji tema
+       "doba": "dan" | "noc",          // po satu: dan od 07:00, noć od 19:00
+       "tema": "auto" | "dan" | "noc", // režim iz postavki aplikacije
        "vakat": { id, naziv, vrijeme, preostalo, sutra, istek },
        "vakti": [ { id, naziv, vrijeme, namaz, kada, proslo } × 6 ],
        "zikr":  { id, naslov, done, total, ostalo, gotovo } | null,
@@ -274,6 +275,9 @@ module.exports = async function handler(req, res) {
       grad: "Sarajevo",
       datum: now.date,
       doba: doba(now.minutes),
+      /* Režim teme iz postavki aplikacije: "auto", "dan" ili "noc". Widget iz
+         njega bira paletu, a `doba` mu treba samo kad je režim "auto". */
+      tema: (prefs && prefs.tema) || "auto",
       /* Na putu vaktije nema, i widget to kaže naglas umjesto da pokaže
          tuđa vremena kao svoja. */
       putovanje: putovanje,

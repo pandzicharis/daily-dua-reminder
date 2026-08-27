@@ -2152,6 +2152,45 @@
     return svg;
   }
 
+  /* Tema ide i u config — zbog widgeta.
+
+     Tema je i dalje stvar uređaja (theme.js je čuva u localStorage i mijenja
+     bez servera); ovo je samo KOPIJA, da je widget na početnom ekranu može
+     pročitati. On je izvan browsera i vidi jedino ono što mu server pošalje.
+
+     Posljedica je namjerna i znana: izabrana tema sada prati korisnika kroz
+     sve njegove uređaje. Pamti se REŽIM ("auto", "dan", "noc"), a ne trenutna
+     boja — inače bi prelaz u 19:00 na jednom telefonu zaključao noćnu temu na
+     svim ostalim.
+
+     `pisemTemu` je zaštita od kruga: promjena koja DOĐE sa servera ne smije
+     odmah otići nazad na server. */
+  var pisemTemu = false;
+
+  function zapamtiTemu() {
+    var tema = window.mojZikrTema;
+    if (!tema || pisemTemu) { return; }
+
+    var rezim = tema.rezim();
+    if (config.tema === rezim) { return; }
+
+    config.tema = rezim;
+    zapamtiConfig();
+    posalji();
+  }
+
+  /* Tema stigla sa servera (drugi uređaj je promijenio) — primijeni je ovdje.
+     Zove se poslije svakog povlačenja configa. */
+  function primijeniTemuIzConfiga() {
+    var tema = window.mojZikrTema;
+    if (!tema || !config.tema || config.tema === tema.rezim()) { return; }
+
+    pisemTemu = true;
+    tema.postavi(config.tema);
+    pisemTemu = false;
+    osvjeziTemu();
+  }
+
   function dodajTemu(body) {
     var tema = window.mojZikrTema;
     if (!tema) { return; }
@@ -2200,8 +2239,16 @@
 
     /* I na promjenu koja dođe MIMO postavki: sam prelaz u 19:00 dok su
        postavke otvorene, ili glumljeni sat iz testnog panela. */
-    tema.naPromjenu(osvjeziTemu);
+    tema.naPromjenu(function () {
+      osvjeziTemu();
+      /* Režim se mijenja rijetko; prelaz u 19:00 ga ne dira, pa se ovdje
+         ništa ne šalje bez potrebe (vidi `zapamtiTemu`). */
+      zapamtiTemu();
+    });
     osvjeziTemu();
+    /* Zatečen config (prije nego je tema u njemu postojala) dobija svoj
+       režim pri prvom otvaranju. */
+    zapamtiTemu();
   }
 
   function osvjeziTemu() {
@@ -2643,6 +2690,8 @@
     });
     /* Config sa drugog uređaja može donijeti i upaljeno putovanje. */
     osvjeziVaktiju();
+    /* ...i drugu temu. */
+    primijeniTemuIzConfiga();
     /* Putovanje uključeno na drugom uređaju mora obojiti i ovaj ekran, ne samo
        prebaciti prekidač. */
     primijeniPut();
