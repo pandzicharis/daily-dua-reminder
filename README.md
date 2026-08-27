@@ -867,26 +867,56 @@ Odabran je Scriptable: `widget/vaktija-widget.js`.
 | | |
 |---|---|
 | naredni vakat | ime, vrijeme i koliko ga još ima |
-| traka isteka | koliki je dio tekućeg vakta prošao — ista ona koja stoji i na kartici u aplikaciji |
-| dan | svih šest vremena; prošla prigušena, naredno zlatno |
-| zikr | koliki je dio današnjeg zikra urađen, **u postotku**, sa trakom — i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
-| dan / noć | boje prate isto pravilo po kojem se boji i aplikacija (dan od 07:00, noć od 19:00) |
+| linija dana | svih šest vremena na **pravim razmacima** — jutro gusto, popodne rijetko, kako dan i teče — sa oznakom dokle se stiglo |
+| prsten zikra | koliki je dio današnjeg zikra urađen, u postotku, i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
+| dan / noć | boje prate **režim telefona** (`Device.isUsingDarkAppearance()`) |
 
-**Srednji** widget nosi sve; na **mali** šest stubaca ne stane a da se išta
-pročita, pa on izostavlja dan i razvlači ostalo preko cijele visine (vakat u
-tri reda umjesto u jednom).
+**Srednji** widget nosi sve; na **mali** šest brojeva na 128 piksela se ne
+može pročitati, pa on nosi vakat, odbrojavanje i prsten.
 
-Prazan prostor se ne skuplja na dnu: dva rastegljiva razmaka — jedan iznad
-dana, jedan iznad zikra — dijele ga na dva mjesta, pa widget izgleda pun ma
-koliko visok bio.
+### Zašto se linija dana i prsten crtaju kao slika
 
-`istek` (0–1) računa **server** i šalje ga uz naredni vakat, pa widget ne
-mora znati nijedno vrijeme osim onih koja mu stignu. Prije zore je prethodni
-vakat jučerašnja jacija — tada se čita i jučerašnji dan, koji je ionako u
-kešu.
+Scriptable slaže sadržaj u redove i stupce, a razmak između njih se **rasteže
+po ekranu**. Brojevi ispod tačaka bi se pri tome razišli sa tačkama, i to
+različito na svakom telefonu — što se i vidjelo. U slici (`DrawContext`) se
+koordinate računaju same, pa tačka i broj ispod nje stoje na istom pikselu
+svugdje.
 
-Širina traka se računa iz širine ekrana (`Device.screenSize()`): widget nema
-način da pita koliko ga ima, a slika mora dobiti tačnu širinu u pikselima.
+Prsten je iz istog razloga slika, a ne traka: traka bi u desnom stupcu bila
+uska i kratka, a krug nosi isti podatak i popuni prostor koji bi ostao
+prazan. Scriptable nema luk, pa se crta kao niz kratkih linija po kružnici —
+dovoljno gusto da se na šezdeset piksela ne vidi razlika.
+
+Širina slike se računa iz širine ekrana (Appleove mjere widgeta po veličini
+ekrana): widget nema način da pita koliko ga ima, a slika mora dobiti tačnu
+širinu u pikselima. Nepoznat ekran dobija najuži raspored, koji stane
+svugdje.
+
+### Dodir otvara aplikaciju, ne Safari
+
+Obična `https` adresa u widgetu otvara **Safari** — iOS nema način da se web
+aplikacija sa početnog ekrana pozove adresom. Zaobilazi se prečicom, jer
+Shortcuts umije otvoriti instaliranu PWA kao svaku drugu aplikaciju:
+
+1. Shortcuts → `+` → *Add Action* → **Open App** → izaberi **Zikr**
+   (aplikacija sa početnog ekrana, ne Safari)
+2. Nazovi prečicu **Zikr** → *Done*
+
+U widgetu to koristi `OTVORI` (`shortcuts://run-shortcut?name=Zikr`). Ime
+prečice mora biti isto. Na dodir kratko bljesne Shortcuts pa se otvori
+aplikacija. Ostavi li se `OTVORI` prazno, dodir otvara adresu u Safariju.
+
+### Tema prati telefon
+
+Boje bira `Device.isUsingDarkAppearance()`, a ne doba dana sa servera. Tako
+se promjena režima na telefonu vidi **odmah** — iOS ponovo iscrta widget čim
+se režim promijeni. `doba` iz odgovora ostaje kao rezerva.
+
+> Tema izabrana **u samoj aplikaciji** (postavke → Tema) ovdje se ne vidi:
+> ona živi u `localStorage` tog uređaja i namjerno ne ide na server (vidi
+> `theme.js`). Da bi je widget pratio, morala bi ući u config — tada bi je
+> dijelili i svi uređaji istog korisnika, što je upravo ono što je theme.js
+> izbjegao.
 
 **Nijedno pravilo nije u widgetu.** Šta je danas na spisku, koliko je
 urađeno, koji je vakat na redu i je li dan ili noć — sve dolazi gotovo sa
@@ -931,8 +961,7 @@ samo skrati. Po polju `datum` widget prepoznaje da je odgovor **stigao**
    preko pola ekrana) → *Add Widget*.
 6. Novi widget je prazan dok mu se ne kaže koju skriptu vrti: drži prst na
    njemu → **Edit Widget** → *Script*: **Vaktija**, *When Interacting*:
-   **Run Script** (ili *Open URL* ako hoćeš da dodir vodi pravo u
-   aplikaciju).
+   **Run Script**.
 7. Pritisni bilo gdje van widgeta → *Done*.
 
 Prvih par sekundi widget zna biti prazan dok se skripta ne izvrši prvi put.
