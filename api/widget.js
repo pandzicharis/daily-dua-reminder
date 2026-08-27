@@ -28,7 +28,7 @@
        "grad": "Sarajevo",
        "datum": "2026-08-27",
        "doba": "dan" | "noc",          // isto pravilo po kojem se boji tema
-       "vakat": { id, naziv, vrijeme, preostalo, sutra },
+       "vakat": { id, naziv, vrijeme, preostalo, sutra, istek },
        "vakti": [ { id, naziv, vrijeme, namaz, kada, proslo } × 6 ],
        "zikr":  { id, naslov, done, total, ostalo, gotovo } | null,
        "badge": 5                       // koliko dova ukupno čeka
@@ -102,6 +102,13 @@ function tekuciZikr(checked, date, prefs, minutes, weekday) {
   };
 }
 
+/* Dan ± n, kroz UTC — lokalni sat i ljetno računanje vremena ovdje ne smiju
+   pojesti ni jedan dan. */
+function danPomjeren(date, delta) {
+  return new Date(Date.parse(date + "T00:00:00Z") + delta * 86400000)
+    .toISOString().slice(0, 10);
+}
+
 /* "za 2 h 13 min" / "za 12 min" — isto pravilo kao u aplikaciji, samo bez
    sekundi: obavijest iz prečice se ne osvježava, pa bi sekunde lagale. */
 function preostalo(sekundi) {
@@ -161,6 +168,8 @@ module.exports = async function handler(req, res) {
        traži i sutrašnji dan — jedan poziv manje svaki drugi put. */
     let vakat = null;
     const spisak = [];
+    /* Zadnji vakat koji je danas prošao — iz njega se računa `istek`. */
+    let prosli = null;
 
     if (vremena) {
       VAKTI.forEach(function (v, i) {
@@ -188,13 +197,13 @@ module.exports = async function handler(req, res) {
             preostalo: (minuta - now.minutes) * 60,
             sutra: false
           };
+        } else if (!vakat && proslo) {
+          prosli = minuta;
         }
       });
 
       if (!vakat) {
-        const sutraKey = new Date(Date.parse(now.date + "T00:00:00Z") + 86400000)
-          .toISOString().slice(0, 10);
-        const sutra = await vaktijaZa(sutraKey);
+        const sutra = await vaktijaZa(danPomjeren(now.date, 1));
         const minuta = sutra ? vakatMinute(sutra[0]) : null;
 
         if (minuta !== null) {
@@ -206,6 +215,30 @@ module.exports = async function handler(req, res) {
             sutra: true
           };
         }
+      }
+
+      /* Koliki je dio TEKUĆEG vakta istekao, 0–1. Widget iz ovoga crta traku
+         kao i kartica u aplikaciji, a da ne mora znati nijedno vrijeme osim
+         onih koja mu ovdje stignu.
+
+         Prije zore je prethodni vakat jučerašnja jacija, pa se traži i
+         jučerašnji dan — on je ionako u kešu iz jučerašnjih ciklusa. Ako ga
+         nema, mjeri se od šest sati unazad: traka koja stoji prazna cijelo
+         jutro izgleda kao kvar. */
+      if (vakat) {
+        if (prosli === null) {
+          const jucerKey = danPomjeren(now.date, -1);
+          const jucer = await vaktijaZa(jucerKey);
+          const zadnji = jucer ? vakatMinute(jucer[VAKTI.length - 1]) : null;
+          prosli = (zadnji === null) ? null : zadnji - 24 * 60;
+        }
+
+        const doVakta = now.minutes + vakat.preostalo / 60;
+        const od = (prosli === null) ? doVakta - 6 * 60 : prosli;
+        const raspon = Math.max(1, doVakta - od);
+
+        vakat.istek = Math.max(0, Math.min(1,
+          Math.round(((now.minutes - od) / raspon) * 1000) / 1000));
       }
     }
 

@@ -862,15 +862,31 @@ JavaScript i smije crtati widget.
 
 Odabran je Scriptable: `widget/vaktija-widget.js`.
 
-**Šta pokazuje** — dvije stvari i ništa više:
+**Šta pokazuje**
 
 | | |
 |---|---|
 | naredni vakat | ime, vrijeme i koliko ga još ima |
+| traka isteka | koliki je dio tekućeg vakta prošao — ista ona koja stoji i na kartici u aplikaciji |
+| dan | svih šest vremena; prošla prigušena, naredno zlatno |
 | zikr | koliki je dio današnjeg zikra urađen, **u postotku**, sa trakom — i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
 | dan / noć | boje prate isto pravilo po kojem se boji i aplikacija (dan od 07:00, noć od 19:00) |
 
-Mali i srednji widget nose isto; razlikuju se samo veličinom slova i trake.
+**Srednji** widget nosi sve; na **mali** šest stubaca ne stane a da se išta
+pročita, pa on izostavlja dan i razvlači ostalo preko cijele visine (vakat u
+tri reda umjesto u jednom).
+
+Prazan prostor se ne skuplja na dnu: dva rastegljiva razmaka — jedan iznad
+dana, jedan iznad zikra — dijele ga na dva mjesta, pa widget izgleda pun ma
+koliko visok bio.
+
+`istek` (0–1) računa **server** i šalje ga uz naredni vakat, pa widget ne
+mora znati nijedno vrijeme osim onih koja mu stignu. Prije zore je prethodni
+vakat jučerašnja jacija — tada se čita i jučerašnji dan, koji je ionako u
+kešu.
+
+Širina traka se računa iz širine ekrana (`Device.screenSize()`): widget nema
+način da pita koliko ga ima, a slika mora dobiti tačnu širinu u pikselima.
 
 **Nijedno pravilo nije u widgetu.** Šta je danas na spisku, koliko je
 urađeno, koji je vakat na redu i je li dan ili noć — sve dolazi gotovo sa
@@ -902,13 +918,24 @@ samo skrati. Po polju `datum` widget prepoznaje da je odgovor **stigao**
 
 **Postavljanje**
 
-1. App Store → **Scriptable** (besplatno).
-2. Scriptable → `+` → nalijepi `widget/vaktija-widget.js` → nazovi ga
-   „Vaktija".
+1. App Store → **Scriptable** (besplatno, autor Simon B. Støvring — ima
+   plaćenih klonova sličnog imena).
+2. Scriptable → `+` (gore desno) → nalijepi `widget/vaktija-widget.js` →
+   ključ (gore lijevo) → *Name*: **Vaktija** → *Done*.
 3. U vrhu fajla stoje `APP` (adresa deploya) i `IME` (ime iz postavki
    aplikacije) — promijeni ih ako se razlikuju.
-4. Početni ekran → drži prst → `+` → Scriptable → mali ili srednji widget →
-   **Edit Widget** → Script: Vaktija.
+4. Pritisni ▶ u Scriptable-u jednom, da se vidi da radi i da se skripta
+   „zagrije".
+5. Početni ekran → drži prst na praznom mjestu dok ikonice ne zaigraju →
+   `+` (gore lijevo) → traži **Scriptable** → izaberi **srednji** (widget
+   preko pola ekrana) → *Add Widget*.
+6. Novi widget je prazan dok mu se ne kaže koju skriptu vrti: drži prst na
+   njemu → **Edit Widget** → *Script*: **Vaktija**, *When Interacting*:
+   **Run Script** (ili *Open URL* ako hoćeš da dodir vodi pravo u
+   aplikaciju).
+7. Pritisni bilo gdje van widgeta → *Done*.
+
+Prvih par sekundi widget zna biti prazan dok se skripta ne izvrši prvi put.
 
 **Osvježavanje odlučuje iOS**, ne widget. Skripta traži osvježavanje svakih
 10 minuta, a pred vakat svake 2 (`refreshAfterDate`) — sistem to uzima kao
