@@ -17,10 +17,10 @@
               upiše ništa, samo javi šta bi bilo.
 
      Vaktija  vremena za danas onako kako ih vidi SERVER (`/api/widget`), a
-              svaki vakat je dugme: klik namjesti vrijeme na taj vakat i
-              okine pravi ciklus, pa obavijest o namazu stigne na uređaj bez
-              čekanja ikindije. Panel uz to javi zašto bi ćutalo — obavijest
-              isključena u postavkama, ili putovanje.
+              svaki vakat je dugme: klik namjesti vrijeme u prozor najave
+              (15 minuta prije tog vakta) i okine pravi ciklus, pa najava
+              stigne na uređaj bez čekanja ikindije. Panel uz to javi zašto
+              bi ćutalo — obavijest isključena u postavkama, ili putovanje.
 
    Ni jedno pravilo se ovdje ne prepisuje: šta se šalje i sa kojim tekstom
    odlučuje isključivo server (api/cron.js), a panel ispisuje njegov
@@ -306,7 +306,7 @@
       ? "devp-silent" : "devp-warn";
     el.vaktijaState.textContent = prefs.vaktijaObavijest === true
       ? (data.grad || "Sarajevo") + " · obavijest uključena · klik po vaktu " +
-        "namjesti vrijeme i okine ciklus"
+        "okine ciklus 15 min prije njega, kad najava i ide"
       : "„Obavijest o vaktu“ je isključena u postavkama — okidanje neće " +
         "poslati ništa. Upali je pa probaj.";
 
@@ -323,17 +323,38 @@
     });
   }
 
-  /* Namjesti vrijeme na taj vakat i okini PRAVI ciklus — obavijest o namazu
-     tada stigne na uređaj, kao da je vakat upravo nastupio.
+  /* Koliko prije vakta ide najava. Isti broj stoji u `NAJAVA_MIN`
+     (api/_lib.js); ovdje se ne može pročitati sa servera, pa je prepisan —
+     ako se tamo promijeni, panel bi gađao prazan trenutak i ćutao, što se
+     vidi odmah pri prvoj probi. */
+  var NAJAVA_MIN = 15;
 
-     Ciklus je jedan te isti, pa uz obavijest o vaktu ume otići i podsjetnik
-     za zikr, ako mu je slot tada na redu. Tako je i u produkciji, i zato se
-     baš tako i proba. */
+  /* Namjesti vrijeme u prozor najave i okini PRAVI ciklus — najava tada
+     stigne na uređaj, kao da je do vakta ostalo petnaest minuta.
+
+     Gađa se V-15, a ne sam vakat: u vaktu server namjerno ćuti (obavijest je
+     najava, ne javljanje da je vakat nastupio), pa bi klik po vremenu vakta
+     dao tišinu i izgledao kao kvar.
+
+     Ciklus je jedan te isti, pa uz najavu ume otići i podsjetnik za zikr, ako
+     mu je slot tada na redu. Tako je i u produkciji, i zato se baš tako i
+     proba. */
   function okiniVakat(vrijeme) {
-    atTime = vrijeme;
-    if (el.timeInput) { el.timeInput.value = vrijeme; }
+    var minuta = uMinute(vrijeme);
+    var kad = (minuta === null) ? vrijeme : hhmm(Math.max(0, minuta - NAJAVA_MIN));
+
+    atTime = kad;
+    if (el.timeInput) { el.timeInput.value = kad; }
     syncTimeChips();
     fire(false);
+  }
+
+  /* "16:34" -> 994. Isto pravilo kao `vakatMinute()` u vakti.js; vremena
+     vaktije nemaju vodeću nulu, otud `\d{1,2}`. */
+  function uMinute(hhmmStr) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmmStr || "").trim());
+    if (!m) { return null; }
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   }
 
   /* ------------------------------------------------------------------------

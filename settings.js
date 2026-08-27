@@ -2623,7 +2623,7 @@
      ugašen prekidač uz napomenu kaže zašto se ne dira. -------------------- */
 
   var NOTA_VAKTIJA = "Naredni vakat iznad spiska, a klikom sva vremena za Sarajevo.";
-  var NOTA_VAKAT = "Kad nastupi namaz, stigne obavijest. Traži uključene podsjetnike.";
+  var NOTA_VAKAT = "Petnaest minuta prije namaza stigne obavijest. Traži uključene podsjetnike.";
   var NOTA_PUT = " Isključeno dok je putovanje uključeno — vaktija je sarajevska.";
 
   function osvjeziVaktiju() {

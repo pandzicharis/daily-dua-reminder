@@ -15,6 +15,11 @@
    se po njemu zna kad zora ističe, ali za njega ne ide obavijest — nije
    namaz.
 
+   TEKST OBAVIJESTI NIJE OVDJE. Obavijest je NAJAVA — stiže petnaest minuta
+   prije vakta i nosi koliko je tačno ostalo ("Nastupa za 14 minuta"), pa se
+   sklapa u trenutku slanja (`vakatPayload()` u api/_lib.js). Fiksna rečenica
+   po vaktu bi morala lagati čim ciklus zakasni minutu.
+
    LOKACIJA je Sarajevo (id 77 na api.vaktija.ba). Vaktija se ne računa
    ovdje niti se pomjera po zonama: server vaktije već vraća vremena po
    Sarajevu, a i obavijesti i sat u aplikaciji idu po Europe/Sarajevo.
@@ -28,8 +33,7 @@ var VAKTI = [
   {
     id: "zora",
     naziv: "Zora",
-    namaz: true,
-    poruka: "Nastupilo je vrijeme sabah-namaza."
+    namaz: true
   },
   {
     id: "izlazak",
@@ -40,26 +44,22 @@ var VAKTI = [
   {
     id: "podne",
     naziv: "Podne",
-    namaz: true,
-    poruka: "Nastupilo je vrijeme podne-namaza."
+    namaz: true
   },
   {
     id: "ikindija",
     naziv: "Ikindija",
-    namaz: true,
-    poruka: "Nastupilo je vrijeme ikindija-namaza."
+    namaz: true
   },
   {
     id: "aksam",
     naziv: "Akšam",
-    namaz: true,
-    poruka: "Nastupilo je vrijeme akšam-namaza."
+    namaz: true
   },
   {
     id: "jacija",
     naziv: "Jacija",
-    namaz: true,
-    poruka: "Nastupilo je vrijeme jacija-namaza."
+    namaz: true
   }
 ];
 

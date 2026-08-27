@@ -21,12 +21,15 @@
 
    Odgovor:
 
+   `?format=text` vrati iste podatke kao dvije linije običnog teksta — za
+   Shortcuts, gdje je svaka vrijednost iz JSON-a jedna radnja u prečici.
+
      {
        "grad": "Sarajevo",
        "datum": "2026-08-27",
        "doba": "dan" | "noc",          // isto pravilo po kojem se boji tema
        "vakat": { id, naziv, vrijeme, preostalo, sutra },
-       "vakti": [ { id, naziv, vrijeme, proslo } × 6 ],
+       "vakti": [ { id, naziv, vrijeme, namaz, kada, proslo } × 6 ],
        "zikr":  { id, naslov, done, total, ostalo, gotovo } | null,
        "badge": 5                       // koliko dova ukupno čeka
      }
@@ -99,6 +102,39 @@ function tekuciZikr(checked, date, prefs, minutes, weekday) {
   };
 }
 
+/* "za 2 h 13 min" / "za 12 min" — isto pravilo kao u aplikaciji, samo bez
+   sekundi: obavijest iz prečice se ne osvježava, pa bi sekunde lagale. */
+function preostalo(sekundi) {
+  const ukupno = Math.max(0, sekundi || 0);
+  const h = Math.floor(ukupno / 3600);
+  const m = Math.round((ukupno % 3600) / 60);
+  if (h > 0) { return h + " h " + m + " min"; }
+  return Math.max(1, m) + " min";
+}
+
+/* Dvije linije: vakat pa zikr. Prazne linije se izbacuju, da obavijest ne
+   nosi rupu kad zikra nema (bez imena) ili vaktije nema (putovanje). */
+function tekst(data) {
+  const linije = [];
+
+  if (data.putovanje) {
+    linije.push("Na putu — vaktija je isključena.");
+  } else if (data.vakat) {
+    linije.push(data.vakat.naziv + " " + data.vakat.vrijeme +
+      " · za " + preostalo(data.vakat.preostalo));
+  } else {
+    linije.push("Vaktija nije dostupna.");
+  }
+
+  if (data.zikr) {
+    linije.push(data.zikr.gotovo
+      ? "Zikr: gotovo, elhamdulillah"
+      : data.zikr.naslov + ": " + data.zikr.done + " / " + data.zikr.total);
+  }
+
+  return linije.join("\n");
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -135,6 +171,12 @@ module.exports = async function handler(req, res) {
           id: v.id,
           naziv: v.naziv,
           vrijeme: vremena[i],
+          /* Izlazak sunca nije namaz — Shortcuts po ovome preskače pravljenje
+             podsjetnika za njega, isto kao što ga cron preskače pri slanju. */
+          namaz: v.namaz === true,
+          /* Datum i vrijeme u jednom komadu: Shortcuts iz ovoga napravi
+             pravi trenutak jednom radnjom, bez slaganja datuma i sata. */
+          kada: now.date + " " + (vremena[i] || ""),
           proslo: proslo
         });
 
@@ -180,6 +222,20 @@ module.exports = async function handler(req, res) {
     /* Widget se osvježava često; keširanje na rubu bi mu vraćalo stari
        odgovor i poslije čekiranja u aplikaciji. */
     res.setHeader("Cache-Control", "no-store");
+
+    /* `?format=text` — gotove dvije linije, za Shortcuts.
+
+       Shortcuts ume čitati JSON, ali svaka vrijednost je jedna radnja u
+       prečici; ovako je cijela prečica dvije radnje (uzmi adresu, pokaži
+       obavijest). Sadržaj je isti, samo sklopljen ovdje. */
+    if (String(query.format || "") === "text") {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      /* `end()`, ne `send()`: lokalni dev-server je goli Node `res` sa
+         dodanim `status()` i `json()` — `send()` na njemu ne postoji. */
+      return res.status(200).end(tekst({
+        putovanje: putovanje, vakat: vakat, zikr: zikr, grad: "Sarajevo"
+      }));
+    }
 
     return res.status(200).json({
       grad: "Sarajevo",

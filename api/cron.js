@@ -50,10 +50,11 @@
    configu). Vremena dolaze sa api.vaktija.ba, jednim pozivom dnevno, i drže
    se u Redisu (`vaktijaZa()` u _lib.js).
 
-   Ovdje NEMA slotova: vakat je tačan trenutak, a ne prozor koji se ponavlja.
-   Šalje se onaj koji je upravo nastupio (`vaktiDue()`, tolerancija 20
-   minuta), a zapis po uređaju i vaktu pazi da ne ode dvaput. Koliko je gust
-   cron, toliko je tačna obavijest — sa ciklusom svake minute stiže u minut.
+   Obavijest je NAJAVA: stiže petnaest minuta PRIJE vakta, a u sam vakat se
+   ćuti (`vaktiDue()`). Ovdje nema slotova — svaki vakat se javi jednom, a
+   zapis po uređaju i vaktu pazi da ne ode dvaput. Prozor najave je tih
+   petnaest minuta, pa svaki cron gušći od toga stigne; tekst nosi koliko je
+   stvarno ostalo, ne fiksnih "15 minuta".
 
    PROBA. Tri parametra, svi zaštićeni istim CRON_SECRET-om:
 
@@ -442,7 +443,7 @@ module.exports = async function handler(req, res) {
             const poslan = (resetSent && dry) ? null : await redis.get(vakatKey);
             if (poslan) { continue; }
 
-            const payload = vakatPayload(d.vakat, d.vrijeme);
+            const payload = vakatPayload(d.vakat, d.vrijeme, d.za);
             const shown = JSON.parse(payload);
 
             if (dry) {

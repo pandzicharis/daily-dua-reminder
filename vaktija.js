@@ -86,7 +86,8 @@
   var otvoren = false;
 
   var sat = null;         /* interval koji kuca sekunde */
-  var crtaniDan = "";     /* dan za koji su kartica i spisak nacrtani */
+  var crtaniDan = "";     /* dan za koji je kartica (luk dana) nacrtana */
+  var spisakDan = "";     /* dan za koji je ploča strane nacrtana */
   var zadnjiIndex = -1;   /* naredni vakat pri prošlom otkucaju */
   var zadnjiPostotak = -1;
   var skidam = {};        /* mjeseci koji su trenutno na putu, da se ne traže dvaput */
@@ -118,17 +119,31 @@
      Vrijeme po Sarajevu
      ------------------------------------------------------------------------ */
 
+  /* Formater se pravi JEDNOM i onda se samo koristi.
+
+     `new Intl.DateTimeFormat(...)` je jedan od skupljih poziva u browseru —
+     učitava podatke o zoni. Ovdje se sat čita nekoliko puta u sekundi (svaki
+     otkucaj pita i za dan i za mjesece koji se drže), pa je novi formater po
+     pozivu bio čisto trošenje: na starijem telefonu se to vidjelo kao
+     zastajkivanje trake. */
+  var fmtSat = null;
+
+  function formater() {
+    if (fmtSat) { return fmtSat; }
+    fmtSat = new Intl.DateTimeFormat("en-CA", {
+      timeZone: TZ,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+    });
+    return fmtSat;
+  }
+
   function sarajevo(kad) {
     var d = kad || new Date();
 
     try {
-      var fmt = new Intl.DateTimeFormat("en-CA", {
-        timeZone: TZ,
-        year: "numeric", month: "2-digit", day: "2-digit",
-        hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
-      });
       var p = {};
-      fmt.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+      formater().formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
 
       return {
         godina: parseInt(p.year, 10),
@@ -176,13 +191,26 @@
     return godina + "-" + mjesec;
   }
 
+  /* Skinuti mjeseci, parsirani, u memoriji. localStorage vraća string, pa bi
+     ga svako čitanje ponovo raščlanjivalo — a čita se nekoliko puta u
+     sekundi, i to cijeli mjesec od trideset dana. Parsira se jednom po
+     pokretanju, a upis (`spremi()`) ga prepiše.
+
+     Ostaje i dalje jedan izvor: sve što se upiše ide i u localStorage i
+     ovdje, u istoj funkciji. */
+  var memo = null;
+
   function store() {
+    if (memo) { return memo; }
+
     try {
       var raw = JSON.parse(localStorage.getItem(STORE_KEY));
-      return (raw && typeof raw === "object") ? raw : {};
+      memo = (raw && typeof raw === "object") ? raw : {};
     } catch (e) {
-      return {};
+      memo = {};
     }
+
+    return memo;
   }
 
   /* Mjeseci koji se drže: prošli, tekući i sljedeći. Prošli je tu zbog prve
@@ -220,6 +248,7 @@
       if (k !== kljuc && drzi.indexOf(k) === -1) { delete s[k]; }
     });
 
+    memo = s;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch (e) {}
   }
 
@@ -789,6 +818,10 @@
     if (!drawerBody) { return; }
 
     var s = stanje();
+    /* Po ovome `otvori()` zna je li ploča koja već stoji od DANAS i je li u
+       njoj išta osim poruke da vaktije nema. Vodi se odvojeno od `crtaniDan`
+       (koji prati karticu): ploča i kartica se ne crtaju u istim trenucima. */
+    spisakDan = (s && drawerBody) ? s.dan : "";
 
     drawerBody.textContent = "";
     drawerBody.redovi = null;
@@ -842,7 +875,12 @@
 
   function otvori() {
     if (!drawer) { napraviDrawer(); }
-    nacrtajSpisak();
+    /* Spisak se crta iz onoga što je već u memoriji — ništa se ne čeka. Ako
+       vaktije nema (prvo pokretanje bez mreže), stoji jedna rečenica umjesto
+       praznog ekrana. */
+    if (!spisakDan || spisakDan !== danKljuc(sarajevo())) {
+      nacrtajSpisak();
+    }
     kucni();
 
     drawer.hidden = false;
@@ -854,7 +892,7 @@
     /* Vaktija je mogla ostati od prošlog mjeseca — pokušaj dopuniti, pa ako
        nešto stigne, iscrtaj ponovo. */
     osiguraj().then(function (novo) {
-      if (novo && otvoren) { nacrtajSpisak(); kucni(); }
+      if (novo) { nacrtajSpisak(); kucni(); }
     });
   }
 
@@ -885,7 +923,10 @@
     if (s && crtaniDan && crtaniDan !== s.dan) {
       crtaniDan = s.dan;
       nacrtajLuk(s);
-      if (otvoren) { nacrtajSpisak(); }
+      /* I kad je strana zatvorena: ploča stoji sklopljena unaprijed
+         (`pripremiStranu()`), pa bi inače sačekala korisnika sa jučerašnjim
+         vremenima. */
+      if (drawer) { nacrtajSpisak(); }
     }
 
     if (!imaSta) { return; }
@@ -997,12 +1038,27 @@
   function dopuni() {
     return osiguraj().then(function (novo) {
       if (!novo) { return; }
-      /* Nov mjesec u kešu može promijeniti i luk dana i spisak. */
+      /* Nov mjesec u kešu može promijeniti i luk dana i spisak. Ploča se
+         crta i zatvorena: sklopljena je unaprijed, pa u njoj do maloprije
+         stajalo "vaktija nije preuzeta". */
       crtaniDan = "";
       zadnjiIndex = -1;
-      if (otvoren) { nacrtajSpisak(); }
+      if (drawer) { nacrtajSpisak(); }
       kucni();
     });
+  }
+
+  /* Ploča strane se sklapa unaprijed, dok niko ne gleda — ne na prvi klik.
+     Šest redova nije mnogo, ali na starijem telefonu se i to vidi kao
+     zastanak između pritiska i otvaranja, a ovako je klik samo otkrivanje
+     onoga što već stoji.
+
+     Ide poslije prvog crtanja spiska i poslije `dopuni()`, pa se ne otima o
+     iste trenutke sa onim što korisnik gleda. */
+  function pripremiStranu() {
+    if (drawer) { return; }
+    napraviDrawer();
+    nacrtajSpisak();
   }
 
   /* Ono što treba odmah — pa tek onda, u pozadini, ostatak.
@@ -1012,9 +1068,15 @@
      toj sekundi. */
   function osvjezi() {
     return dopuni().then(function () {
-      setTimeout(function () { zagrij().then(function (novo) {
-        if (novo) { kucni(); }
-      }); }, 2500);
+      setTimeout(function () {
+        pripremiStranu();
+        zagrij().then(function (novo) {
+          if (!novo) { return; }
+          crtaniDan = "";
+          if (drawer) { nacrtajSpisak(); }
+          kucni();
+        });
+      }, 2500);
     });
   }
 

@@ -390,7 +390,7 @@ const KEYS = {
   vaktija: function (date) { return "vaktija:" + date; },
 
   /* Poslan vakat — po uređaju, kao i `sent`. Bez ovoga bi svaki ciklus
-     unutar tolerancije poslao istu obavijest ponovo. */
+     unutar prozora najave poslao istu obavijest ponovo. */
   vakat: function (id, date, vakatId) {
     return "vakat:" + id + ":" + vakatId + ":" + date;
   }
@@ -705,23 +705,27 @@ async function vaktijaZa(date) {
   }
 }
 
-/* Koliko se najduže KASNI sa obavijesti o vaktu. Ciklus se ne pokreće u
-   sekundu u sekundu, pa se obavijest šalje i kad je vakat nastupio malo
-   prije — ali samo malo: obavijest za ikindiju koja stigne u akšam nije
-   obavijest nego smetnja.
+/* Koliko PRIJE vakta stiže obavijest.
 
-   Praktično: koliko je gust cron, toliko je tačna obavijest. Sa ciklusom
-   svake minute stiže u minut, sa ciklusom svakih 15 minuta zna kasniti do
-   15. Tolerancija mora biti veća od razmaka ciklusa, inače bi se vakat
-   preskočio.  */
-const VAKAT_TOLERANCIJA = 20;
+   Obavijest je NAJAVA, ne javljanje da je vakat nastupio: telefon javi
+   petnaest minuta ranije — taman da se stigne pripremiti — a u sam vakat
+   ćuti. U vaktu je čovjek na namazu ili se sprema; obavijest koja tada
+   zazvoni stiže baš kad ne treba.
 
-/* Vakti koji su upravo nastupili: prošli su, a nisu prošli davno. Vraća niz
-   `{ vakat, vrijeme, minuta }`, obično prazan ili sa jednim članom.
+   Ovih petnaest minuta je ujedno i PROZOR u kojem se šalje: od V-15 do samog
+   vakta. Ciklus se ne pokreće u sekundu u sekundu, pa svaki cron gušći od
+   petnaest minuta pogodi taj prozor — a tekst ostaje istinit, jer nosi
+   koliko je stvarno ostalo, ne fiksnih "15 minuta". Poslije vakta se ne
+   šalje ništa: najava koja stigne kad je vakat prošao nije najava. */
+const NAJAVA_MIN = 15;
+
+/* Vakti koje treba NAJAVITI sada: oni čiji je prozor najave otvoren
+   (V-15 … V). Vraća niz `{ vakat, vrijeme, minuta, za }`, obično prazan ili
+   sa jednim članom; `za` je koliko je minuta do vakta u OVOM ciklusu.
 
    Izlazak sunca se preskače — nije namaz (`namaz: false` u vakti.js). */
-function vaktiDue(vremena, minutes, tolerancija) {
-  const granica = (typeof tolerancija === "number") ? tolerancija : VAKAT_TOLERANCIJA;
+function vaktiDue(vremena, minutes, prozor) {
+  const rano = (typeof prozor === "number") ? prozor : NAJAVA_MIN;
   const out = [];
 
   VAKTI.forEach(function (vakat, i) {
@@ -730,38 +734,46 @@ function vaktiDue(vremena, minutes, tolerancija) {
     const minuta = VAKTIJA.vakatMinute(vremena && vremena[i]);
     if (minuta === null) { return; }
 
-    const kasnjenje = minutes - minuta;
-    if (kasnjenje < 0 || kasnjenje > granica) { return; }
+    const za = minuta - minutes;
+    if (za < 0 || za > rano) { return; }
 
-    out.push({ vakat: vakat, vrijeme: vremena[i], minuta: minuta });
+    out.push({ vakat: vakat, vrijeme: vremena[i], minuta: minuta, za: za });
   });
 
   return out;
 }
 
-/* Obavijest o vaktu. Namjerno BEZ `badge` polja: broj na ikonici govori
-   koliko je dova ostalo, a vakat sa tim nema veze — service worker poruku
-   bez tog polja ostavi ikonicu na miru.
+/* Traži li OVAJ korisnik vaktiju uopšte.
 
-   `tag` je isti za sve vakte: dva vakta ne mogu nastupiti u istoj minuti, pa
-   nova obavijest zamijeni prethodnu i na zaključanom ekranu ne stoji spisak
-   svih današnjih namaza. */
-/* Traži li OVAJ korisnik vaktiju uopšte. Jedno pitanje, dva uslova, pa i
-   cron i widget odgovaraju isto:
-
-     vaktija (grad)   Sarajevo — a na putu se ne zna koji je grad, pa ćuti
-     prekidač         `vaktijaObavijest` za obavijest, `vaktija` za prikaz
-
-   Putovanje je namjerno jače od oba: ko je van Sarajeva ne treba sarajevsku
-   vaktiju ni na ekranu ni u obavijesti. */
+   Putovanje je jače od svakog prekidača: vaktija je sarajevska, pa ko je van
+   Sarajeva ne treba ni karticu, ni obavijest, ni widget. Prekidači
+   (`vaktija` za prikaz, `vaktijaObavijest` za obavijest) se gledaju tek
+   poslije ovoga, tamo gdje se i koriste. */
 function vaktijaZaKorisnika(prefs) {
   return !naPutu(prefs);
 }
 
-function vakatPayload(vakat, vrijeme) {
+/* Najava vakta. Namjerno BEZ `badge` polja: broj na ikonici govori koliko je
+   dova ostalo, a vakat sa tim nema veze — service worker poruku bez tog
+   polja ostavi ikonicu na miru.
+
+   Tekst nosi koliko je STVARNO ostalo, a ne "15 minuta": ciklus zna kasniti
+   minutu-dvije i tada bi fiksna rečenica lagala. Broj ide bez imena vakta
+   ("Nastupa za 14 minuta") — ime već stoji u naslovu, a "nastupa" jednako
+   služi i zori i akšamu, pa se ne mora paziti na rod.
+
+   `tag` je isti za sve vakte: dvije najave se ne mogu poklopiti u istoj
+   minuti, pa nova zamijeni prethodnu i na zaključanom ekranu ne ostaje
+   spisak svih današnjih namaza. */
+function vakatPayload(vakat, vrijeme, za) {
+  const minuta = Math.max(0, Math.round(za || 0));
+  const body = minuta <= 0
+    ? "Nastupa svaki čas."
+    : "Nastupa za " + minuta + (minuta === 1 ? " minutu." : " minuta.");
+
   return JSON.stringify({
     title: vakat.naziv + " · " + vrijeme,
-    body: vakat.poruka,
+    body: body,
     tag: "vaktija",
     url: "/"
   });
@@ -779,5 +791,5 @@ module.exports = {
   /* korisnik i njegov config */
   userKey, userFrom, defaultPrefs, cleanPrefs, readPrefs, naPutu,
   /* vaktija */
-  VAKTI, VAKAT_TOLERANCIJA, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika
+  VAKTI, NAJAVA_MIN, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika
 };

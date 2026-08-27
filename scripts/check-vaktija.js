@@ -5,37 +5,37 @@
      npm run vaktija -- 1                -> ciklus svake minute
      npm run vaktija -- 5 2026-09-01     -> drugi ritam i drugi dan
 
-   Odgovara na pitanje "u koju minutu bi telefon javio koji vakat, i koliko
-   bi kasnio", i to POZIVAJUĆI ISTI KOD koji odlučuje u produkciji:
-   `vaktijaZa()` i `vaktiDue()` iz api/_lib.js. Ovdje se ne prepisuje ni
-   jedno pravilo — ni tolerancija, ni to koji vakat dobija obavijest.
+   Odgovara na pitanje "u koju minutu bi telefon najavio koji namaz", i to
+   POZIVAJUĆI ISTI KOD koji odlučuje u produkciji: `vaktijaZa()` i
+   `vaktiDue()` iz api/_lib.js. Ovdje se ne prepisuje ni jedno pravilo — ni
+   prozor najave, ni to koji vakat dobija obavijest.
 
-   ZAŠTO POSTOJI. Vakat je tačan trenutak, a ciklus se vrti onako kako je
-   podešen: koliko je gust cron, toliko je tačna obavijest. To se inače vidi
-   tek kad prođe ikindija, a ovdje se vidi odmah, za cijeli dan.
+   ZAŠTO POSTOJI. Obavijest je najava: stiže do petnaest minuta prije vakta,
+   a u sam vakat se ćuti. Da li će pogoditi taj prozor zavisi od toga koliko
+   je gust cron — a to se inače vidi tek kad prođe ikindija.
 
    Uz ispis provjerava četiri tvrdnje; ako bilo koja padne, izlazni kod je 1:
 
-     1. svaki namaz dobije TAČNO JEDNU obavijest — nikad dvije za isti vakat
+     1. svaki namaz dobije TAČNO JEDNU najavu — nikad dvije za isti vakat
      2. izlazak sunca ne dobija nijednu (nije namaz)
-     3. nijedna ne kasni više od jednog ciklusa
-     4. tolerancija je veća od razmaka ciklusa — inače bi se vakat mogao
-        preskočiti (ciklus prije vakta, pa sljedeći tek kad tolerancija
-        istekne)
+     3. svaka najava pada PRIJE svog vakta, unutar prozora od 15 minuta
+     4. prozor najave je veći od razmaka ciklusa — inače bi ga cron mogao
+        preskočiti (ciklus prije prozora, pa sljedeći tek kad vakat prođe)
 
    Ne šalje ništa i ne dira ničiji spisak. Vaktiju skida jednom i ostavlja je
    u lokalnom kešu (.dev-store.json), isto kao što bi je scheduler ostavio u
    Redisu — pa drugi poziv ne ide na mrežu.
 
    Za PRAVU obavijest na uređaju služi testni panel u aplikaciji (dev-panel,
-   sekcija „Vaktija") ili `/api/cron?at=<vrijeme>&reset=1` sa localhosta.
+   sekcija „Vaktija") ili `/api/cron?at=<vrijeme>&reset=1` sa localhosta —
+   `at` mora pasti u prozor najave, dakle do 15 minuta prije vakta.
    ========================================================================== */
 
 const path = require("path");
 const ROOT = path.join(__dirname, "..");
 
 const {
-  VAKTI, VAKAT_TOLERANCIJA, vaktijaZa, vaktiDue, vakatPayload, sarajevoNow
+  VAKTI, NAJAVA_MIN, vaktijaZa, vaktiDue, vakatPayload, sarajevoNow
 } = require(path.join(ROOT, "api", "_lib.js"));
 
 const { vakatMinute } = require(path.join(ROOT, "vakti.js"));
@@ -55,8 +55,8 @@ function hhmm(minuta) {
 /* --- simulacija dana ----------------------------------------------------- */
 
 /* Cijeli dan ciklusa, minutu po minutu kako bi ih vrtio cron. Dedup je isti
-   kao na serveru: jednom poslan vakat se ne šalje ponovo (tamo je to zapis u
-   Redisu, ovdje skup u memoriji). */
+   kao na serveru: jednom najavljen vakat se ne najavljuje ponovo (tamo je to
+   zapis u Redisu, ovdje skup u memoriji). */
 function simuliraj(vremena) {
   const poslano = new Set();
   const out = [];
@@ -66,14 +66,15 @@ function simuliraj(vremena) {
       if (poslano.has(d.vakat.id)) { return; }
       poslano.add(d.vakat.id);
 
-      const shown = JSON.parse(vakatPayload(d.vakat, d.vrijeme));
+      const shown = JSON.parse(vakatPayload(d.vakat, d.vrijeme, d.za));
       out.push({
         id: d.vakat.id,
         naziv: d.vakat.naziv,
         vrijeme: d.vrijeme,
         vakatMinuta: d.minuta,
         ciklus: minuta,
-        kasni: minuta - d.minuta,
+        /* koliko je minuta PRIJE vakta najava otišla */
+        prije: d.za,
         title: shown.title,
         body: shown.body
       });
@@ -112,8 +113,8 @@ function ok(poruka) {
 
   console.log("");
   console.log("  Vaktija · Sarajevo · " + datum);
-  console.log("  ciklus svakih " + ritam + " min · tolerancija " +
-    VAKAT_TOLERANCIJA + " min");
+  console.log("  ciklus svakih " + ritam + " min · najava do " +
+    NAJAVA_MIN + " min prije vakta");
   console.log("");
 
   VAKTI.forEach(function (vakat, i) {
@@ -128,13 +129,13 @@ function ok(poruka) {
 
     const p = poId[vakat.id];
     if (!p) {
-      console.log("    " + ime + String(kad).padStart(6) + "   ✗ nijedna obavijest");
+      console.log("    " + ime + String(kad).padStart(6) + "   ✗ nijedna najava");
       return;
     }
 
     console.log("    " + ime + String(kad).padStart(6) +
-      "   obavijest " + hhmm(p.ciklus) +
-      "   (+" + p.kasni + " min)   " + p.title);
+      "   najava " + hhmm(p.ciklus) +
+      "   (" + p.prije + " min prije)   " + p.body);
   });
 
   console.log("");
@@ -146,37 +147,43 @@ function ok(poruka) {
   const visak = poslate.length - Object.keys(poId).length;
 
   if (bez.length) {
-    fail("bez obavijesti: " + bez.map(function (v) { return v.naziv; }).join(", "));
+    fail("bez najave: " + bez.map(function (v) { return v.naziv; }).join(", "));
   } else if (visak > 0) {
-    fail("neki vakat je poslan više puta");
+    fail("neki vakat je najavljen više puta");
   } else {
-    ok("svaki namaz dobije tačno jednu obavijest (" + namazi.length + ")");
+    ok("svaki namaz dobije tačno jednu najavu (" + namazi.length + ")");
   }
 
   /* 2. izlazak sunca nikad */
   if (poId.izlazak) {
-    fail("izlazak sunca je dobio obavijest, a nije namaz");
+    fail("izlazak sunca je dobio najavu, a nije namaz");
   } else {
-    ok("izlazak sunca ne dobija obavijest");
+    ok("izlazak sunca ne dobija najavu");
   }
 
-  /* 3. kašnjenje unutar jednog ciklusa */
-  const najgore = poslate.reduce(function (max, p) {
-    return Math.max(max, p.kasni);
-  }, 0);
+  /* 3. svaka najava prije svog vakta, unutar prozora */
+  const kasne = poslate.filter(function (p) { return p.prije < 0; });
+  const rane = poslate.filter(function (p) { return p.prije > NAJAVA_MIN; });
 
-  if (najgore >= ritam + 1) {
-    fail("najveće kašnjenje " + najgore + " min, a ciklus je " + ritam + " min");
+  if (kasne.length) {
+    fail("najava poslije vakta: " +
+      kasne.map(function (p) { return p.naziv; }).join(", "));
+  } else if (rane.length) {
+    fail("najava ranija od " + NAJAVA_MIN + " min: " +
+      rane.map(function (p) { return p.naziv; }).join(", "));
   } else {
-    ok("najveće kašnjenje " + najgore + " min (ciklus " + ritam + " min)");
+    const najkasnija = poslate.reduce(function (min, p) {
+      return Math.min(min, p.prije);
+    }, NAJAVA_MIN);
+    ok("svaka najava je prije svog vakta (najtijesnija " + najkasnija + " min)");
   }
 
-  /* 4. tolerancija mora pokriti razmak ciklusa */
-  if (VAKAT_TOLERANCIJA <= ritam) {
-    fail("tolerancija (" + VAKAT_TOLERANCIJA + " min) nije veća od ciklusa (" +
+  /* 4. prozor najave mora pokriti razmak ciklusa */
+  if (NAJAVA_MIN <= ritam) {
+    fail("prozor najave (" + NAJAVA_MIN + " min) nije veći od ciklusa (" +
       ritam + " min) — vakat se može preskočiti");
   } else {
-    ok("tolerancija " + VAKAT_TOLERANCIJA + " min pokriva ciklus od " +
+    ok("prozor najave " + NAJAVA_MIN + " min pokriva ciklus od " +
       ritam + " min");
   }
 

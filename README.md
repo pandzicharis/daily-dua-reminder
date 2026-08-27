@@ -48,6 +48,7 @@ iPhone PWA  ←→  localStorage (offline keš)
 | `api/cron.js` | scheduler; jedino mjesto koje odlučuje šalje li se push |
 | `api/widget.js` | `GET` → sve što widget treba u jednom odgovoru (vakat, zikr, doba dana) |
 | `widget/vaktija-widget.js` | widget za iPhone (Scriptable) — vakat i zikr na početnom ekranu |
+| `widget/SHORTCUTS.md` | isto bez ijedne dodatne aplikacije: dvije prečice u Shortcutsu |
 | `api/_lib.js` | Redis, vrijeme po Sarajevu, validacija, `dueSlot()`, `taskStatus()` |
 | `api/_dev-store.js` | fajl-baza za lokalni rad kad KV varijable fale (na Vercelu puca namjerno) |
 | `dev-server.js` | lokalni server: statični fajlovi + `/api/*` na portu 3000 |
@@ -365,7 +366,7 @@ Zupčanik u headeru otvara drawer sa dna (`settings.js`):
 | **Vlastite stavke** | `dodatno` | svoja dova ili svoj zikr, u bilo koju sekciju osim kur'anske, bez deploya. |
 | **Redoslijed** | `redoslijed` | red se povuče i spusti gdje treba; poredak vrijedi i na ekranu, i u postavkama, i u numeraciji dova. |
 | **Vaktija** | `vaktija` | kartica sa narednim vaktom iznad spiska (podrazumijevano uključeno). Zaključava se dok je putovanje uključeno. Vidi 4d. |
-| **Obavijest o vaktu** | `vaktijaObavijest` | obavijest kad nastupi namaz — šalje je server, pa vrijedi i kad je aplikacija zatvorena. Podrazumijevano **isključeno**; na putu ćuti. |
+| **Obavijest o vaktu** | `vaktijaObavijest` | najava **15 minuta prije** namaza — šalje je server, pa vrijedi i kad je aplikacija zatvorena. Podrazumijevano **isključeno**; na putu ćuti. |
 
 Uz njih je i dugme za podsjetnike (zvono), preseljeno iz glavnog ekrana.
 
@@ -805,36 +806,50 @@ drugoj zoni bi po svom satu odbrojavao pogrešno. Zato se „sada“ uvijek čit
 kroz `Europe/Sarajevo` — isto pravilo po kojem i server odlučuje o
 obavijestima (`sarajevoNow()`).
 
-### Obavijest kad nastupi vakat
+### Najava, petnaest minuta prije namaza
+
+Obavijest **nije** javljanje da je vakat nastupio nego **najava**: stiže do
+15 minuta ranije — taman da se stigne pripremiti — a u sam vakat telefon
+ćuti. U vaktu je čovjek na namazu ili se sprema; obavijest koja tada zazvoni
+stiže baš kad ne treba.
+
+```
+   16:19            16:34
+     │                │
+     └ „Ikindija · 16:34 / Nastupa za 15 minuta."
+                      └ tišina
+```
 
 Zakazivanje je **na serveru**, kao i za zikr: kad je aplikacija zatvorena,
 `vaktija.js` ne radi, a upravo tada obavijest i treba. Isti ciklus
 (`/api/cron`) na kraju svakog korisnika provjeri je li mu upaljeno
-`vaktijaObavijest` i je li neki vakat upravo nastupio.
+`vaktijaObavijest` i je li neki vakat u prozoru najave.
 
-| | podsjetnik za zikr | obavijest o vaktu |
+| | podsjetnik za zikr | najava vakta |
 |---|---|---|
-| kada | prozor koji se ponavlja (slot) | tačan trenutak |
+| kada | prozor koji se ponavlja (slot) | jednom, u prozoru V−15 … V |
 | dedup | `sent:<uređaj>:<zadatak>:<datum>` | `vakat:<uređaj>:<vakat>:<datum>` |
 | broj na ikonici | ide uz obavijest | **ne dira se** — vakat nije dova |
 | TTL pusha | 55 min | 20 min |
+
+Tekst nosi **koliko je stvarno ostalo** („Nastupa za 14 minuta"), a ne
+fiksnih petnaest: ciklus zna kasniti minutu-dvije i tada bi fiksna rečenica
+lagala. Broj ide bez imena vakta — ime već stoji u naslovu, a „nastupa"
+jednako služi i zori i akšamu, pa se ne mora paziti na rod.
 
 `vaktijaZa(date)` skine dan sa api.vaktija.ba i ostavi ga u Redisu
 (`vaktija:<datum>`), pa se tuđi server gađa **jednom dnevno** za sve
 korisnike zajedno. Ako ne odgovori, ciklus samo preskoči vaktiju —
 podsjetnici za zikr su već otišli i ne zavise od njega.
 
-**Izlazak sunca ne dobija obavijest** (`namaz: false` u `vakti.js`) — stoji
-na spisku jer se po njemu zna kad zora ističe, ali nije namaz.
+**Izlazak sunca ne dobija najavu** (`namaz: false` u `vakti.js`) — stoji na
+spisku jer se po njemu zna kad zora ističe, ali nije namaz.
 
-> **Koliko je gust cron, toliko je tačna obavijest.** Vakat je tačan
-> trenutak, a ciklus se vrti onako kako je podešen: sa ciklusom svake minute
-> obavijest stiže u minut, sa ciklusom svakih 15 minuta zna kasniti do 15.
-> Tolerancija je 20 minuta (`VAKAT_TOLERANCIJA` u `api/_lib.js`) — koliko se
-> najduže smije kasniti, i mora biti veća od razmaka ciklusa, inače bi se
-> vakat preskočio. Ko hoće obavijest u minut, neka vanjski cron (cron-job.org)
-> gađa `/api/cron` **svake minute**: podsjetnici za zikr od toga ne trpe, oni
-> idu po slotovima i ne mogu se poslati dvaput.
+> **Prozor najave mora biti širi od razmaka ciklusa.** Petnaest minuta
+> (`NAJAVA_MIN` u `api/_lib.js`) je i koliko se ranije javlja i koliko dugo
+> se smije javiti; cron gušći od toga uvijek pogodi prozor. Sa cronom na 30
+> minuta bi se vakat mogao preskočiti — `npm run vaktija -- 30` to prijavi
+> kao grešku umjesto da ćuti.
 
 ## 4e. Widget na iPhone-u (Scriptable)
 
@@ -847,15 +862,15 @@ JavaScript i smije crtati widget.
 
 Odabran je Scriptable: `widget/vaktija-widget.js`.
 
-**Šta pokazuje**
+**Šta pokazuje** — dvije stvari i ništa više:
 
 | | |
 |---|---|
 | naredni vakat | ime, vrijeme i koliko ga još ima |
-| zikr | ono što je **sada** na redu — dnevni danju, večernji uveče, petkom prijepodne petački — i koliko je od njega ostalo, sa trakom |
+| zikr | koliki je dio današnjeg zikra urađen, **u postotku**, sa trakom — i to onog koji je sada na redu (dnevni danju, večernji uveče, petkom prijepodne petački) |
 | dan / noć | boje prate isto pravilo po kojem se boji i aplikacija (dan od 07:00, noć od 19:00) |
 
-Mali widget nosi vakat i zikr; srednji uz to i svih šest vremena.
+Mali i srednji widget nose isto; razlikuju se samo veličinom slova i trake.
 
 **Nijedno pravilo nije u widgetu.** Šta je danas na spisku, koliko je
 urađeno, koji je vakat na redu i je li dan ili noć — sve dolazi gotovo sa
@@ -890,8 +905,8 @@ samo skrati. Po polju `datum` widget prepoznaje da je odgovor **stigao**
 1. App Store → **Scriptable** (besplatno).
 2. Scriptable → `+` → nalijepi `widget/vaktija-widget.js` → nazovi ga
    „Vaktija".
-3. U vrhu fajla upiši `APP` (adresa tvog Vercel deploya) i `IME` (isto ono iz
-   postavki aplikacije).
+3. U vrhu fajla stoje `APP` (adresa deploya) i `IME` (ime iz postavki
+   aplikacije) — promijeni ih ako se razlikuju.
 4. Početni ekran → drži prst → `+` → Scriptable → mali ili srednji widget →
    **Edit Widget** → Script: Vaktija.
 
@@ -901,7 +916,25 @@ molbu, pa odbrojavanje u widgetu ide u minutama i nikad ne pokazuje sekunde
 koje bi ionako stajale. Klik po widgetu otvara aplikaciju.
 
 **Kad aplikacija ne odgovori** (deploy u toku, nema mreže do Vercela), widget
-padne na `api.vaktija.ba` direktno i pokaže bar vakat, bez zikra.
+kaže „Nema veze" i pokuša ponovo za pet minuta. Rezervnog izvora nema
+namjerno: vaktija bez zikra bi izgledala kao ispravan widget, a ne bi bila.
+
+### Bez dodatne aplikacije — Shortcuts
+
+Shortcuts je već na telefonu, ali **ne može nacrtati widget sa podacima**:
+njegov widget pokazuje samo ime i ikonicu prečice. Unutar tog ograničenja
+rade dva recepta, oba u `widget/SHORTCUTS.md`:
+
+1. **Vaktija na dodir** — ikonica na početnom ekranu (i Siri, i Back Tap)
+   koja javi naredni vakat i stanje zikra. Dvije radnje, jer
+   `/api/widget?format=text` vrati gotove dvije linije teksta.
+2. **Podsjetnik u minut** — noćna automatizacija napravi podsjetnike za svih
+   pet namaza tog dana, pa obavijest pada **tačno** u vakat, sa samog
+   telefona i bez obzira na to koliko je gust cron. Zato svaki vakat u
+   odgovoru nosi `namaz` (izlazak sunca se preskače) i `kada` (datum i
+   vrijeme u jednom komadu, spremno za *Date* radnju).
+
+Na putu je spisak vremena prazan, pa prečica ne napravi nijedan podsjetnik.
 
 ## 5. Kako radi satna logika
 
@@ -1091,10 +1124,13 @@ Bez ispravnog secreta `/api/cron` vraća 401.
 >   pokrenuti unutar predviđenog prozora. Zato scheduler **nikad ne pita
 >   "je li sad tačno 8"**, nego računa slot. Ako cron zakasni do 07:32,
 >   podsjetnik za 07:00 stiže u 07:32, a sljedeći tek u 08:00+.
-> - **Obavijest o vaktu je izuzetak od te mirnoće**: vakat je tačan trenutak,
->   pa je obavijest tačna onoliko koliko je gust cron. Za obavijest u minut
->   treba ciklus svake minute — vidi 4d. Podsjetnici za zikr od gušćeg
->   ciklusa ne trpe: slot se šalje samo jednom.
+> - **Najava vakta ima svoj prozor**: šalje se u 15 minuta prije namaza, pa
+>   svaki cron gušći od toga stigne (vidi 4d). Podsjetnici za zikr od gušćeg
+>   ciklusa ne trpe — njihov ritam drži `REMINDER_INTERVAL_MINUTES` (60), a
+>   ne cron: slot se šalje samo jednom, ma koliko puta cron kucnuo.
+>
+>   Zato: ako cron kuca svake minute a zikr stiže svake minute, varijabla je
+>   ostala na `1` od testiranja — vrati je na `60`.
 
 ## 8. Kako generisati VAPID ključeve
 
@@ -1190,7 +1226,8 @@ petačke, zadnja u 12:00, tišina u 12:15, dnevni od 13:00.
 
 **Recept za vakat:** u sekciji **Vaktija** stoje današnja vremena onako kako
 ih vidi server (`/api/widget`, isti keš iz kojeg ih uzima i scheduler). Klik
-po vaktu okine pravi ciklus u tom trenutku — obavijest stigne na uređaj. Panel
+po vaktu namjesti vrijeme na **15 minuta prije** njega — jer tada najava i
+ide — i okine pravi ciklus, pa obavijest stigne na uređaj. Panel
 uz to javi zašto bi ćutalo: „Obavijest o vaktu" isključena u postavkama, ili
 putovanje uključeno (tada je vaktija ugašena svugdje). Izlazak sunca nema
 dugme jer nije namaz.
@@ -1240,20 +1277,20 @@ npm run vaktija -- 1            # ciklus svake minute
 npm run vaktija -- 5 2026-09-01 # drugi ritam i drugi dan
 ```
 
-Ispiše u koju bi minutu telefon javio koji vakat i **koliko bi kasnio**, pa
-provjeri četiri tvrdnje: svaki namaz tačno jednom, izlazak sunca nijednom,
-nijedna obavijest ne kasni više od jednog ciklusa, i tolerancija je veća od
-razmaka ciklusa (inače bi se vakat mogao preskočiti). Pada li ijedna, izlazni
-kod je 1.
-
-Odatle se i vidi cijena rijetkog crona — isti dan, dva ritma:
+Ispiše u koju bi minutu telefon najavio koji namaz i **koliko prije vakta**,
+pa provjeri četiri tvrdnje: svaki namaz tačno jednom, izlazak sunca nijednom,
+svaka najava prije svog vakta i unutar prozora od 15 minuta, i prozor veći od
+razmaka ciklusa. Pada li ijedna, izlazni kod je 1.
 
 ```
-ciklus svakih 15 min                 ciklus svake minute
-  Zora      4:19  → 04:30  (+11)       Zora      4:19  → 04:19  (+0)
-  Podne    12:49  → 13:00  (+11)       Podne    12:49  → 12:49  (+0)
-  Ikindija 16:34  → 16:45  (+11)       Ikindija 16:34  → 16:34  (+0)
+    Zora             4:19   najava 04:04   (15 min prije)
+    Izlazak sunca    5:57   —   nije namaz, obavijest ne ide
+    Podne           12:49   najava 12:34   (15 min prije)
+    Ikindija        16:34   najava 16:19   (15 min prije)
 ```
+
+Odatle se vidi i cijena rijetkog crona: `npm run vaktija -- 30` prijavi da
+prozor najave (15 min) ne pokriva ciklus od 30 minuta.
 
 Ne šalje ništa i ne dira ničiji spisak; vaktiju skine jednom i ostavi u
 lokalnom kešu.
