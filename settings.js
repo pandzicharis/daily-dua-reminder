@@ -192,8 +192,21 @@
   function primijeniPut() {
     var html = document.documentElement;
     if (!html) { return; }
+
+    /* Prelazi se gase dok se paleta mijenja, pa vraćaju (style.css,
+       `[data-bez-prelaza]`): boja koja čeka `transition` ostaje na staroj
+       paleti kad se promijeni varijabla iz koje dolazi, pa je u običnoj
+       noćnoj temi traka prekidača ostajala u putnoj plavoj. */
+    html.setAttribute("data-bez-prelaza", "1");
+
     if (config.putovanje === true) { html.setAttribute("data-putovanje", "1"); }
     else { html.removeAttribute("data-putovanje"); }
+
+    /* Čitanje mjere natjera da se nova boja upiše SADA, dok su prelazi još
+       ugašeni — bez toga bi oba atributa pala u isti proračun i ugašen
+       prelaz ne bi imao kad da odradi svoje. */
+    void html.offsetHeight;
+    html.removeAttribute("data-bez-prelaza");
   }
 
   /* Podrazumijevani config i njegovo čišćenje su u data.js, ne ovdje.

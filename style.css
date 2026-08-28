@@ -195,6 +195,23 @@
   border-bottom-style: dashed;
 }
 
+/* Paleta se mijenja BEZ prelaza — `data-bez-prelaza` na <html>, jedan
+   trenutak, dok settings.js piše `data-putovanje` (`primijeniPut()`).
+
+   Boja koja čeka `transition` ne osvježi se kad se promijeni varijabla iz
+   koje dolazi: kontrola ostane na paleti koja je bila. Zbog toga su u
+   OBIČNOJ noćnoj temi, kad se putovanje ugasi, traka prekidača, dugme
+   izabrane teme i rub zvona ostajali u putnoj plavoj — sve tri boje čekaju
+   prelaz, a sve tri su iz `--primary` i `--accent-soft`.
+
+   Ugašen prelaz nema šta da čeka i nova boja se upiše odmah. Traje jedan
+   proračun stila, pa se ni jedna animacija u aplikaciji ne gubi. */
+:root[data-bez-prelaza] *,
+:root[data-bez-prelaza] *::before,
+:root[data-bez-prelaza] *::after {
+  transition: none !important;
+}
+
 /* Stranica mushafa noću — bijela slova na tamnom listu.
 
    Prije je ovaj drawer po noći vraćao DNEVNE boje, pa se usred tamne
