@@ -164,7 +164,7 @@
       pokazi(
         "offline",
         "Nema mreže",
-        broj ? kvacice(broj) + " — ide gore čim se veza vrati"
+        broj ? kvacice(broj) + " — ide na server čim se veza vrati"
              : "Sve se pamti na uređaju"
       );
       return;

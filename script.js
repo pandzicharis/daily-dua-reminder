@@ -1986,6 +1986,11 @@
     /* display:none prekida CSS animacije, pa se vraćanjem na ekran svaka
        sama pokrene ispočetka — i drugi put istog dana. */
     celebration.hidden = false;
+    /* Dok je uvodni ekran još gore, završni se ne uvodi prelivanjem: ono se
+       ionako ne bi vidjelo, a kad bi se uvodni sklonio usred njega, ispod
+       poluprovidne čestitke bi na tren promakao spisak. Zato je odmah pun,
+       a mekan prelaz pravi sam uvodni ekran dok nestaje. */
+    celebration.classList.toggle("is-instant", !!document.getElementById("boot"));
     document.body.classList.add("no-scroll");
     celebration.querySelector(".celebrate-btn").focus();
   }
@@ -2279,11 +2284,33 @@
      rasporedu nego ne skočiti nikako. Šta prvo stigne, to vrijedi. */
   var opened = false;
 
+  /* Uvodni ekran (vidi index.html) se sklanja tek ovdje — kad su fontovi
+     izmjereni, spisak nacrtan i odlučeno je pokazuje li se lista ili
+     "Elhamdulillah". Sve što bi se do tada vidjelo je posao u toku: prelivanje
+     završnog ekrana preko spiska i skok na prvu neobavljenu stavku.
+
+     Skok se namjerno dešava POSLIJE sklanjanja, ne prije: on je animiran i
+     treba da se vidi, jer objašnjava zašto strana nije na vrhu. */
+  function skloniBoot() {
+    var boot = document.getElementById("boot");
+    if (!boot) { return; }
+    /* Prvo se izgubi (CSS prelaz), pa tek onda izađe iz DOM-a — inače bi
+       nestao rezom. Id se skida odmah, da ga drugi pozivi ne nađu. */
+    boot.removeAttribute("id");
+    boot.classList.add("is-out");
+    setTimeout(function () { boot.remove(); }, 320);
+  }
+
   function openOnce() {
     if (opened) { return; }
     opened = true;
+    skloniBoot();
     openAtFirstUnfinished();
   }
+
+  /* Osigurač: šta god pošlo naopako iznad, uvodni ekran ne smije ostati
+     preko aplikacije. */
+  setTimeout(skloniBoot, 2500);
 
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(function () {

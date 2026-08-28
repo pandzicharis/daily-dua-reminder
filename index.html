@@ -21,7 +21,7 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=50">
+  <link rel="stylesheet" href="style.css?v=51">
 
   <!-- Tema se bira PRIJE prvog crtanja, zato ove dvije skripte stoje ovdje a
        ne dolje sa ostalima: kad bi se čekalo dno strane, noću bi svijetla
@@ -35,6 +35,33 @@
   <script src="theme.js"></script>
 </head>
 <body>
+
+  <!-- Uvodni ekran — stoji preko svega dok aplikacija ne odluči šta pokazati.
+
+       Bez njega se na završen dan vidjelo prvo cijeli spisak dova pa tek onda
+       "Elhamdulillah": završni ekran se pali odmah, ali se u sliku uvodi
+       prelivanjem od pola sekunde, a ispod njega je za to vrijeme stajala
+       lista. Isto tako se, na dan koji je tek napola urađen, spisak najprije
+       nacrta na vrhu pa skoči na prvu neobavljenu stavku — i taj skok se
+       vidio.
+
+       Zato stoji OVDJE, u HTML-u, a ne da ga pravi script.js: ovako ga
+       browser naslika u prvom kadru, prije nego išta od spiska postoji.
+       Sklanja ga script.js (`skloniBoot`) u trenutku kad su fontovi izmjereni
+       i kad se zna šta se pokazuje — vidi tamo. -->
+  <div class="boot" id="boot" aria-hidden="true">
+    <div class="boot-inner">
+      <span class="boot-ring"></span>
+      <svg class="boot-mark" viewBox="0 0 48 48" fill="none"
+           stroke="currentColor" stroke-width="1.6"
+           stroke-linejoin="round" aria-hidden="true">
+        <rect x="11" y="11" width="26" height="26" rx="1.5"/>
+        <rect x="11" y="11" width="26" height="26" rx="1.5"
+              transform="rotate(45 24 24)"/>
+        <circle cx="24" cy="24" r="4.6"/>
+      </svg>
+    </div>
+  </div>
 
   <!-- Staklena ploča ispod headera.
 

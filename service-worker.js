@@ -20,7 +20,7 @@
    — makar se promijenio svaki drugi fajl u projektu. Podignut broj je
    najmanja moguća promjena koja to rješava, a usput baci staru ljusku iz
    keša (vidi `activate`). */
-var CACHE = "moj-zikr-v11";
+var CACHE = "moj-zikr-v12";
 
 /* Stranice mushafa (PAGES/001.png …) idu u SVOJ keš, odvojen od ljuske
    aplikacije. Dva razloga:

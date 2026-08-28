@@ -4782,3 +4782,84 @@ body.has-update .mreza {
     transition: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+   11f. Uvodni ekran (index.html, sklanja ga script.js)
+
+   Stoji preko svega dok se ne zna šta se pokazuje: spisak ili "Elhamdulillah".
+   Bez njega se na završen dan vidjela prvo cijela lista pa tek onda čestitka
+   — završni ekran se uvodi prelivanjem, a ispod njega je za to vrijeme
+   stajao spisak. Isto je pokrivao i skok na prvu neobavljenu stavku, koji se
+   dešava tek kad se fontovi izmjere.
+
+   Boje su iste kao i podloga aplikacije, pa se ne vidi kao "tuđi" ekran nego
+   kao aplikacija koja se otvara. Temu je theme.js postavio prije prvog
+   kadra, tako da je i noću odmah tamna.
+   -------------------------------------------------------------------------- */
+.boot {
+  position: fixed;
+  inset: 0;
+  /* Iznad završnog ekrana (200) — on se pod njim već složi do kraja. */
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  transition: opacity 0.3s ease;
+}
+
+.boot.is-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 74px;
+}
+
+/* Prsten koji se vrti — zlatan samo na jednoj četvrtini, ostatak je tiha
+   linija, pa se okretanje vidi bez vrtoglavice. */
+.boot-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: boot-vrti 0.9s linear infinite;
+}
+
+/* Rub el-hizb u sredini — isti znak koji nosi i zaglavlje aplikacije. */
+.boot-mark {
+  width: 38px;
+  height: 38px;
+  color: var(--primary);
+  animation: boot-dah 1.9s ease-in-out infinite;
+}
+
+@keyframes boot-vrti {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes boot-dah {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-ring,
+  .boot-mark {
+    animation: none;
+  }
+}
+
+/* Završni ekran otvoren dok uvodni još stoji: bez prelivanja, jer se ono ne
+   bi ni vidjelo — a kad bi se uvodni sklonio usred njega, ispod poluprovidne
+   čestitke bi promakao spisak. Mekan prelaz pravi uvodni ekran dok nestaje. */
+.celebrate.is-instant {
+  animation: none;
+}
