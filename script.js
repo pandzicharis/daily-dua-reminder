@@ -573,6 +573,34 @@
     head.appendChild(input);
     head.appendChild(title);
 
+    /* Stavka koja nosi `pages` (za sada samo sura El-Mulk) dobije dugme koje
+       otvara te stranice mushafa — listanje stranicu po stranicu, kao knjigu.
+       Stoji ODMAH uz ime sure, da se vidi da se ono može otvoriti; naslov
+       zato prestaje da se rasteže, pa dugme ostane priljubljeno uz njega
+       umjesto da odluta na desnu ivicu (vidi `.item.has-open` u style.css). */
+    if (Array.isArray(item.pages) && item.pages.length) {
+      var stranice = item.pages.slice();
+      /* Slike se skidaju odmah, dok korisnik čita spisak — kad pritisne
+         dugme, sura je već tu. Isti prefetch koji koristi i dnevna stranica. */
+      prefetchPages(stranice);
+
+      article.classList.add("has-open");
+
+      var openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "view-page-btn";
+      openBtn.appendChild(makeSectionIcon("book", "btn-icon"));
+      openBtn.appendChild(document.createTextNode("Vidi suru"));
+      openBtn.setAttribute("aria-label", displayTitle + " — otvori u mushafu");
+      openBtn.addEventListener("click", function (e) {
+        /* da klik ne prebaci kvačicu kartice */
+        e.stopPropagation();
+        openBookView(stranice, displayTitle);
+      });
+
+      head.appendChild(openBtn);
+    }
+
     /* Brojana stavka nosi brojku umjesto nepromjenjive oznake "30x": broj
        ponavljanja se sada vidi iz same brojke ("0 / 30"). */
     var counter = target ? makeCounter(displayTitle, target) : null;
@@ -1250,8 +1278,200 @@
     document.body.classList.remove("no-scroll");
   }
 
-  /* Escape zatvara ono što je gore: prvo završni ekran, pa drawer. */
+  /* ------------------------------------------------------------------------
+     9b. Sura kao knjiga — listanje stranicu po stranicu
+
+     Dnevna porcija Kur'ana se skrola nadole, jer je to jedan niz stranica
+     kroz koji se prolazi. Sura je nešto drugo: ona ima svoj početak i kraj i
+     čita se kao mali kitab — jedna stranica pred očima, pa se okrene.
+
+     Zato ovaj drawer lista VODORAVNO: jedna stranica ispuni ekran, prst je
+     povuče u stranu, a `scroll-snap` je uvijek zaustavi tačno na listu — nema
+     stajanja na pola jedne i pola druge. Ko ne lista prstom, ima strelice i
+     tastaturu; ispod stoje tačkice, da se vidi koliko je sure ostalo.
+
+     Slika stranice je ista ona iz PAGES/ koju crta `pageFigure` — jedan način
+     prikaza stranice mushafa u cijeloj aplikaciji, ne dva.
+     ------------------------------------------------------------------------ */
+
+  var book = null;
+  var bookPages = [];
+
+  function buildBook() {
+    book = document.createElement("div");
+    /* Nosi I `drawer-page-view`: sve što tamo piše (puni ekran na telefonu,
+       stisnuto zaglavlje, podloga bez zamućenja) vrijedi i ovdje — to je ista
+       stranica mushafa. `drawer-book-view` dodaje samo listanje u stranu. */
+    book.className = "drawer drawer-page-view drawer-book-view";
+    book.setAttribute("role", "dialog");
+    book.setAttribute("aria-modal", "true");
+    book.hidden = true;
+
+    var sheet = document.createElement("div");
+    sheet.className = "drawer-sheet";
+
+    var head = document.createElement("div");
+    head.className = "drawer-head";
+
+    var titles = document.createElement("div");
+    titles.appendChild(makeParagraph("drawer-title", ""));
+    titles.appendChild(makeParagraph("drawer-sub", ""));
+
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "drawer-close";
+    close.setAttribute("aria-label", "Zatvori");
+    close.textContent = "✕";
+    close.addEventListener("click", closeBookView);
+
+    head.appendChild(titles);
+    head.appendChild(close);
+
+    var body = document.createElement("div");
+    body.className = "drawer-body drawer-pages drawer-book";
+
+    /* Koja je stranica u ruci — čita se iz skrola, jer se lista i prstom, a
+       ne samo strelicama. `passive` da skrol ostane gladak. */
+    body.addEventListener("scroll", function () {
+      paintBookNav();
+    }, { passive: true });
+
+    var nav = document.createElement("div");
+    nav.className = "book-nav";
+
+    var prev = makeBookArrow("prev", "Prethodna stranica", "M15 5l-7 7 7 7");
+    var dots = document.createElement("div");
+    dots.className = "book-dots";
+    var next = makeBookArrow("next", "Sljedeća stranica", "M9 5l7 7-7 7");
+
+    nav.appendChild(prev);
+    nav.appendChild(dots);
+    nav.appendChild(next);
+
+    sheet.appendChild(head);
+    sheet.appendChild(body);
+    sheet.appendChild(nav);
+    book.appendChild(sheet);
+
+    book.addEventListener("click", function (e) {
+      if (e.target === book) { closeBookView(); }
+    });
+
+    document.body.appendChild(book);
+  }
+
+  function makeBookArrow(smjer, label, d) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "book-arrow book-" + smjer;
+    btn.setAttribute("aria-label", label);
+    btn.title = label;
+
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    var path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+    btn.appendChild(svg);
+
+    btn.addEventListener("click", function () {
+      okreni(smjer === "next" ? 1 : -1);
+    });
+    return btn;
+  }
+
+  /* Koja je stranica trenutno na ekranu. Računa se iz skrola, a ne pamti u
+     varijabli: prst može stati gdje hoće, i jedini koji uvijek zna gdje smo
+     je sam skrol. */
+  function bookIndex() {
+    var body = book.querySelector(".drawer-body");
+    var sirina = body.clientWidth || 1;
+    return Math.max(0, Math.min(bookPages.length - 1,
+      Math.round(body.scrollLeft / sirina)));
+  }
+
+  function okreni(korak) {
+    var body = book.querySelector(".drawer-body");
+    var cilj = Math.max(0, Math.min(bookPages.length - 1, bookIndex() + korak));
+    body.scrollTo({ left: cilj * body.clientWidth, behavior: "smooth" });
+    /* Bez ovoga bi se tačkice i strelice osvježile tek kad skrol stigne;
+       `scroll` će ih usput ionako ponovo prebojati. */
+    paintBookNav(cilj);
+  }
+
+  /* Tačkice, strelice i podnaslov — sve što kaže gdje smo u suri. */
+  function paintBookNav(forsirano) {
+    if (!book) { return; }
+    var i = (typeof forsirano === "number") ? forsirano : bookIndex();
+
+    var dots = book.querySelectorAll(".book-dot");
+    for (var k = 0; k < dots.length; k++) {
+      dots[k].classList.toggle("is-now", k === i);
+    }
+
+    book.querySelector(".book-prev").disabled = (i <= 0);
+    book.querySelector(".book-next").disabled = (i >= bookPages.length - 1);
+
+    book.querySelector(".drawer-sub").textContent =
+      "Stranica " + bookPages[i] + " · " + (i + 1) + " od " + bookPages.length;
+  }
+
+  /* `naslov` je naslov stavke sa spiska ("Sura El-Mulk") — drawer nosi isto
+     ime pod kojim je korisnik i pritisnuo dugme. */
+  function openBookView(pages, naslov) {
+    if (!pages || !pages.length) { return; }
+    if (!book) { buildBook(); }
+
+    bookPages = pages.slice();
+    book.querySelector(".drawer-title").textContent = naslov || quranNaslov(bookPages);
+
+    var body = book.querySelector(".drawer-body");
+    body.textContent = "";
+    bookPages.forEach(function (page) {
+      body.appendChild(pageFigure(page));
+    });
+
+    var dots = book.querySelector(".book-dots");
+    dots.textContent = "";
+    bookPages.forEach(function (page, i) {
+      var dot = document.createElement("span");
+      dot.className = "book-dot" + (i === 0 ? " is-now" : "");
+      dot.setAttribute("aria-hidden", "true");
+      dot.title = "Stranica " + page;
+      dots.appendChild(dot);
+    });
+
+    book.hidden = false;
+    document.body.classList.add("no-scroll");
+    /* Uvijek se otvara na prvoj stranici sure. `scrollLeft` bez animacije —
+       drawer se tek pojavio, nema šta da se "klizne". */
+    body.scrollLeft = 0;
+    paintBookNav(0);
+    book.querySelector(".drawer-close").focus();
+  }
+
+  function closeBookView() {
+    if (!book) { return; }
+    book.hidden = true;
+    document.body.classList.remove("no-scroll");
+  }
+
+  /* Escape zatvara ono što je gore: prvo završni ekran, pa drawer.
+     Strelice lijevo/desno okreću list dok je sura otvorena. */
   document.addEventListener("keydown", function (e) {
+    if (book && !book.hidden) {
+      if (e.key === "Escape") { closeBookView(); return; }
+      if (e.key === "ArrowRight") { e.preventDefault(); okreni(1); return; }
+      if (e.key === "ArrowLeft") { e.preventDefault(); okreni(-1); return; }
+      return;
+    }
     if (e.key !== "Escape") { return; }
     if (celebration && !celebration.hidden) { closeCelebration(); return; }
     if (drawer && !drawer.hidden) { closePageView(); }

@@ -21,7 +21,7 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=49">
+  <link rel="stylesheet" href="style.css?v=50">
 
   <!-- Tema se bira PRIJE prvog crtanja, zato ove dvije skripte stoje ovdje a
        ne dolje sa ostalima: kad bi se čekalo dno strane, noću bi svijetla
@@ -192,5 +192,9 @@
   <!-- Nova verzija: traka na dnu sa dugmetom "Instaliraj". Ide poslije
        notifications.js, koji service worker ionako registruje prvi. -->
   <script src="update.js"></script>
+  <!-- Trakica "nema mreže" i sinhronizacija kad se veza vrati. Ide POSLIJE
+       sync.js, na čije se stanje prijavljuje; pamćenje bez mreže radi i bez
+       ovog fajla, ovdje se ono samo vidi. -->
+  <script src="offline.js"></script>
 </body>
 </html>

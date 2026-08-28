@@ -34,6 +34,57 @@
   var onState = null;
 
   /* ------------------------------------------------------------------------
+     Stanje mreže — jedini koji ga prikazuje je offline.js
+
+     Ovdje se ne crta ništa; sync.js samo javi u kakvom je stanju razgovor sa
+     serverom, a šta se od toga vidi na ekranu odlučuje offline.js. Pet
+     stanja, tim redom kojim se i dešavaju:
+
+       "salje"   — ima neposlanog i upravo se šalje
+       "ok"      — sve je uredu i ništa se nije ni pokvarilo (ekran šuti)
+       "ceka"    — zahtjev je prošao ali je nešto ostalo u redu (rijetko:
+                   klik napravljen dok je slanje bilo u letu)
+       "offline" — zahtjev je PAO: nema mreže ili servera. Ono što je
+                   čekirano čeka u localStorage-u i ide gore čim veza dođe
+       "vraceno" — zahtjev je PRVI PUT prošao nakon što je prije toga pao, i
+                   red je ispražnjen: veza se vratila i sve je otišlo gore
+
+     Razlika između "ok" i "vraceno" je cijeli razlog što ovaj registar
+     postoji. Uspješan zahtjev je obična stvar i dešava se na svaku kvačicu —
+     njega niko ne treba vidjeti. Vijest je jedino kad je nešto prije toga
+     ZAISTA palo pa se popravilo, i to javlja "vraceno", tačno jednom po
+     prekidu. Zato ga ne pali `navigator.onLine` (koji na localhostu i na
+     wifiju bez interneta ume slagati u oba smjera) nego jedini pouzdan znak:
+     zahtjev koji nije prošao.
+
+     Uz stanje ide i BROJ: kod "offline" koliko čeka, kod "vraceno" koliko je
+     upravo otišlo gore.
+     ------------------------------------------------------------------------ */
+  var slusaci = [];
+  var zadnjeStanje = "ok";
+  var zadnjiBroj = 0;
+  var zadnjiDatum = null;
+
+  /* Je li od zadnjeg uspjeha ijedan zahtjev pao. Samo ovo daje pravo na
+     "vraceno" — vidi gore. */
+  var palo = false;
+
+  function javi(stanje, broj) {
+    /* Isto stanje se ne ponavlja — inače bi se pri svakom kliku "offline"
+       javio iznova i animacija na ekranu krenula ispočetka. */
+    if (stanje === zadnjeStanje && broj === zadnjiBroj) { return; }
+    zadnjeStanje = stanje;
+    zadnjiBroj = broj;
+    slusaci.forEach(function (fn) {
+      try { fn(stanje, broj); } catch (e) {}
+    });
+  }
+
+  function brojCeka(date) {
+    return Object.keys(readPending(date)).length;
+  }
+
+  /* ------------------------------------------------------------------------
      Korisnik
 
      Čita se iz settings.js pri svakom pozivu. Ako settings.js nije učitan
@@ -129,22 +180,83 @@
        poziv, umjesto u svakoj ulaznoj funkciji posebno. */
     if (!user()) { return Promise.resolve(); }
 
+    /* Datum se pamti da bi ponovni pokušaj ispod znao za koji dan šalje —
+       red neposlanog se vodi po danu. */
+    zadnjiDatum = date;
+
+    /* "Nema mreže" se NE nagađa iz `navigator.onLine`. Ta zastavica govori
+       samo je li uređaj spojen na nešto, ne i ima li iza toga servera: na
+       ugašenom wifiju localhost i dalje radi, a na hotelskoj mreži bez
+       interneta `onLine` je uredno `true`. Kad se po njoj javljalo, traka je
+       iskakala i onda kad je svaka kvačica uredno odlazila gore.
+
+       Jedini pouzdan znak je zahtjev koji nije prošao — njega čeka `catch`
+       ispod. Do tada se javlja samo da se šalje. */
+    var ceka = brojCeka(date);
+    /* Dok je već palo, "šaljem" se ne javlja: znamo da veze nema, pa bi svaki
+       sljedeći klik na tren zamijenio "nema mreže" vrtiljkom i traka bi
+       treperila. Ostaje na "nema mreže", a broj koji čeka osvježi `catch`. */
+    if (ceka && !palo) { javi("salje", ceka); }
+
     chain = chain.then(function () {
+      /* Koliko je čekalo prije ovog pokušaja — to je broj koji ide uz
+         "vraceno", jer je to ono što je upravo otišlo gore. */
+      var imalo = brojCeka(date);
+
       return send(date)
         .then(function (items) {
-          if (items) { return items; }
-          return wantPull ? get(date) : null;
+          if (items) { return { items: items, bilo: true }; }
+          return wantPull
+            ? get(date).then(function (pulled) { return { items: pulled, bilo: true }; })
+            : { items: null, bilo: false };
         })
-        .then(function (items) {
-          if (items && onState) { onState(date, items); }
+        .then(function (odgovor) {
+          if (odgovor.items && onState) { onState(date, odgovor.items); }
+          /* Samo ako se mreža zaista dodirnula. Poziv koji nije imao šta ni
+             poslati ni povući ne dokazuje da veza postoji, pa ne smije
+             obrisati oznaku "nema mreže" sa ekrana. */
+          if (!odgovor.bilo) { return; }
+
+          var ostalo = brojCeka(date);
+
+          /* Oporavak: prije je padalo, sada je prošlo i red je prazan. Jedini
+             trenutak u kojem se korisniku išta objavljuje. */
+          if (palo && !ostalo) {
+            palo = false;
+            javi("vraceno", imalo);
+            return;
+          }
+
+          javi(ostalo ? "ceka" : "ok", ostalo);
         })
         .catch(function () {
           /* Nema mreže ili backenda (npr. otvoreno kao obični static server).
              Aplikacija i dalje radi lokalno; pokušaće se ponovo. */
+          palo = true;
+          javi("offline", brojCeka(date));
         });
     });
     return chain;
   }
+
+  /* ------------------------------------------------------------------------
+     Ponovni pokušaj dok nešto čeka
+
+     Povratak u aplikaciju i događaj `online` (oboje u script.js) hvataju
+     najčešće slučajeve, ali ne sve: hotelski wifi na koji je uređaj spojen a
+     interneta iza njega nema, ili server koji je nakratko pao — tada `online`
+     ne dolazi jer se sa stanovišta uređaja ništa nije promijenilo.
+
+     Zato i sat. Dvadeset sekundi je dovoljno rijetko da ne troši bateriju, a
+     dovoljno često da se kvačica napravljena u liftu nađe gore prije nego što
+     korisnik i primijeti. Kad je red prazan, ovo ne radi ništa.
+     ------------------------------------------------------------------------ */
+  setInterval(function () {
+    if (!zadnjiDatum) { return; }
+    if (!brojCeka(zadnjiDatum)) { return; }
+    sync(zadnjiDatum, false);
+  }, 20 * 1000);
+
 
   /* ------------------------------------------------------------------------
      Prvo otvaranje u danu na ovom uređaju
@@ -198,7 +310,16 @@
     },
 
     /* Povratak u aplikaciju / vraćena mreža. */
-    refresh: function (date) { return sync(date, true); }
+    refresh: function (date) { return sync(date, true); },
+
+    /* fn(stanje, broj) — "salje" | "ok" | "ceka" | "offline" | "vraceno" i
+       broj uz njega. Zove ga offline.js; javi se odmah sa zatečenim stanjem,
+       da traka ne mora čekati prvu promjenu da bi znala gdje smo. */
+    onStatus: function (fn) {
+      if (typeof fn !== "function") { return; }
+      slusaci.push(fn);
+      try { fn(zadnjeStanje, zadnjiBroj); } catch (e) {}
+    }
   };
 
 })();

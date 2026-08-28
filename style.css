@@ -4455,3 +4455,330 @@ body.is-preview .ring-wrap,
 body.is-preview .header-progress {
   opacity: 0.55;
 }
+
+/* --------------------------------------------------------------------------
+   11d. Mreža — trakica na dnu (offline.js)
+
+   Pojavi se kad veze nema, kad se neposlano šalje, i na kratko kad prođe.
+   Stoji na dnu, kao i sva ostala lebdeća dugmad, i nosi isto "staklo", samo
+   uža od trake za novu verziju — nosi poruku, ne i radnju.
+
+   Kad su obje na ekranu (nova verzija i nema mreže), ova ide IZNAD: traka sa
+   dugmetom "Instaliraj" ostaje najbliža prstu, jer je jedina koja nešto traži.
+   -------------------------------------------------------------------------- */
+.mreza {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  z-index: 68;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px 10px 13px;
+  background: var(--glass-surface);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid var(--accent-soft);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  animation: fab-in 0.34s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+/* Odlazak: isti pokret unazad. Element se izbacuje iz DOM-a tek kad se
+   animacija završi (offline.js, funkcija `sakrij`). */
+.mreza.is-out {
+  animation: mreza-out 0.24s ease both;
+  pointer-events: none;
+}
+
+@keyframes mreza-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to   { opacity: 0; transform: translate(-50%, 10px); }
+}
+
+/* Bez blura podloga mora biti puna — inače se spisak providi kroz traku. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .mreza {
+    background: var(--surface);
+  }
+}
+
+/* Preko ekrana je drawer ili završni ekran — traka se tada ne vidi. */
+body.no-scroll .mreza {
+  display: none;
+}
+
+/* Obje trake na ekranu: ova se podigne iznad one sa "Instaliraj". */
+body.has-update .mreza {
+  bottom: max(84px, calc(env(safe-area-inset-bottom) + 78px));
+}
+
+/* Lebdeća dugmad (na vrh, završni ekran) su desno, a traka je u sredini i
+   uska — ne sudaraju se, pa se zbog nje ništa ne pomjera. */
+
+.mreza-ikona {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+.mreza-znak {
+  width: 17px;
+  height: 17px;
+}
+
+.mreza-tekst {
+  min-width: 0;
+}
+
+.mreza-naslov {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--primary);
+}
+
+.mreza-nota {
+  margin-top: 1px;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* Nema mreže — zlatna, boja "obrati pažnju" u ovoj aplikaciji. Crvena bi
+   značila grešku, a ovo nije greška: sve je zapamćeno, samo još nije gore. */
+.mreza.is-offline {
+  border-color: var(--accent);
+}
+
+.mreza.is-offline .mreza-ikona {
+  color: var(--accent);
+  background: var(--background-alt);
+}
+
+/* Znak diše dok veze nema — jedini pokret na ekranu koji kaže da stanje
+   traje, a ne da se desilo pa prošlo. */
+.mreza.is-offline .mreza-znak {
+  animation: mreza-dah 1.9s ease-in-out infinite;
+}
+
+@keyframes mreza-dah {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.9); }
+}
+
+/* Šalje se — krug se vrti dok traje. */
+.mreza.is-sync .mreza-ikona {
+  color: var(--primary);
+  background: var(--background-alt);
+}
+
+.mreza.is-sync .mreza-znak {
+  animation: mreza-vrti 0.9s linear infinite;
+}
+
+@keyframes mreza-vrti {
+  to { transform: rotate(360deg); }
+}
+
+/* Gotovo — zelena kvačica, ista boja kojom se u aplikaciji označava završeno. */
+.mreza.is-ok {
+  border-color: var(--done);
+}
+
+.mreza.is-ok .mreza-ikona {
+  color: var(--done);
+  background: var(--done-soft);
+}
+
+.mreza.is-ok .mreza-znak {
+  animation: mreza-kvaka 0.34s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+@keyframes mreza-kvaka {
+  from { transform: scale(0.55); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mreza,
+  .mreza.is-out,
+  .mreza .mreza-znak {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   11e. Sura kao knjiga — vodoravno listanje (script.js, `openBookView`)
+
+   Dnevna porcija Kur'ana se skrola nadole; sura se lista u stranu, jer se
+   čita kao mali kitab: jedna stranica pred očima, pa se okrene. Sve ostalo
+   (slika stranice, njena stanja, noćno invertovanje mastila) je isto kao kod
+   dnevne stranice — vidi `.page-figure` iznad.
+   -------------------------------------------------------------------------- */
+
+/* Dugme "Vidi suru" stoji odmah uz ime sure. Naslov se zato više ne rasteže
+   preko cijelog reda (inače bi dugme odletjelo na desnu ivicu, daleko od
+   imena), a prazan prostor preuzima dugme — pa izvor ostaje desno gdje i
+   inače stoji.
+
+   `margin-right: auto` je i jedina razlika u odnosu na isto dugme na
+   kur'anskoj kartici; tamo je ono desni ugao zaglavlja. */
+.item.has-open .item-title {
+  flex: 0 1 auto;
+}
+
+.item-head .view-page-btn {
+  margin-right: auto;
+}
+
+/* Uski ekran: ime sure i dugme uz njega već pune red, pa izvor
+   ("KUR'AN, EL-MULK") ide dolje ispod — isti podatak, samo bez gužve. */
+@media (max-width: 420px) {
+  .item.has-open .item-head {
+    flex-wrap: wrap;
+    /* Razmak među redovima je manji od razmaka među stavkama u redu — ovo je
+       drugi red iste stvari, ne novi element. */
+    row-gap: 6px;
+  }
+
+  .item.has-open .item-source {
+    max-width: none;
+    text-align: left;
+    /* Kvačica (28px) i razmak do naslova (14px) — izvor tako počinje tačno
+       ispod imena sure. */
+    margin-left: 42px;
+  }
+}
+
+/* Vodoravnom nizu treba ODREĐENA visina — bez nje se stranice ne znaju
+   rastegnuti, pa se sve tri stisnu u visinu naslova. Na telefonu je drawer
+   ionako preko cijelog ekrana (vidi `.drawer-page-view` u 9), pa se visina
+   traži samo na širem ekranu, gdje je ploča prozor. */
+@media (min-width: 640px) {
+  .drawer-book-view .drawer-sheet {
+    height: 92vh;
+  }
+}
+
+/* Podnožje sa strelicama već nosi sigurnu zonu — na tijelu bi ista bila
+   dvaput i odgurala list od dna. */
+@media (max-width: 639px) {
+  .drawer-book-view .drawer-body {
+    padding-bottom: 0;
+  }
+}
+
+/* Vodoravni niz stranica. `scroll-snap-type: x mandatory` je ono što daje
+   osjećaj lista: prst pusti gdje hoće, a stranica uvijek sjedne na svoje. */
+.drawer-body.drawer-book {
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  /* Traka skrola bi ispod stranica bila samo šum — listanje se vidi po
+     tačkicama ispod. */
+  scrollbar-width: none;
+}
+
+.drawer-body.drawer-book::-webkit-scrollbar {
+  display: none;
+}
+
+/* Jedna stranica = jedan pun ekran. Zabrana skupljanja je ono što nizu i daje
+   skrol; bez nje bi se sve tri stisnule u jednu širinu. */
+.drawer-book .page-figure {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+/* Podnožje: strelice, tačkice. Stoji van skrola, pa se ne pomjera sa listom. */
+.book-nav {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 16px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.book-arrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  color: var(--primary);
+  background: var(--background-alt);
+  border: 1px solid var(--accent-soft);
+  border-radius: 50%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+
+.book-arrow svg {
+  width: 20px;
+  height: 20px;
+}
+
+.book-arrow:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--surface);
+}
+
+.book-arrow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Kraj sure — strelica ostaje na mjestu, samo prigušena. Da nestane, dugmad
+   bi poskočila i tačkice se pomjerile pri svakom listanju. */
+.book-arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.book-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.book-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--line-strong);
+  border-radius: 50%;
+  transition: transform 0.22s cubic-bezier(0.22, 0.8, 0.24, 1),
+              background 0.22s ease;
+}
+
+.book-dot.is-now {
+  background: var(--accent);
+  transform: scale(1.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book-dot {
+    transition: none;
+  }
+}

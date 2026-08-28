@@ -499,14 +499,25 @@
   
   /* --------------------------------------------------------------------------
      NAVEČER
-     Sura El-Mulk ostaje samo naslov + checkbox (tekst nije dostavljen).
      -------------------------------------------------------------------------- */
   const navecer = [
     {
       id: "navecer-mulk",
       title: "Sura El-Mulk",
       type: "surah",
-      source: "Kur'an, El-Mulk"
+      source: "Kur'an, El-Mulk",
+      /* Teksta sure ovdje nema i ne treba: `pages` kaže na kojim je
+         stranicama mushafa, pa je aplikacija pokaže kao SLIKE tih stranica —
+         iste one iz PAGES/ koje već služe dnevnoj stranici Kur'ana. Onako
+         kako stoji u mushafu koji korisnik drži u rukama, a ne kao prijepis.
+
+         El-Mulk je na 562, 563. i 564. stranici medinskog mushafa. Kartica
+         zbog ovog polja dobije dugme "Vidi suru", a ono otvara listanje
+         stranicu po stranicu (`openBookView` u script.js).
+
+         Isto polje smije dobiti bilo koja druga stavka — ništa u njemu nije
+         vezano za El-Mulk. */
+      pages: [562, 563, 564]
     },
     {
       id: "navecer-hemm-hazen",
