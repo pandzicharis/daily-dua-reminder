@@ -4624,39 +4624,9 @@ body.has-update .mreza {
    dnevne stranice — vidi `.page-figure` iznad.
    -------------------------------------------------------------------------- */
 
-/* Dugme "Vidi suru" stoji odmah uz ime sure. Naslov se zato više ne rasteže
-   preko cijelog reda (inače bi dugme odletjelo na desnu ivicu, daleko od
-   imena), a prazan prostor preuzima dugme — pa izvor ostaje desno gdje i
-   inače stoji.
-
-   `margin-right: auto` je i jedina razlika u odnosu na isto dugme na
-   kur'anskoj kartici; tamo je ono desni ugao zaglavlja. */
-.item.has-open .item-title {
-  flex: 0 1 auto;
-}
-
-.item-head .view-page-btn {
-  margin-right: auto;
-}
-
-/* Uski ekran: ime sure i dugme uz njega već pune red, pa izvor
-   ("KUR'AN, EL-MULK") ide dolje ispod — isti podatak, samo bez gužve. */
-@media (max-width: 420px) {
-  .item.has-open .item-head {
-    flex-wrap: wrap;
-    /* Razmak među redovima je manji od razmaka među stavkama u redu — ovo je
-       drugi red iste stvari, ne novi element. */
-    row-gap: 6px;
-  }
-
-  .item.has-open .item-source {
-    max-width: none;
-    text-align: left;
-    /* Kvačica (28px) i razmak do naslova (14px) — izvor tako počinje tačno
-       ispod imena sure. */
-    margin-left: 42px;
-  }
-}
+/* Dugme "Vidi suru" ide u desni ugao zaglavlja, isto kao na kur'anskoj
+   kartici: naslov se rasteže (`.item-title` je već `flex: 1`) i gura dugme
+   na suprotnu ivicu istog reda. */
 
 /* Vodoravnom nizu treba ODREĐENA visina — bez nje se stranice ne znaju
    rastegnuti, pa se sve tri stisnu u visinu naslova. Na telefonu je drawer

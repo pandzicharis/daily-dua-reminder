@@ -575,16 +575,12 @@
 
     /* Stavka koja nosi `pages` (za sada samo sura El-Mulk) dobije dugme koje
        otvara te stranice mushafa — listanje stranicu po stranicu, kao knjigu.
-       Stoji ODMAH uz ime sure, da se vidi da se ono može otvoriti; naslov
-       zato prestaje da se rasteže, pa dugme ostane priljubljeno uz njega
-       umjesto da odluta na desnu ivicu (vidi `.item.has-open` u style.css). */
+       Ide u desni ugao zaglavlja, isto kao na kur'anskoj kartici. */
     if (Array.isArray(item.pages) && item.pages.length) {
       var stranice = item.pages.slice();
       /* Slike se skidaju odmah, dok korisnik čita spisak — kad pritisne
          dugme, sura je već tu. Isti prefetch koji koristi i dnevna stranica. */
       prefetchPages(stranice);
-
-      article.classList.add("has-open");
 
       var openBtn = document.createElement("button");
       openBtn.type = "button";
@@ -607,8 +603,9 @@
     if (counter) { head.appendChild(counter.chip); }
 
     /* Izvor (Kur'an / hadis) — sitna oznaka u desnom ćošku headera,
-       u istom redu sa brojem dove. */
-    if (item.source) {
+       u istom redu sa brojem dove. Ne prikazuje se ako stavka ima 'pages'
+       polje (npr. Sura El-Mulk kao zikr). */
+    if (item.source && !Array.isArray(item.pages)) {
       var source = document.createElement("span");
       source.className = "item-source";
       source.textContent = item.source;
