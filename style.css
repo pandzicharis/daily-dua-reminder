@@ -2143,6 +2143,125 @@ main {
   max-width: 620px;
 }
 
+/* --------------------------------------------------------------------------
+   Pregled prošlog dana — svoja strana, otvara je traka (`.pregled-banner`,
+   ispod) koja se sama pojavi kad juče nije sve završeno. Za razliku od
+   "Dove za stanja" ovo SE čekira — jučerašnje kvačice su prave, iste one
+   sa `/api/state` — pa kartice nose `.item`, isti izgled i ista klasa kao na
+   dnevnom spisku, ne svoje. -------------------------------------------- */
+.drawer-pregled .drawer-sheet {
+  max-width: 620px;
+}
+
+.pregled-date {
+  margin: 0 0 4px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.pregled-group {
+  margin-top: 4px;
+  padding: 20px 0 10px;
+  border-top: 1px solid var(--line);
+}
+
+.pregled-group:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.pregled-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.pregled-group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pregled-group-count {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   Traka "jučer nije sve završeno" — stoji PRIJE #sectionsRoot, isti obrazac
+   kao vaktija kartica (`.vaktija-wrap`, insertBefore u vaktija.js), pa se
+   ovdje ne ponavlja objašnjenje zašto je element a ne dio spiska. Vidljiva
+   je SAMO kad ima šta pokazati (pregled.js) — nikad kao stalna ikonica u
+   zaglavlju. -------------------------------------------------------------- */
+.pregled-wrap {
+  /* `.vaktija-wrap` gasi svoj padding-bottom i pušta da razmak napravi ono
+     što dolazi poslije njega — nekad prva sekcija svojim margin-top-om. Sad
+     je to ova traka, pa razmak mora doći odavde, inače kartica i traka sjednu
+     jedna na drugu bez ijednog piksela između. */
+  padding-top: 16px;
+}
+
+.pregled-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+/* Bez ovoga `hidden` ne bi ništa sklonio: `display: flex` iznad ima istu
+   specifičnost kao UA pravilo `[hidden] { display: none }`, pa bi u sukobu
+   pobijedilo kasnije pravilo iz OVOG lista — isti obrazac kao
+   `.vaktija-wrap[hidden]`. */
+.pregled-banner[hidden] {
+  display: none;
+}
+
+.pregled-banner-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+}
+
+.pregled-banner-text {
+  flex: 1;
+}
+
+.pregled-banner-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pregled-banner-note {
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.pregled-banner-arrow {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
 /* Traka sa tabovima stoji između zaglavlja i sadržaja i ne skrola s njim:
    dok se dova čita, prelaz na drugo stanje mora ostati pod rukom.
 
@@ -2605,6 +2724,21 @@ main {
   margin-top: 4px;
   padding: 20px 0 10px;
   border-top: 1px solid var(--line);
+}
+
+/* Prekidač i test dugme noćnog zikra žive UNUTAR zaglavlja (settings.js,
+   `glavaNocnog()`), odmah ispod naslova — bez razmaka bi mu red sjeo
+   pribijen uz tekst. Prvi red ne dobija svoju gornju liniju: zaglavlje već
+   ima jednu, prema sekciji iznad, pa bi druga odmah ispod naslova bila
+   udvojena. Sljedeći redovi (test dugme) zadrže svoju, kao svugdje. */
+.set-group-head .set-row {
+  margin-top: 14px;
+}
+
+.set-group-head .set-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 12px;
 }
 
 .set-acc {

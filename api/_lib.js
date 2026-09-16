@@ -393,6 +393,12 @@ const KEYS = {
      unutar prozora najave poslao istu obavijest ponovo. */
   vakat: function (id, date, vakatId) {
     return "vakat:" + id + ":" + vakatId + ":" + date;
+  },
+
+  /* Poslan vibro-alarm za noćni zikr — po uređaju, po danu, isti razlog kao
+     `vakat`: jedan po danu, ma koliko puta ciklus prođe kroz prozor. */
+  nocniAlarm: function (id, date) {
+    return "nocni-alarm:" + id + ":" + date;
   }
 };
 
@@ -795,6 +801,38 @@ function vakatPayload(vakat, vrijeme, za) {
   });
 }
 
+/* Koliko prije zore stiže vibro-alarm za noćni zikr — vidi `nocniAlarmPayload()`.
+   Zaseban broj od `NAJAVA_MIN`: ovo nije najava namaza nego podsjetnik da
+   noćni zikr uskoro gasi svoj prozor (koji i onako traje do zore/07:00). */
+const NOCNI_ALARM_MIN = 20;
+
+/* Vibro-alarm prije zore — jedini "podsjetnik" koji noćni zikr smije imati
+   (vidi `nocniZikr`/`nocniAlarm` u data.js). Isto pravilo kao `vakatPayload()`:
+   bez `badge`, tekst nosi stvarno preostalo vrijeme.
+
+   `vibrate` je ovdje dodatno polje koje `vakatPayload()` nema —
+   service-worker.js ga čita i proslijedi u `Notification.vibrate`. Prava
+   "samo vibracija, bez zvuka" ne postoji u Web Push-u: `silent: true` bi
+   ugasio i vibraciju (spec ih vezuje zajedno), a ton i onako bira sam OS i
+   ne može se izostaviti (vidi 14. u README-ju, isto vrijedi i za najavu
+   vakta). Ovo je najbliže "kao neki app alarm" što push dozvoljava —
+   kratak, prepoznatljiv obrazac vibracije uz istu, tihu obavijest. */
+function nocniAlarmPayload(za) {
+  const minuta = Math.max(0, Math.round(za || 0));
+  const body = minuta <= 0
+    ? "Zora je nastupila."
+    : "Zora za " + minuta + (minuta === 1 ? " minutu" : " minuta") +
+      " — noćni zikr čeka.";
+
+  return JSON.stringify({
+    title: "Noćni zikr 🌙",
+    body: body,
+    tag: "nocni-alarm",
+    url: "/",
+    vibrate: [60, 80, 60, 80, 120]
+  });
+}
+
 module.exports = {
   TZ, DAY_TTL, TASKS, SECTIONS, SPACE, DEFAULT_END_TIME,
   redis, KEYS,
@@ -807,5 +845,7 @@ module.exports = {
   /* korisnik i njegov config */
   userKey, userFrom, defaultPrefs, cleanPrefs, readPrefs, naPutu,
   /* vaktija */
-  VAKTI, NAJAVA_MIN, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika
+  VAKTI, NAJAVA_MIN, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika,
+  /* noćni zikr — vibro-alarm prije zore */
+  NOCNI_ALARM_MIN, nocniAlarmPayload
 };

@@ -1503,14 +1503,98 @@
     el.root.appendChild(empty);
   }
 
+  /* ------------------------------------------------------------------------
+     10b. Noćni zikr — karta za luft 00:00–07:00
+
+     Van `visible`/`sectionsForDate()` (data.js je isključuje preko
+     `kind: "nocni"`, isto kao dove za stanja), pa ne ulazi ni u trake
+     napretka, ni u broj na ikonici, ni u "Elhamdulillah" — namjerno, jer
+     nema svoj podsjetnik i ne smije se računati kao dio dnevnog zikra.
+     Ovaj blok je zato jedino mjesto koje je crta.
+
+     Lokalno vrijeme uređaja, kao i ostatak ekrana (vidi `getLocalDateKey()`
+     na vrhu fajla) — vaktija je jedina stvar u aplikaciji kojoj mora biti
+     tačno sarajevsko vrijeme, a prozor od sedam sati ne traži tu preciznost. */
+  /* Sat po kojem se prozor gleda je isti onaj koji bira dnevnu/noćnu temu
+     (theme.js) — uključujući njegovo glumljenje iz testnog panela
+     (`window.mojZikrTema.glumiSat()`). Tako panelov postojeći red "Sat
+     aplikacije" pokaže i noćni zikr, bez ijednog novog mehanizma za
+     glumljeno vrijeme. Bez theme.js (ne bi trebalo da se desi, ali brani se
+     kao i svugdje) pada na pravi sat uređaja. */
+  function nocniProzor() {
+    var minuta = (window.mojZikrTema && typeof window.mojZikrTema.sat === "function")
+      ? window.mojZikrTema.sat().minuta
+      : (new Date().getHours() * 60 + new Date().getMinutes());
+    return minuta < 7 * 60;
+  }
+
+  function nocniOmoguceno() {
+    return prefs().nocniZikr === true && nocniProzor();
+  }
+
+  function renderNocniCard() {
+    if (!nocniOmoguceno() || typeof nocniSections !== "function") { return null; }
+
+    var section = nocniSections(prefs())[0];
+    if (!section || !(section.items || []).length) { return null; }
+
+    var wrapper = document.createElement("section");
+    wrapper.className = "section section-nocni";
+    wrapper.id = "sec-nocni";
+
+    var head = document.createElement("div");
+    head.className = "section-head";
+
+    var heading = document.createElement("h2");
+    heading.className = "section-title";
+    var icon = makeSectionIcon(section.icon);
+    if (icon) { heading.appendChild(icon); }
+    heading.appendChild(document.createTextNode(section.title));
+    head.appendChild(heading);
+
+    /* Ista brojka i kvačica kao na svakoj drugoj sekciji — vidi
+       `updateProgress()`, koji je poslije svake kvačice osvježi zasebno,
+       jer ova kartica nije u `visible` kroz koji ta funkcija inače ide. */
+    var count = document.createElement("span");
+    count.className = "section-count";
+    count.dataset.section = "nocni";
+
+    var tick = makeSectionIcon("check", "done-icon");
+    if (tick) { count.appendChild(tick); }
+
+    var countNum = document.createElement("span");
+    countNum.className = "section-count-num";
+    count.appendChild(countNum);
+
+    head.appendChild(count);
+    wrapper.appendChild(head);
+
+    var list = document.createElement("div");
+    list.className = "list";
+
+    var titles = itemTitles(section.id, prefs());
+    section.items.forEach(function (item) {
+      list.appendChild(renderItem(item, titles[item.id] || item.title));
+    });
+
+    wrapper.appendChild(list);
+    return wrapper;
+  }
+
   function renderSections() {
     el.root.textContent = "";
 
+    var nocniCard = renderNocniCard();
     var draw = drawableSections();
-    if (!draw.length) {
+
+    if (!draw.length && !nocniCard) {
       renderEmpty();
       return;
     }
+
+    /* Prva na ekranu, prije dnevnog spiska: ona je razlog gapa u kojem se
+       gleda ovaj ekran (poslije ponoći, prije prve jutarnje obavijesti). */
+    if (nocniCard) { el.root.appendChild(nocniCard); }
 
     draw.forEach(function (section) {
       var wrapper = document.createElement("section");
@@ -1836,6 +1920,21 @@
       if (num) { num.textContent = secDone + " / " + list.length; }
       node.classList.toggle("is-done", list.length > 0 && secDone === list.length);
     });
+
+    /* Noćni zikr nije u `visible` (vidi `renderNocniCard()`), pa ga petlja
+       iznad ne dotiče — osvježi mu brojku i kvačicu ovdje, kad je kartica na
+       ekranu. Ne ulazi u `done`/`total` iznad ni u trake ispod, namjerno. */
+    var nocniNode = el.root.querySelector('[data-section="nocni"]');
+    if (nocniNode) {
+      var nsection = (typeof nocniSections === "function") ? nocniSections(prefs())[0] : null;
+      var nlist = (nsection && nsection.items) || [];
+      var nDone = nlist.reduce(function (sum, item) {
+        return sum + (state.items[item.id] ? 1 : 0);
+      }, 0);
+      var nnum = nocniNode.querySelector(".section-count-num");
+      if (nnum) { nnum.textContent = nDone + " / " + nlist.length; }
+      nocniNode.classList.toggle("is-done", nlist.length > 0 && nDone === nlist.length);
+    }
 
     /* Ukupan napredak se vidi iz traka po dobu dana — prstena u headeru
        nema. Traka je i preciznija: kaže i KOJI dio dana nedostaje, što je
@@ -2395,6 +2494,19 @@
     window.mojZikrSync.start(todayKey, checkedMap());
   }
 
+  /* Testni panel glumi sat preko theme.js (`glumiSat()`), da se noćna tema
+     vidi bez čekanja večeri — `nocniProzor()` iznad čita isti sat, pa isti
+     klik u panelu treba odmah pomjeriti i karticu noćnog zikra, ne tek na
+     sljedeći otkucaj od 30s (vidi interval ispod). theme.js zove `javi()`
+     samo kad se tema stvarno mijenja ili kad se glumljenje sata
+     uključi/isključi, pa ovaj slušalac van panela ne radi ništa. */
+  if (window.mojZikrTema && window.mojZikrTema.naPromjenu) {
+    window.mojZikrTema.naPromjenu(function () {
+      renderSections();
+      updateProgress();
+    });
+  }
+
   /* ------------------------------------------------------------------------
      Ponoć — nov dan, čist spisak
 
@@ -2437,9 +2549,20 @@
      Pola minute je dovoljno blizu ponoći da se ne primijeti, a provjera je
      samo poređenje dva stringa. Ne računa se koliko ima do ponoći nekim
      jednokratnim `setTimeout`-om: uspavan laptop, promjena zone i ljetno
-     vrijeme sve to pomjere, a poređenje dana ne mogu pokvariti. */
+     vrijeme sve to pomjere, a poređenje dana ne mogu pokvariti.
+
+     Isti otkucaj gasi i pali karticu noćnog zikra na granici prozora (07:00)
+     — ponoć već hvata `rolloverIfNewDay()` (nov dan, nova kartica), ali
+     07:00 nije promjena dana, pa treba svoja provjera. Čita se iz DOM-a
+     (postoji li `#sec-nocni`), ne iz posebne promjenljive: sam se ispravi
+     ako je karticu u međuvremenu nacrtalo nešto drugo (`render()` na
+     promjenu postavki). */
   setInterval(function () {
-    if (rolloverIfNewDay()) { refreshShared(); }
+    if (rolloverIfNewDay()) { refreshShared(); return; }
+    if (!!document.getElementById("sec-nocni") !== nocniOmoguceno()) {
+      renderSections();
+      updateProgress();
+    }
   }, 30 * 1000);
 
   /* Mreža se vratila — pošalji što je čekalo i pokupi tuđe promjene. */

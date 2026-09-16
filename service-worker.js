@@ -20,7 +20,7 @@
    — makar se promijenio svaki drugi fajl u projektu. Podignut broj je
    najmanja moguća promjena koja to rješava, a usput baci staru ljusku iz
    keša (vidi `activate`). */
-var CACHE = "moj-zikr-v12";
+var CACHE = "moj-zikr-v13";
 
 /* Stranice mushafa (PAGES/001.png …) idu u SVOJ keš, odvojen od ljuske
    aplikacije. Dva razloga:
@@ -278,6 +278,13 @@ self.addEventListener("push", function (event) {
     badge: "/icons/icon-96.png",
     data: { url: data.url || "/", taskId: data.taskId || null }
   };
+
+  /* Vibro-obrazac za noćni zikr (vidi `nocniAlarmPayload()` u api/_lib.js).
+     Obična obavijest nema ovo polje, pa `options.vibrate` ostaje
+     nepostavljen i telefon vibrira svojim uobičajenim, kratkim obrascem. */
+  if (Array.isArray(data.vibrate) && data.vibrate.length) {
+    options.vibrate = data.vibrate;
+  }
 
   /* Broj za ikonicu. Stiže kao obično polje u push poruci; sve što nije
      valjan broj znači "ne diraj ikonicu". */

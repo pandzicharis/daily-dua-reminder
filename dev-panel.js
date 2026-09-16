@@ -54,8 +54,13 @@
   /* Sati na kojima se tema lomi: 07:00 je granica jutra, 19:00 granica
      večeri — isti brojevi po kojima ide i dnevni/večernji podsjetnik, jer ih
      theme.js čita sa istog spiska. Minuta prije svake granice je tu da se
-     vidi i strana PRIJE prelaza. */
-  var THEME_TIMES = ["06:59", "07:00", "12:00", "18:59", "19:00", "23:30"];
+     vidi i strana PRIJE prelaza.
+
+     "03:00" je tu zbog noćnog zikra, ne teme: prozor mu je 00:00–07:00
+     (script.js, `nocniProzor()`), a ovaj isti sat (`glumiSat()`) ga i
+     otvara — bilo koji čip ispod 07:00 bi to uradio, ovaj je samo sredina
+     noći, dalje od obje granice. */
+  var THEME_TIMES = ["03:00", "06:59", "07:00", "12:00", "18:59", "19:00", "23:30"];
 
   var el = {};
   var atTime = "12:00";
@@ -272,11 +277,20 @@
 
     fetch("/api/widget", { headers: glave })
       .then(function (res) { return res.json(); })
-      .then(function (data) { nacrtajVaktiju(data); })
+      .then(function (data) {
+        nacrtajVaktiju(data);
+        /* Isti odgovor nosi i zoru — noćni zikr je vezan za nju, pa se ne
+           gađa server drugi put za nešto što je već stiglo. */
+        nacrtajNocni(data);
+      })
       .catch(function (err) {
         el.vaktijaState.className = "devp-warn";
         el.vaktijaState.textContent = "vaktija nije dostupna: " +
           String((err && err.message) || err);
+        if (el.nocniState) {
+          el.nocniState.className = "devp-warn";
+          el.nocniState.textContent = "vaktija nije dostupna, pa ni zora — isti razlog kao gore.";
+        }
       });
   }
 
@@ -321,6 +335,73 @@
       if (v.proslo) { chip.classList.add("is-past"); }
       el.vaktijaChips.appendChild(chip);
     });
+  }
+
+  /* Noćni zikr — vibro-alarm prije zore (`nocniAlarm` u configu). Isti
+     odgovor sa `/api/widget` koji već hrani vaktiju gore, samo se ovdje
+     čita zora — nema svog poziva servera. */
+  function nacrtajNocni(data) {
+    if (!el.nocniState) { return; }
+    el.nocniChips.textContent = "";
+
+    var prefs = (window.mojZikrConfig && window.mojZikrConfig.prefs()) || {};
+
+    if (data && data.putovanje) {
+      el.nocniState.className = "devp-warn";
+      el.nocniState.textContent =
+        "putovanje je uključeno — zora je sarajevska, pa alarm ćuti kao i vaktija.";
+      return;
+    }
+
+    var zora = (data && Array.isArray(data.vakti))
+      ? data.vakti.filter(function (v) { return v.id === "zora"; })[0]
+      : null;
+
+    if (!zora) {
+      el.nocniState.className = "devp-warn";
+      el.nocniState.textContent =
+        "server nema vaktiju za danas, pa ni zoru — provjeri vezu prema api.vaktija.ba.";
+      return;
+    }
+
+    if (prefs.nocniZikr !== true) {
+      el.nocniState.className = "devp-warn";
+      el.nocniState.textContent =
+        "„Noćni zikr“ je isključen u postavkama — ni kartica ni alarm se neće pojaviti.";
+    } else if (prefs.nocniAlarm !== true) {
+      el.nocniState.className = "devp-warn";
+      el.nocniState.textContent =
+        "kartica je uključena, ali „Vibracija prije zore“ nije — okidanje ispod neće poslati ništa.";
+    } else {
+      el.nocniState.className = "devp-silent";
+      el.nocniState.textContent =
+        "uključeno · klik ispod namjesti sat na 10 minuta prije zore (" +
+        zora.vrijeme + ") i okine pravi ciklus, kao i alarm.";
+    }
+
+    var chip = button("devp-chip", "Zora " + zora.vrijeme, function () {
+      okiniNocniAlarm(zora.vrijeme);
+    });
+    if (zora.proslo) { chip.classList.add("is-past"); }
+    el.nocniChips.appendChild(chip);
+
+    var chip2 = button("devp-chip", "Kartica sad (03:00)", function () {
+      if (window.mojZikrTema) { window.mojZikrTema.glumiSat("03:00"); syncTheme(); }
+    });
+    el.nocniChips.appendChild(chip2);
+  }
+
+  /* Namjesti sat na 10 minuta prije zore i okini PRAVI ciklus — unutar i
+     vaktijinog prozora od 15 minuta i noćnog alarma od 20 (`NOCNI_ALARM_MIN`
+     u api/_lib.js), pa oba stignu istim klikom, kao i u produkciji. */
+  function okiniNocniAlarm(vrijeme) {
+    var minuta = uMinute(vrijeme);
+    var kad = (minuta === null) ? vrijeme : hhmm(Math.max(0, minuta - 10));
+
+    atTime = kad;
+    if (el.timeInput) { el.timeInput.value = kad; }
+    syncTimeChips();
+    fire(false);
   }
 
   /* Koliko prije vakta ide najava. Isti broj stoji u `NAJAVA_MIN`
@@ -437,10 +518,14 @@
        noćna vidi odmah. Režim se bira u postavkama; ovdje se bira koliko je
        sati.
 
+       Isti glumljeni sat čita i `nocniProzor()` u script.js, pa čip ispod
+       07:00 odmah pokaže i karticu noćnog zikra — otud naslov nosi oboje,
+       ne samo temu.
+
        Kad režim nije "auto", sat ne mijenja ništa — panel to i napiše, da se
        ne traži greška tamo gdje je nema. */
     if (window.mojZikrTema) {
-      el.panel.appendChild(node("p", "devp-label", "Tema — sat aplikacije"));
+      el.panel.appendChild(node("p", "devp-label", "Sat aplikacije — tema i noćni zikr"));
 
       el.themeChips = node("div", "devp-chips");
       THEME_TIMES.forEach(function (t) {
@@ -471,6 +556,20 @@
 
     el.vaktijaChips = node("div", "devp-chips");
     el.panel.appendChild(el.vaktijaChips);
+
+    /* --- noćni zikr ---
+
+       Isti podaci kao vaktija iznad (`/api/widget`), samo se čita zora.
+       Prvi čip namjesti sat na 10 min prije zore i okine pravi ciklus, kao
+       "Zora" dugme gore, ali gađa i alarm; drugi samo pokaže karticu na
+       ekranu, bez slanja. */
+    el.panel.appendChild(node("p", "devp-label", "Noćni zikr — kartica i vibro-alarm"));
+
+    el.nocniState = node("p", "devp-silent", "učitavam vaktiju…");
+    el.panel.appendChild(el.nocniState);
+
+    el.nocniChips = node("div", "devp-chips");
+    el.panel.appendChild(el.nocniChips);
 
     /* --- okidanje --- */
     var resetRow = node("label", "devp-check");

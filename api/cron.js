@@ -95,7 +95,8 @@ const {
   intervalMinutes, cronAuthorized, taskStatus, badgeCount, blockedBy, lateFrom,
   quietFor, weekdayFromKey, parseTime, DEFAULT_END_TIME, validDate, validItemId,
   SPACE, userKey, readPrefs, sectionsFor,
-  VAKTI, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika
+  VAKTI, vaktijaZa, vaktiDue, vakatPayload, vaktijaZaKorisnika,
+  NOCNI_ALARM_MIN, nocniAlarmPayload
 } = require("./_lib.js");
 
 function setupVapid() {
@@ -479,6 +480,74 @@ module.exports = async function handler(req, res) {
               }
               report.errors.push({
                 user: user, device: device.id.slice(0, 8), vakat: d.vakat.id,
+                code: code || "greška"
+              });
+            }
+          }
+        }
+      }
+
+      /* ------------------------------------------------------------------
+         Noćni zikr — vibro-alarm prije zore
+
+         Zaseban od vaktije iznad, iako čita isti `vremena`/`vaktiDue()`:
+         vaktija najavljuje SVAKI namaz onome ko je to upalio, ovo je jedan
+         alarm — samo za zoru, samo onome ko je upalio `nocniAlarm` — i nosi
+         vibro-obrazac umjesto obične najave (`nocniAlarmPayload()` u
+         _lib.js). NA PUTU ĆUTI kao i vaktija: zora je sarajevska, a prozor
+         noćnog zikra je vezan za taj isti sat. */
+      if (prefs.nocniAlarm === true && vaktijaZaKorisnika(prefs)) {
+        const vremena = await vremenaDanas();
+        const zora = vremena
+          ? vaktiDue(vremena, now.minutes, NOCNI_ALARM_MIN).filter(function (d) {
+              return d.vakat.id === "zora";
+            })
+          : [];
+
+        report.users[user].nocniAlarm = !vremena
+          ? "nije dostupna"
+          : (zora.length ? "zora" : "—");
+
+        for (const device of devices) {
+          for (const d of zora) {
+            const alarmKey = KEYS.nocniAlarm(device.id, now.date);
+            const poslan = (resetSent && dry) ? null : await redis.get(alarmKey);
+            if (poslan) { continue; }
+
+            const payload = nocniAlarmPayload(d.za);
+            const shown = JSON.parse(payload);
+
+            if (dry) {
+              report.sent.push({
+                user: user, device: device.id.slice(0, 8), nocniAlarm: "zora",
+                title: shown.title, body: shown.body, dry: true
+              });
+              continue;
+            }
+
+            /* Zapis prije slanja — isto pravilo kao za vakat i podsjetnike:
+               bolje propustiti jedan alarm nego poslati duplikat. */
+            await redis.set(alarmKey, d.vrijeme, { ex: DAY_TTL });
+
+            try {
+              await webpush.sendNotification(
+                { endpoint: device.sub.endpoint, keys: device.sub.keys },
+                payload,
+                { TTL: 60 * 20, urgency: "high" }
+              );
+              report.sent.push({
+                user: user, device: device.id.slice(0, 8), nocniAlarm: "zora",
+                title: shown.title, body: shown.body
+              });
+            } catch (err) {
+              const code = err && err.statusCode;
+              if (code === 404 || code === 410) {
+                await removeSubscription(device.id);
+                report.removed.push(device.id.slice(0, 8));
+                break;
+              }
+              report.errors.push({
+                user: user, device: device.id.slice(0, 8), nocniAlarm: "zora",
                 code: code || "greška"
               });
             }

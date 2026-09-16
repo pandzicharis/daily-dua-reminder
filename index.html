@@ -21,7 +21,7 @@
 
   <!-- ?v= je cache-buster: podigni broj kad promijeniš font.css ili style.css -->
   <link rel="stylesheet" href="font.css?v=9">
-  <link rel="stylesheet" href="style.css?v=51">
+  <link rel="stylesheet" href="style.css?v=55">
 
   <!-- Tema se bira PRIJE prvog crtanja, zato ove dvije skripte stoje ovdje a
        ne dolje sa ostalima: kad bi se čekalo dno strane, noću bi svijetla
@@ -216,6 +216,12 @@
        i prijavljuje se na `naPromjenu`. -->
   <script src="vakti.js"></script>
   <script src="vaktija.js"></script>
+  <!-- Pregled prošlog dana — svoja strana; ulaz je traka koja se sama pojavi
+       prije #sectionsRoot kad juče nije sve završeno (nema stalne ikonice).
+       Ide POSLIJE vaktija.js: oba umeću svoj element pravo pred
+       #sectionsRoot (`insertBefore`), a kasniji poziv završi bliže njemu —
+       pa ovaj redoslijed stavlja traku ISPOD vaktijine kartice, ne iznad. -->
+  <script src="pregled.js"></script>
   <!-- Nova verzija: traka na dnu sa dugmetom "Instaliraj". Ide poslije
        notifications.js, koji service worker ionako registruje prvi. -->
   <script src="update.js"></script>

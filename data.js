@@ -588,7 +588,55 @@
        "count" bez `repetitions` ne iscrtava oznaku "Nx". */
     { id: "navecer-sehadet", title: "Šehadet", type: "count" }
   ];
-  
+
+  /* --------------------------------------------------------------------------
+     NOĆNI ZIKR
+
+     Za luft između zadnje večernje obavijesti i prve jutarnje (ponoć do
+     07:00) — vidi `kind: "nocni"` na sekciji ispod. Taj `kind` je razlog što
+     ova sekcija ne dobija svoj podsjetnik i ne ulazi u trake napretka ni u
+     broj na ikonici: `sectionsForDate()` je isključuje isto kao dove za
+     stanja (`kind: "stanje"`), pa je nema ni u jednom računu koji ide preko
+     te funkcije. Prikazuje je samo `script.js`, i to samo u tom prozoru;
+     kvačice se svejedno pamte i dijele kroz uređaje kao i svaka druga
+     stavka, jer idu u isti spisak čekiranog.
+
+     Uključuje se u postavkama (`nocniZikr` u configu), pod svojom sekcijom
+     akordeona — potpuno isti mehanizam kao za dnevni spisak: sakrij, uredi,
+     dodaj svoju, promijeni redoslijed.
+
+     "DOVA #2" i "DOVA #3" su iste dove kao "dova-a3"/"dova-a4" iz dnevnog
+     spiska (Kur'an 2:201, 2:250), prepisane pod svojim id-em — stavka ne
+     može stajati u dvije sekcije odjednom, a čekiranje ovdje ne smije dirati
+     dnevni spisak niti obrnuto. */
+  const nocni = [
+    { id: "nocni-namaz", title: "Noćni namaz", type: "count" },
+    { id: "nocni-salavati-1", title: "Salavati", type: "count", repetitions: 30 },
+    {
+      id: "nocni-dova-2",
+      title: "#2",
+      type: "dua",
+      arabic: "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ",
+      transliteration:
+        "Rabbena atina fid-dunja haseneten ve fil-ahireti haseneten ve kina " +
+        "'azaben-nar.",
+      translation: "Gospodaru naš, daj nam dobro na ovom svijetu i dobro na budućem svijetu i sačuvaj nas kazne Džehennema.",
+      source: "Kur'an, 2:201"
+    },
+    {
+      id: "nocni-dova-3",
+      title: "#3",
+      type: "dua",
+      arabic: "رَبَّنَا أَفْرِغْ عَلَيْنَا صَبْرًا وَثَبِّتْ أَقْدَامَنَا وَانْصُرْنَا عَلَى الْقَوْمِ الْكَافِرِينَ",
+      transliteration:
+        "Rabbena efrig 'alejna sabren ve sebbit akdamena vensurna " +
+        "'alel-kavmil-kafirin.",
+      translation: "Gospodaru naš, obaspi nas strpljivošću, učvrsti naše noge i pomozi nam protiv naroda nevjerničkog.",
+      source: "Kur'an, 2:250"
+    },
+    { id: "nocni-salavati-2", title: "Salavati", type: "count", repetitions: 30 }
+  ];
+
   /* --------------------------------------------------------------------------
      PETAK
      Postoji SAMO petkom — vidi `days` u nizu `sections` ispod. Ni jedna
@@ -971,6 +1019,11 @@
     { id: "zikr",    title: "Zikr",    icon: "loop",   kind: "list", items: zikr },
     { id: "dove",    title: "Dove",    icon: "hands",  kind: "list", items: dove },
     { id: "navecer", title: "Navečer", icon: "moon",   kind: "list", items: navecer },
+
+    /* `kind: "nocni"` — vidi komentar iznad niza `nocni`. Isključena iz
+       `sectionsForDate()`, pa nema svoj podsjetnik; prikazuje je script.js
+       samo 00:00–07:00, uz uslov da je `nocniZikr` uključen u postavkama. */
+    { id: "nocni", title: "Noćni zikr", icon: "moon", kind: "nocni", items: nocni },
 
     { id: "stanje-strah",      title: "Strah i nemir",   icon: "wind",   kind: "stanje", items: stanjeStrah },
     { id: "stanje-tuga",       title: "Tuga",            icon: "rain",   kind: "stanje", items: stanjeTuga },
@@ -1360,6 +1413,13 @@
          Oba polja čita i server: prikaz njega ne zanima, ali `obavijest`
          odlučuje šalje li ciklus push (api/cron.js). */
       vaktija: true, vaktijaObavijest: false,
+      /* Noćni zikr: `nocniZikr` prikazuje sekciju u prozoru 00:00–07:00
+         (script.js), `nocniAlarm` uz to traži jedan vibro-podsjetnik 20
+         minuta prije zore (api/cron.js) — bez teksta obavijesti koji bi
+         zvonio kao pravi podsjetnik, samo kratak drhtaj. Oba podrazumijevano
+         isključena: ovo je dodatak koji se svjesno uključuje, ne nešto što
+         se nekom pojavi neupitano. */
+      nocniZikr: false, nocniAlarm: false,
       /* Režim teme: "auto" (svijetla danju, tamna uveče), "dan" ili "noc".
 
          Tema je inače stvar UREĐAJA i živi u localStorage (theme.js) — svaki
@@ -1385,6 +1445,8 @@
     if (typeof raw.vaktijaObavijest === "boolean") {
       out.vaktijaObavijest = raw.vaktijaObavijest;
     }
+    if (typeof raw.nocniZikr === "boolean") { out.nocniZikr = raw.nocniZikr; }
+    if (typeof raw.nocniAlarm === "boolean") { out.nocniAlarm = raw.nocniAlarm; }
     if (["auto", "dan", "noc"].indexOf(raw.tema) !== -1) { out.tema = raw.tema; }
 
     out.dodatno = cleanCustom(raw.dodatno);
@@ -1585,8 +1647,13 @@
     return fullSections(prefs).filter(function (section) {
       /* Dove za stanja nisu dnevni spisak: imaju svoju stranu i ne čekiraju
          se. Ovaj jedan red je sve što ih drži van liste, van računa
-         podsjetnika i van završnog ekrana — sve to ide kroz ovu funkciju. */
-      if (section.kind === "stanje") { return false; }
+         podsjetnika i van završnog ekrana — sve to ide kroz ovu funkciju.
+
+         Noćni zikr (`kind: "nocni"`) ide istim putem i iz istog razloga: on
+         ima svoj prozor (00:00–07:00, script.js), a ne dnevni podsjetnik —
+         da uđe ovdje značilo bi da broji u trake napretka, u broj na
+         ikonici i u završni ekran, što nijedno od toga ne smije. */
+      if (section.kind === "stanje" || section.kind === "nocni") { return false; }
       if (section.days && section.days.indexOf(wd) === -1) { return false; }
       /* Kur'anska sekcija nema `items` pa je ne može isprazniti filter ispod —
          gasi je njena jedina stavka, pod id-em "quran". Na putu o njoj
@@ -1631,7 +1698,21 @@
       return bezSkrivenih(section, skriveno);
     });
   }
-  
+
+  /* Noćni zikr — isti posao kao `stanjeSections()` iznad, samo za
+     `kind: "nocni"`. Koristi ga script.js da nacrta karticu u prozoru
+     00:00–07:00, i "pregled.js" da zna koje stavke te sekcije postoje kad
+     gradi pregled prošlog dana. */
+  function nocniSections(prefs) {
+    var skriveno = (prefs && Array.isArray(prefs.skriveno)) ? prefs.skriveno : [];
+
+    return fullSections(prefs).filter(function (section) {
+      return section.kind === "nocni";
+    }).map(function (section) {
+      return bezSkrivenih(section, skriveno);
+    });
+  }
+
   /* Stavke sekcije onako kako ih vidi korisnik u postavkama.
 
      Kur'anska sekcija nije lista: ona je JEDNA stavka i pamti se pod poljem
@@ -1720,6 +1801,7 @@ if (typeof module !== "undefined" && module.exports) {
        (nema ih u `sectionsForDate()`), ali njihove stavke prolaze kroz istu
        validaciju kao i sve ostale jer stoje u nizu `sections`. */
     stanjeSections: stanjeSections,
+    nocniSections: nocniSections,
     /* Putovanje — je li uključeno i šta tada ostaje od sekcije. Postavkama
        treba da bi kvačice pokazale putni spisak umjesto korisnikovog; server
        ovo ne zove jer mu je sve već prosijano kroz `sectionsForDate()`. */
