@@ -1976,26 +1976,23 @@
       : "Odaberi šta se prikazuje, promijeni broj ponavljanja ili dodaj svoje.";
   }
 
-  /* Zaglavlje nad sekcijom noćnog zikra. Isti razlog kao za `glavaStanja()`
-     ispod — stoji UNUTAR spiska koji se pri svakoj izmjeni crta iznova. */
   /* Sve što se tiče noćnog zikra na jednom mjestu — naslov, prekidač
-     (kartica + alarm zajedno), test dugme (samo za ime "test"), pa tek onda
-     spisak dova ispod (dodaje ga pozivalac, `nacrtajAkordeone()`). Bez ovoga
-     bi prekidač stajao gore uz vaktiju, daleko od spiska na koji se odnosi —
-     dva odvojena mjesta za istu stvar.
+     (kartica + alarm zajedno), pa tek onda spisak dova ispod (dodaje ga
+     pozivalac, `nacrtajAkordeone()`). Bez ovoga bi prekidač stajao gore uz
+     vaktiju, daleko od spiska na koji se odnosi — dva odvojena mjesta za
+     istu stvar.
 
-     `el.nocniSwitch`/`el.testNocni.row` su GOTOVI čvorovi iz `build()`, ne
-     prave se ovdje iznova: `nacrtajAkordeone()` zove ovu funkciju pri svakom
-     crtanju spiska (nova vlastita stavka, izmjena...), a `appendChild`
-     premjesti postojeći čvor umjesto da napravi dupli prekidač koji više ne
-     bi znao ništa o svom stanju. */
+     `el.nocniSwitch` je GOTOV čvor iz `build()`, ne pravi se ovdje iznova:
+     `nacrtajAkordeone()` zove ovu funkciju pri svakom crtanju spiska (nova
+     vlastita stavka, izmjena...), a `appendChild` premjesti postojeći čvor
+     umjesto da napravi dupli prekidač koji više ne bi znao ništa o svom
+     stanju. */
   function glavaNocnog() {
     var box = document.createElement("div");
     box.className = "set-group-head";
     box.appendChild(p("set-label", "Noćni zikr"));
 
     if (el.nocniSwitch) { box.appendChild(el.nocniSwitch); }
-    if (el.testNocni) { box.appendChild(el.testNocni.row); }
 
     return box;
   }
@@ -2542,60 +2539,6 @@
     el.switches.nocniZikr = nz.input;
     el.nocniSwitch = nz.row;
 
-    /* Test — dugme koje odmah pošalje pravi vibro-alarm, bez čekanja zore i
-       bez testnog panela (koji na deploy verziji ne postoji — dev-panel.js
-       se ne isporučuje, i REMINDER_TIME_TRAVEL se namjerno nikad ne
-       postavlja na Vercelu). Vidi api/test-nocni.js za zašto je ovo poseban,
-       uzak prolaz umjesto tog puta.
-
-       Samo za ime "test": obična kontrola bi svakom ko upiše baš to ime
-       ponudila dugme koje nikom drugom ne treba, pa red ostaje sakriven dok
-       se ime ne poklopi (`osvjeziTestAlat()`, zove se pri svakoj promjeni
-       imena i configa). */
-    var testRow = document.createElement("div");
-    testRow.className = "set-row";
-    testRow.hidden = true;
-
-    var testText = document.createElement("div");
-    testText.className = "set-text";
-    testText.appendChild(p("set-label", "Test — pošalji alarm odmah"));
-    var testNote = p("set-note",
-      "Vibro-alarm noćnog zikra na ovaj uređaj, odmah, bez čekanja zore.");
-    testText.appendChild(testNote);
-
-    var testBtn = document.createElement("button");
-    testBtn.type = "button";
-    testBtn.className = "empty-btn";
-    testBtn.textContent = "Pošalji";
-    testBtn.addEventListener("click", function () {
-      testBtn.disabled = true;
-      testNote.textContent = "Šaljem…";
-
-      fetch("/api/test-nocni", { method: "POST", headers: zaglavlja() })
-        .then(function (res) {
-          return res.json().then(function (data) { return { ok: res.ok, data: data }; });
-        })
-        .then(function (out) {
-          testBtn.disabled = false;
-          if (!out.ok) {
-            testNote.textContent = (out.data && out.data.error) || "Nije uspjelo.";
-            return;
-          }
-          var n = (out.data.sent || []).length;
-          testNote.textContent = n
-            ? "Poslano na " + n + (n === 1 ? " uređaj." : " uređaja.")
-            : "Nema pretplaćenih uređaja pod imenom \"test\" — uključi podsjetnike (zvono) na ovom uređaju.";
-        })
-        .catch(function () {
-          testBtn.disabled = false;
-          testNote.textContent = "Nema veze sa serverom.";
-        });
-    });
-
-    testRow.appendChild(testText);
-    testRow.appendChild(testBtn);
-    el.testNocni = { row: testRow, note: testNote };
-
     /* Spisak stavki — na dnu jer je najduži dio postavki. Ime, prekidači i
        podsjetnici ostaju odmah pod rukom; spiskovi su ionako sklopljeni.
 
@@ -2627,9 +2570,6 @@
     document.body.appendChild(el.drawer);
 
     nacrtajAkordeone();
-    /* Prvo otvaranje sa imenom "test" već upisanim u localStorage ne smije
-       ostati na sakriveno dok ime ne bude ponovo dotaknuto. */
-    osvjeziTestAlat();
   }
 
   /* Dugme za podsjetnike — isti SVG i isti id koji notifications.js očekuje.
@@ -2818,16 +2758,6 @@
     });
   }
 
-  /* Dugme "Pošalji alarm odmah" postoji samo pod imenom "test" — vidi
-     komentar uz `testRow` u `build()`. Zove se odavde (svaka promjena imena
-     prolazi kroz `povuci().then(... osvjeziPrekidace())` u `primiIme()`) i
-     jednom odmah poslije `build()`, da prvo otvaranje sa već upisanim
-     imenom ne ostane pogrešno sakriveno do prve promjene. */
-  function osvjeziTestAlat() {
-    if (!el.testNocni) { return; }
-    el.testNocni.row.hidden = kljuc(ime) !== "test";
-  }
-
   function osvjeziPrekidace() {
     Object.keys(el.switches || {}).forEach(function (id) {
       el.switches[id].checked = config[id] === true;
@@ -2840,7 +2770,6 @@
        prebaciti prekidač. */
     primijeniPut();
     osvjeziStavke();
-    osvjeziTestAlat();
   }
 
   /* ------------------------------------------------------------------------

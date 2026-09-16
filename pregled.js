@@ -32,6 +32,7 @@
   "use strict";
 
   var banner = null;
+  var bannerWrap = null;
   var bannerTitle = null;
   var bannerNote = null;
 
@@ -258,10 +259,11 @@
     var main = document.getElementById("sectionsRoot");
     if (!main || !main.parentNode) { return; }
 
-    var wrap = document.createElement("div");
-    wrap.className = "wrap pregled-wrap";
-    wrap.appendChild(banner);
-    main.parentNode.insertBefore(wrap, main);
+    bannerWrap = document.createElement("div");
+    bannerWrap.className = "wrap pregled-wrap";
+    bannerWrap.hidden = true;
+    bannerWrap.appendChild(banner);
+    main.parentNode.insertBefore(bannerWrap, main);
   }
 
   function prikaziBanner(done, total) {
@@ -271,10 +273,15 @@
     bannerNote.textContent = ostalo + " od " + total +
       (ostalo === 1 ? " nije urađeno." : " nije urađeno.");
     banner.hidden = false;
+    /* Omotač nosi svoj razmak (padding, ne margin — vidi style.css); bez
+       ovoga bi taj razmak ostao na ekranu i kad je traka sakrivena, kao
+       prazna rupa između vaktija kartice i Kur'ana. */
+    bannerWrap.hidden = false;
   }
 
   function sakrijBanner() {
     if (banner) { banner.hidden = true; }
+    if (bannerWrap) { bannerWrap.hidden = true; }
   }
 
   /* Provjeri juče, bez otvaranja strane — zove se pri učitavanju i pri
@@ -305,8 +312,153 @@
   }
 
   /* ------------------------------------------------------------------------
-     Kartica — ISTA klasa (`.item`) i isto ponašanje kao na dnevnom spisku,
-     samo protiv jučerašnjeg datuma umjesto protiv `dateKey`-a.
+     Skrol do sljedeće kartice — isti obrazac kao `naSljedecu()` u
+     situacije.js (vlastita animacija, ne `scrollIntoView({smooth})`, jer ga
+     neki webview-i tiho ignorišu), samo nad `body` ovog drawera. Ovdje se
+     "sljedeća" ne traži preskakanjem `.is-done` susjeda — gotova kartica se
+     UKLANJA (`ukloniKarticu()`), pa je sljedeća uvijek prvi preostali
+     susjed, ili prva kartica sljedeće grupe kad ova ostane prazna.
+     ------------------------------------------------------------------------ */
+  var SKROL_MS = 380;
+  var SKROL_RUB = 12;
+  var skrolAnim = null;
+
+  function mirnijeAnimacije() {
+    try {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function skrolujNa(y) {
+    var granica = Math.max(0, body.scrollHeight - body.clientHeight);
+    var cilj = Math.max(0, Math.min(y, granica));
+    var od = body.scrollTop;
+    var raz = cilj - od;
+
+    if (skrolAnim) { cancelAnimationFrame(skrolAnim); skrolAnim = null; }
+    if (!raz) { return; }
+
+    if (mirnijeAnimacije() || typeof window.requestAnimationFrame !== "function") {
+      body.scrollTop = cilj;
+      return;
+    }
+
+    var pocetak = null;
+    function korak(t) {
+      if (pocetak === null) { pocetak = t; }
+      var k = Math.min(1, (t - pocetak) / SKROL_MS);
+      body.scrollTop = od + raz * (1 - Math.pow(1 - k, 3));
+      if (k < 1) { skrolAnim = window.requestAnimationFrame(korak); }
+      else { skrolAnim = null; }
+    }
+    skrolAnim = window.requestAnimationFrame(korak);
+  }
+
+  /* Sljedeća kartica, traži se PRIJE brisanja trenutne — poslije brisanja
+     `nextElementSibling` više ne bi imao od čega krenuti. Ide u susjednu
+     grupu kad ova nema više ništa poslije trenutne. */
+  function sljedecaKartica(article) {
+    var next = article.nextElementSibling;
+    if (next) { return next; }
+
+    var group = article.closest(".pregled-group");
+    var nextGroup = group ? group.nextElementSibling : null;
+    while (nextGroup) {
+      var prva = nextGroup.querySelector(".item");
+      if (prva) { return prva; }
+      nextGroup = nextGroup.nextElementSibling;
+    }
+    return null;
+  }
+
+  function skrolujDoSljedece(kartica) {
+    if (!kartica) { return; }
+    var okvir = body.getBoundingClientRect();
+    var meta = kartica.getBoundingClientRect();
+    skrolujNa(body.scrollTop + (meta.top - okvir.top) - SKROL_RUB);
+  }
+
+  /* ------------------------------------------------------------------------
+     Brojani zikr — isti mehanizam kao script.js (5b/6): tap po kartici je
+     jedno ponavljanje, kvačica direktno završava bez obzira dokle je
+     izbrojano, dugo držanje na brojci vraća na nulu. Nedovršeno brojanje
+     (`jucerCounts`) je namjerno SAMO u memoriji i SAMO dok je strana
+     otvorena — resetuje se u `ucitaj()`, isto obrazloženje kao `counts` u
+     script.js: to je "dokle si stigao", ne "jesi li završio", pa ne ide na
+     server i ne treba mu preživjeti zatvaranje.
+     ------------------------------------------------------------------------ */
+  var jucerCounts = {};
+
+  function tapTarget(item) {
+    var n = item && item.repetitions;
+    return (typeof n === "number" && n > 1) ? n : 0;
+  }
+
+  function tapCount(id, target) {
+    var n = jucerCounts[id];
+    if (typeof n !== "number" || !(n > 0)) { return 0; }
+    return Math.min(Math.floor(n), target);
+  }
+
+  function setTapCount(id, n) {
+    if (n > 0) { jucerCounts[id] = n; } else { delete jucerCounts[id]; }
+  }
+
+  function buzz(pattern) {
+    try {
+      if (navigator.vibrate) { navigator.vibrate(pattern); }
+    } catch (e) {
+      /* uređaj ne dozvoljava vibraciju — brojanje radi i bez nje */
+    }
+  }
+
+  function makeCounter(title, target) {
+    var chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "reps count-chip";
+
+    var track = document.createElement("div");
+    track.className = "count-track";
+    var fill = document.createElement("span");
+    fill.className = "count-fill";
+    track.appendChild(fill);
+
+    function paint(count, done) {
+      var shown = done ? target : count;
+      var full = done || shown >= target;
+
+      chip.textContent = shown + " / " + target;
+      chip.setAttribute("aria-label", title + ": " + shown + " od " + target +
+        (full
+          ? " — izbrojano; drži pritisnuto za novo brojanje"
+          : " — dodaj jedan"));
+      chip.title = full ? "Drži pritisnuto za novo brojanje" : "";
+      chip.classList.toggle("is-full", full);
+
+      fill.style.transform = "scaleX(" + (shown / target) + ")";
+      fill.classList.toggle("is-full", full);
+    }
+
+    function pulse() {
+      chip.classList.remove("is-bump");
+      void chip.offsetWidth;
+      chip.classList.add("is-bump");
+    }
+
+    return { chip: chip, track: track, paint: paint, pulse: pulse };
+  }
+
+  /* ------------------------------------------------------------------------
+     Kartica — ISTA klasa (`.item`) i isto ponašanje kao na dnevnom spisku
+     (checkbox, brojani zikr sa tapom i dugim držanjem, arapski/transkripcija,
+     izvor), samo protiv jučerašnjeg datuma umjesto protiv `dateKey`-a.
+
+     Uvijek počinje NEOZNAČENA: ova strana prikazuje samo ono što nije
+     urađeno (vidi `nacrtajGrupu()`), pa čim kartica završi, nestaje —
+     `zavrsi()` je briše i skrola na sljedeću, umjesto da ostane kao dimljena
+     "urađeno" kartica kao na glavnom spisku.
      ------------------------------------------------------------------------ */
   function p(className, text) {
     var node = document.createElement("p");
@@ -325,9 +477,11 @@
     return node;
   }
 
-  function kartica(item, naslov, oznaka, checked) {
+  function kartica(item, naslov) {
+    var target = tapTarget(item);
+
     var article = document.createElement("article");
-    article.className = "item" + (checked ? " is-done" : "");
+    article.className = "item" + (target ? " is-counted" : "");
     article.dataset.id = item.id;
 
     var head = document.createElement("div");
@@ -336,8 +490,7 @@
     var input = document.createElement("input");
     input.type = "checkbox";
     input.className = "check";
-    input.checked = checked;
-    input.setAttribute("aria-label", naslov);
+    input.setAttribute("aria-label", target ? naslov + " — označi kao završeno" : naslov);
 
     var title = document.createElement("span");
     title.className = "item-title";
@@ -346,14 +499,22 @@
     head.appendChild(input);
     head.appendChild(title);
 
-    if (oznaka) {
+    var counter = target ? makeCounter(naslov, target) : null;
+    if (counter) { head.appendChild(counter.chip); }
+
+    if (item.source && !Array.isArray(item.pages)) {
       var znak = document.createElement("span");
       znak.className = "item-source";
-      znak.textContent = oznaka;
+      znak.textContent = item.source;
       head.appendChild(znak);
     }
 
     article.appendChild(head);
+
+    if (counter) {
+      article.appendChild(counter.track);
+      counter.paint(tapCount(item.id, target), false);
+    }
 
     var transkript = prefs().transkript === true;
     if (item.type === "dua") {
@@ -369,40 +530,118 @@
       if (tijelo.childNodes.length) { article.appendChild(tijelo); }
     }
 
-    function commit(done) {
-      input.checked = done;
-      article.classList.toggle("is-done", done);
-      jucerItems[item.id] = done;
-      osvjeziNakonIzmjene(item.id);
+    /* Jedini put kojim kartica završava — čekiranjem direktno ili
+       dobrojavanjem do cilja. Šalje se odmah, ali kartica se uklanja tek
+       nakon kratke pauze (`is-done` treptaj), isto kao na glavnom spisku
+       (`.item.is-done` prelaz u style.css). */
+    function zavrsi() {
+      jucerItems[item.id] = true;
+      setTapCount(item.id, 0);
 
-      posaljiIzmjenu(jucerDate, item.id, done).catch(function () {
-        /* Nema veze — kartica ostaje kako je dodirnuta; sljedeće otvaranje
-           strane povlači stvarno stanje sa servera i ispravlja je ako upis
-           nije prošao. */
+      posaljiIzmjenu(jucerDate, item.id, true).catch(function () {
+        /* Nema veze — kartica je već uklonjena; sljedeće otvaranje strane
+           povlači stvarno stanje sa servera i vraća je ako upis nije prošao. */
       });
+
+      var sljedeca = sljedecaKartica(article);
+      article.classList.add("is-done");
+      input.checked = true;
+      if (counter) { counter.paint(target, true); }
+
+      setTimeout(function () {
+        ukloniKarticu(article);
+        skrolujDoSljedece(sljedeca);
+      }, 200);
+    }
+
+    function tap() {
+      var izbrojano = tapCount(item.id, target);
+      var next = izbrojano + 1;
+
+      if (next >= target) { zavrsi(); buzz([14, 40, 22]); return; }
+
+      setTapCount(item.id, next);
+      counter.paint(next, false);
+      counter.pulse();
+      buzz(8);
+    }
+
+    function resetTap() {
+      if (!tapCount(item.id, target)) { return; }
+      setTapCount(item.id, 0);
+      counter.paint(0, false);
+      buzz([30, 40, 30]);
     }
 
     article.addEventListener("click", function (e) {
       if (e.target === input) { return; }
-      commit(!input.checked);
+      if (target) { tap(); return; }
+      zavrsi();
     });
-    input.addEventListener("change", function () { commit(input.checked); });
+
+    /* Zaštita od dvostrukog diranja u pauzi prije brisanja (~200ms): čim je
+       jednom čekirano, sljedeći klik na sam checkbox ga samo vrati na
+       checked — kartica je već na putu da nestane, "odčekiravanje" ovdje
+       nema šta da znači (vidi zaglavlje funkcije). */
+    input.addEventListener("change", function () {
+      if (!input.checked) { input.checked = true; return; }
+      zavrsi();
+    });
+
+    if (counter) {
+      var drzanje = null;
+      var drzano = false;
+
+      function pocniDrzanje() {
+        prekiniDrzanje();
+        drzano = false;
+        drzanje = setTimeout(function () {
+          drzanje = null;
+          drzano = true;
+          resetTap();
+        }, 550);
+      }
+
+      function prekiniDrzanje() {
+        if (drzanje) { clearTimeout(drzanje); drzanje = null; }
+      }
+
+      counter.chip.addEventListener("pointerdown", pocniDrzanje);
+      ["pointerup", "pointerleave", "pointercancel"].forEach(function (name) {
+        counter.chip.addEventListener(name, prekiniDrzanje);
+      });
+      counter.chip.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+      counter.chip.addEventListener("click", function (e) {
+        e.stopPropagation();
+        prekiniDrzanje();
+        if (drzano) { drzano = false; return; }
+        tap();
+      });
+    }
 
     return article;
   }
 
   function kuranStavka(date, p_) {
     var naslov = naslovStranice(date, p_);
-    return kartica({ id: "quran", type: "surah" }, naslov, null, !!jucerItems.quran);
+    return kartica({ id: "quran", type: "surah" }, naslov);
   }
 
   /* ------------------------------------------------------------------------
-     Crtanje spiska
+     Crtanje spiska — SAMO ono što nije urađeno (vidi zaglavlje fajla).
+     Brojka u zaglavlju grupe i dalje broji nad SVIM stavkama sekcije
+     (`ids`), da "3 / 34" i dalje znači isto što i svugdje — samo se od te
+     34 ovdje crtaju one 31 koje nedostaju.
      ------------------------------------------------------------------------ */
   function nacrtajGrupu(section, date, p_) {
     var ids = (section.kind === "quran") ? ["quran"] :
       (section.items || []).map(function (item) { return item.id; });
     if (!ids.length) { return null; }
+
+    var preostale = (section.kind === "quran")
+      ? (jucerItems.quran ? [] : [{ id: "quran", type: "surah" }])
+      : (section.items || []).filter(function (item) { return !jucerItems[item.id]; });
+    if (!preostale.length) { return null; }
 
     var group = document.createElement("div");
     group.className = "pregled-group";
@@ -431,9 +670,8 @@
       list.appendChild(kuranStavka(date, p_));
     } else {
       var titles = itemTitles(section.id, p_);
-      section.items.forEach(function (item) {
-        list.appendChild(kartica(item, titles[item.id] || item.title, null,
-          !!jucerItems[item.id]));
+      preostale.forEach(function (item) {
+        list.appendChild(kartica(item, titles[item.id] || item.title));
       });
     }
 
@@ -446,6 +684,7 @@
   function nacrtajSpisak() {
     body.textContent = "";
     grupe = [];
+    jucerCounts = {};
 
     var sekcije = sekcijeZaPregled(jucerDate, prefs());
     sekcije.forEach(function (section) {
@@ -456,7 +695,29 @@
     osvjeziBrojke();
 
     if (!grupe.length) {
-      body.appendChild(p("empty-msg", "Nema šta da se pregleda za taj dan."));
+      body.appendChild(prazno("Sve je urađeno. Ništa nije ostalo neurađeno.", null, null));
+    }
+  }
+
+  /* Poslije brisanja kartice: makni je, pa cijelu grupu ako je ostala
+     prazna (naslov nad ničim ne govori ništa), pa osvježi brojke i traku.
+     Kad ništa više ne ostane, poruka "sve gotovo" zauzima prazan drawer. */
+  function ukloniKarticu(article) {
+    var group = article.closest(".pregled-group");
+    article.remove();
+
+    if (group) {
+      var list = group.querySelector(".list");
+      if (!list || !list.children.length) {
+        grupe = grupe.filter(function (g) { return g.node !== group; });
+        group.remove();
+      }
+    }
+
+    osvjeziNakonIzmjene();
+
+    if (!grupe.length && otvoren) {
+      body.appendChild(prazno("Sve je urađeno. Ništa nije ostalo neurađeno.", null, null));
     }
   }
 
@@ -469,7 +730,6 @@
         return sum + (jucerItems[id] ? 1 : 0);
       }, 0);
       g.countEl.textContent = done + " / " + g.ids.length;
-      g.node.classList.toggle("is-full", done === g.ids.length);
     });
   }
 
