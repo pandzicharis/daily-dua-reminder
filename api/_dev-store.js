@@ -46,6 +46,13 @@ class DevStore {
   /* --- stringovi (TTL se lokalno ignoriše, podaci su ionako privremeni) --- */
   async set(k, v) { const db = load(); db[k] = v; save(db); return "OK"; }
   async get(k) { const db = load(); return (k in db) ? db[k] : null; }
+  /* Kao pravi MGET: niz iste dužine kao spisak ključeva, sa null-om na
+     mjestu ključa kojeg nema. Scheduler razlikuje null od nule (slot 0 je
+     zapis, ne "nije poslano"), pa se prazno mjesto ne smije preskočiti. */
+  async mget(...keys) {
+    const db = load();
+    return keys.map(function (k) { return (k in db) ? db[k] : null; });
+  }
   async del(k) { const db = load(); const had = k in db; delete db[k]; save(db); return had ? 1 : 0; }
   async exists(k) { return (k in load()) ? 1 : 0; }
   async expire() { return 1; }

@@ -218,8 +218,18 @@ module.exports = async function handler(req, res) {
     const ids = await redis.smembers(KEYS.all);
     const byUser = new Map();
 
-    for (const id of ids) {
-      const sub = await redis.get(KEYS.sub(id));
+    /* JEDAN `mget` umjesto `get` po uređaju. Ciklus se okida svakih petnaest
+       minuta, cijeli mjesec, pa cijena nije u sekundama nego u BROJU KOMANDI:
+       sa `get` u petlji svaki novi telefon dodaje 2.880 komandi mjesečno u
+       bazu, a besplatni Upstash ih daje 500.000 ukupno. Ovako uređaji ne
+       koštaju ništa — jedna komanda, koliko god ih bilo. */
+    const subs = ids.length
+      ? await redis.mget(...ids.map(function (id) { return KEYS.sub(id); }))
+      : [];
+
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const sub = subs[i];
 
       /* Id u setu bez zapisa = ostatak — očisti i idi dalje. */
       if (!sub || !sub.endpoint) {
@@ -330,6 +340,38 @@ module.exports = async function handler(req, res) {
         report.reset = now.date;
       }
 
+      /* Zapisi "zadnji poslani slot" za SVE uređaje ovog korisnika odjednom.
+
+         Isti razlog kao `mget` za pretplate gore: ovo je u petlji
+         uređaj × podsjetnik, pa je sa `get` po komadu jedan telefon sa tri
+         podsjetnika koštao 8.640 komandi mjesečno. Ovako je jedna komanda po
+         korisniku po ciklusu, ma koliko telefona i podsjetnika imao.
+
+         Traže se samo podsjetnici koji uopšte mogu poslati — ugašen,
+         zaklonjen (`blocked`) i utišan (`quiet`) ne ulaze ni u jedan ključ,
+         jer i u staroj petlji `continue` pada PRIJE čitanja baze. Zaklon ne
+         zavisi od uređaja, pa se spisak računa jednom.
+
+         `mget` vraća null za ključ kojeg nema — isto što je vraćao `get`, pa
+         `dueSlot()` ne vidi razliku. Nula se ne smije pretvoriti u null
+         (slot 0 je prva obavijest u danu i jeste zapis), zato se vrijednost
+         čita iz mape po ključu, bez `||`. */
+      const liveTasks = TASKS.filter(function (task) {
+        return task.enabled !== false && !blocked[task.id] && !quiet[task.id];
+      });
+
+      const sentBy = new Map();
+      if (liveTasks.length && !(resetSent && dry)) {
+        const sentKeys = [];
+        for (const device of devices) {
+          for (const task of liveTasks) {
+            sentKeys.push(KEYS.sent(device.id, task.id, now.date));
+          }
+        }
+        const sentVals = await redis.mget(...sentKeys);
+        sentKeys.forEach(function (key, i) { sentBy.set(key, sentVals[i]); });
+      }
+
       for (const device of devices) {
         const id = device.id;
         const sub = device.sub;
@@ -347,7 +389,7 @@ module.exports = async function handler(req, res) {
 
           const sentKey = KEYS.sent(id, task.id, now.date);
           /* U probi sa `reset=1` se zapis ignoriše, a baza se ne dira. */
-          const last = (resetSent && dry) ? null : await redis.get(sentKey);
+          const last = sentBy.has(sentKey) ? sentBy.get(sentKey) : null;
 
           /* Sva pravila su u dueSlot() — ovdje ostaje samo baza i slanje. */
           const slot = dueSlot({
