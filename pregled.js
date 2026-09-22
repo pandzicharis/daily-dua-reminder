@@ -39,6 +39,7 @@
 
   var drawer = null;
   var body = null;
+  var ocistiBtn = null;
 
   var otvoren = false;
   var ucitavanje = false;
@@ -93,34 +94,34 @@
       MONTH_NAMES[d.getUTCMonth()] + ".";
   }
 
-  function daysBetween(fromKey, toKey) {
-    var a = fromKey.split("-").map(function (x) { return parseInt(x, 10); });
-    var b = toKey.split("-").map(function (x) { return parseInt(x, 10); });
-    var od = Date.UTC(a[0], a[1] - 1, a[2]);
-    var do_ = Date.UTC(b[0], b[1] - 1, b[2]);
-    return Math.round((do_ - od) / 86400000);
+  /* ------------------------------------------------------------------------
+     Mushaf — isti ulazi koje koristi i dnevni spisak
+
+     Ovdje je nekad stajala VLASTITA računica stranice dana, prepisana iz
+     script.js. Dvije kopije istog računa su se mogle tiho raziću (recimo kad
+     `stranice` iz configa promijeni značenje), pa bi pregled prošlog dana
+     pokazivao drugu stranicu nego spisak tog istog dana. Sada ide kroz
+     `window.mojZikr` — jedan račun, jedan prefetch, jedan drawer.
+
+     Ako `mojZikr` iz bilo kojeg razloga nema (script.js nije stigao),
+     kur'anska kartica ostaje bez broja stranice i bez dugmeta umjesto da
+     sruši cijeli pregled. */
+  function mushaf() {
+    return window.mojZikr || null;
   }
 
-  /* Ista računica kao `getQuranPages()` u script.js (2. Kur'an), samo za
-     proizvoljan dan umjesto za `dateKey`: start stranica + dana od starta,
-     `perDay` stranica po danu, modulo `QURAN_TOTAL_PAGES` da poslije 604.
-     krene ispočetka. */
-  function stranicaZa(dateKey, p) {
-    var perDay = (typeof p.stranice === "number" && p.stranice >= 1)
-      ? Math.floor(p.stranice) : 1;
-    var total = QURAN_TOTAL_PAGES;
-    var first = QURAN_START_PAGE + daysBetween(QURAN_START_DATE, dateKey) * perDay;
-    var out = [];
-    for (var i = 0; i < perDay; i++) {
-      out.push(((((first + i - 1) % total) + total) % total) + 1);
-    }
-    return out;
+  function stranicaZa(dateKey) {
+    var m = mushaf();
+    if (!m || typeof m.stranice !== "function") { return []; }
+    try { return m.stranice(dateKey) || []; } catch (e) { return []; }
   }
 
-  function naslovStranice(dateKey, p) {
-    var stranice = stranicaZa(dateKey, p);
-    return stranice.length > 1
-      ? "Stranice " + stranice[0] + "–" + stranice[stranice.length - 1]
+  function naslovStranice(dateKey) {
+    var m = mushaf();
+    var stranice = stranicaZa(dateKey);
+    if (!stranice.length) { return "Kur'an"; }
+    return (m && typeof m.naslovStranica === "function")
+      ? m.naslovStranica(stranice)
       : "Stranica " + stranice[0];
   }
 
@@ -159,6 +160,44 @@
   function posaljiIzmjenu(date, id, checked) {
     var items = {};
     items[id] = checked;
+
+    return fetch("/api/state", {
+      method: "POST",
+      headers: zaglavlja({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ date: date, items: items })
+    }).then(function (res) {
+      if (!res.ok) { throw new Error("state " + res.status); }
+      return res.json();
+    });
+  }
+
+  /* Sve što od juče nije urađeno, u jednom nizu — koristi ga dugme "Očisti".
+     Ide kroz `sekcijeZaPregled()` kao i sve ostalo, pa pokriva tačno ono što
+     je na ekranu: ni ugašenu sekciju, ni petak koji juče nije bio, ni noćni
+     zikr. */
+  function preostaleStavke() {
+    if (!jucerDate || !jucerItems) { return []; }
+
+    var out = [];
+    sekcijeZaPregled(jucerDate, prefs()).forEach(function (section) {
+      if (section.kind === "quran") {
+        if (!jucerItems.quran) { out.push("quran"); }
+        return;
+      }
+      (section.items || []).forEach(function (item) {
+        if (!jucerItems[item.id]) { out.push(item.id); }
+      });
+    });
+    return out;
+  }
+
+  /* Više stavki u JEDNOM zahtjevu, za razliku od `posaljiIzmjenu()` koja
+     šalje jednu. Nije kozmetika: "Očisti" zna poslati trideset stavki, a
+     trideset zasebnih POST-ova je trideset upisa u bazu umjesto jednog
+     (api/state.js prima do 200 odjednom). */
+  function posaljiSve(date, ids) {
+    var items = {};
+    ids.forEach(function (id) { items[id] = true; });
 
     return fetch("/api/state", {
       method: "POST",
@@ -510,6 +549,49 @@
     head.appendChild(input);
     head.appendChild(title);
 
+    /* Stavka koja nosi `pages` dobije dugme u desni ugao zaglavlja — isto
+       mjesto i isti izgled kao na dnevnom spisku (script.js). Dvije vrste,
+       jer su i na dnevnom spisku dvije:
+
+         kur'anska porcija ("quran") -> `otvoriStranice()`, drawer sa cijelom
+                                        stranicom, dugme "Vidi stranicu"
+         sve ostalo (sura El-Mulk)   -> `otvoriKnjigu()`, listanje stranicu
+                                        po stranicu, dugme "Vidi suru"
+
+       Slike se skidaju odmah, dok korisnik čita spisak, pa je stranica već
+       tu kad pritisne dugme. */
+    var stranice = Array.isArray(item.pages) ? item.pages.slice() : [];
+    if (stranice.length) {
+      var m = mushaf();
+      var jePorcija = item.id === "quran";
+
+      if (m && typeof m.pripremiStranice === "function") {
+        try { m.pripremiStranice(stranice); } catch (e) {}
+      }
+
+      var openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "view-page-btn";
+      if (typeof makeSectionIcon === "function") {
+        openBtn.appendChild(makeSectionIcon(jePorcija ? "pages" : "book", "btn-icon"));
+      }
+      openBtn.appendChild(document.createTextNode(
+        jePorcija
+          ? (stranice.length > 1 ? "Vidi stranice" : "Vidi stranicu")
+          : "Vidi suru"
+      ));
+      openBtn.setAttribute("aria-label", naslov + " — otvori u mushafu");
+      openBtn.addEventListener("click", function (e) {
+        /* da klik ne čekira karticu ispod */
+        e.stopPropagation();
+        if (!m) { return; }
+        if (jePorcija) { m.otvoriStranice(stranice); }
+        else { m.otvoriKnjigu(stranice, naslov); }
+      });
+
+      head.appendChild(openBtn);
+    }
+
     var counter = target ? makeCounter(naslov, target) : null;
     if (counter) { head.appendChild(counter.chip); }
 
@@ -633,9 +715,14 @@
     return article;
   }
 
-  function kuranStavka(date, p_) {
-    var naslov = naslovStranice(date, p_);
-    return kartica({ id: "quran", type: "surah" }, naslov);
+  /* Kur'anska porcija tog dana — jedna kartica i jedna kvačica, isto kao na
+     dnevnom spisku. `pages` nosi stvarne stranice tog dana, pa kartica kroz
+     `kartica()` dobije i dugme "Vidi stranicu". */
+  function kuranStavka(date) {
+    return kartica(
+      { id: "quran", type: "surah", pages: stranicaZa(date) },
+      naslovStranice(date)
+    );
   }
 
   /* ------------------------------------------------------------------------
@@ -678,7 +765,7 @@
     list.className = "list";
 
     if (section.kind === "quran") {
-      list.appendChild(kuranStavka(date, p_));
+      list.appendChild(kuranStavka(date));
     } else {
       var titles = itemTitles(section.id, p_);
       preostale.forEach(function (item) {
@@ -704,6 +791,7 @@
     });
 
     osvjeziBrojke();
+    osvjeziOcisti();
 
     if (!grupe.length) {
       body.appendChild(prazno("Sve je urađeno. Ništa nije ostalo neurađeno.", null, null));
@@ -750,6 +838,73 @@
     var t = ukupno(jucerDate, prefs(), jucerItems);
     if (t.total > 0 && t.done < t.total) { prikaziBanner(t.done, t.total); }
     else { sakrijBanner(); }
+  }
+
+  /* ------------------------------------------------------------------------
+     "Očisti" — završi sve što je od juče ostalo
+
+     Za dan kad je sve urađeno a kvačice su ostale neotkucane: umjesto trideset
+     dodira, jedan. Stavke idu u zapis kao URAĐENE, pa traka nestaje sama —
+     nema zasebnog "sakrij traku" stanja koje bi se moralo pamtiti po danu.
+
+     TRAŽI DVA DODIRA. Prvi naoruža dugme ("Sigurno?"), drugi izvrši. Razlog:
+     iz ovog pregleda se čekirano više ne vidi (kartica nestaje čim se završi),
+     pa jedan promašen dodir ne bi imao gdje da se vrati. Naoružanje samo pada
+     poslije tri sekunde, kao i kod dugog pritiska na brojač.
+     ------------------------------------------------------------------------ */
+  var OCISTI_MS = 3000;
+  var ocistiSpreman = false;
+  var ocistiTimer = null;
+
+  function razoruzajOcisti() {
+    ocistiSpreman = false;
+    if (ocistiTimer) { clearTimeout(ocistiTimer); ocistiTimer = null; }
+    if (ocistiBtn) {
+      ocistiBtn.classList.remove("is-armed");
+      ocistiBtn.textContent = "Očisti";
+    }
+  }
+
+  /* Dugme postoji samo dok ima šta da se čisti. */
+  function osvjeziOcisti() {
+    if (!ocistiBtn) { return; }
+    var ima = preostaleStavke().length > 0;
+    ocistiBtn.hidden = !ima;
+    if (!ima) { razoruzajOcisti(); }
+  }
+
+  function ocisti() {
+    var ids = preostaleStavke();
+    if (!ids.length) { razoruzajOcisti(); return; }
+
+    ids.forEach(function (id) {
+      jucerItems[id] = true;
+      setTapCount(id, 0);
+    });
+
+    /* Ekran se ne drži za odgovor servera — isto pravilo kao kod pojedinačne
+       kvačice: ako upis ne prođe, sljedeće otvaranje strane povuče stvarno
+       stanje i vrati što treba. */
+    posaljiSve(jucerDate, ids).catch(function () {});
+
+    razoruzajOcisti();
+    buzz([14, 40, 22]);
+    nacrtajSpisak();
+    osvjeziNakonIzmjene();
+  }
+
+  function klikOcisti(e) {
+    e.stopPropagation();
+
+    if (!ocistiSpreman) {
+      ocistiSpreman = true;
+      ocistiBtn.classList.add("is-armed");
+      ocistiBtn.textContent = "Sigurno?";
+      ocistiTimer = setTimeout(razoruzajOcisti, OCISTI_MS);
+      return;
+    }
+
+    ocisti();
   }
 
   /* ------------------------------------------------------------------------
@@ -843,8 +998,21 @@
     close.textContent = "✕";
     close.addEventListener("click", zatvori);
 
+    ocistiBtn = document.createElement("button");
+    ocistiBtn.type = "button";
+    ocistiBtn.className = "pregled-ocisti";
+    ocistiBtn.textContent = "Očisti";
+    ocistiBtn.setAttribute("aria-label", "Označi sve preostalo od juče kao urađeno");
+    ocistiBtn.hidden = true;
+    ocistiBtn.addEventListener("click", klikOcisti);
+
+    var akcije = document.createElement("div");
+    akcije.className = "pregled-head-akcije";
+    akcije.appendChild(ocistiBtn);
+    akcije.appendChild(close);
+
     head.appendChild(titles);
-    head.appendChild(close);
+    head.appendChild(akcije);
 
     body = document.createElement("div");
     body.className = "drawer-body";
@@ -876,6 +1044,7 @@
     if (!drawer || drawer.hidden) { return; }
     drawer.hidden = true;
     otvoren = false;
+    razoruzajOcisti();
 
     document.body.classList.remove("no-scroll");
     if (banner && !banner.hidden) { banner.focus(); }

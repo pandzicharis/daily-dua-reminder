@@ -2443,7 +2443,34 @@
     naPromjenu: function (fn) {
       onDayChange = fn;
       fn(dateKey, todayKey);
-    }
+    },
+
+    /* ----------------------------------------------------------------------
+       Mushaf — za pregled prošlog dana (pregled.js)
+
+       Pregled crta ISTE kartice kao dnevni spisak, pa mu trebaju isti ulazi
+       u mushaf. Izloženi su ovdje umjesto prepisani: prepis bi značio dva
+       prefetch-a i dva drawera koji se razilaze čim se jedan popravi, i dvije
+       računice stranice dana koje tiho počnu davati različit broj.
+
+       Sve četiri primaju sve što im treba kao argument i ne gledaju `dateKey`,
+       pa rade i za juče isto kao za danas.
+       ---------------------------------------------------------------------- */
+
+    /* Stranice mushafa za dati dan ("YYYY-MM-DD"), uz `stranice` iz configa. */
+    stranice: function (key) { return getQuranPages(key); },
+
+    /* "Stranica 92" / "Stranice 92–93" — naslov za tu porciju. */
+    naslovStranica: function (pages) { return quranNaslov(pages); },
+
+    /* Skini slike unaprijed, dok korisnik još čita spisak. */
+    pripremiStranice: function (pages) { prefetchPages(pages); },
+
+    /* Dnevna porcija — drawer sa cijelom stranicom (dugme "Vidi stranicu"). */
+    otvoriStranice: function (pages) { openPageView(pages); },
+
+    /* Sura kao knjiga, stranicu po stranicu (dugme "Vidi suru"). */
+    otvoriKnjigu: function (pages, naslov) { openBookView(pages, naslov); }
   };
 
   /* Uparivanje sa zajedničkim stanjem: ono što je čekirano na drugom
