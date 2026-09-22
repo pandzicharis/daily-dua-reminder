@@ -1206,10 +1206,13 @@ Bez ispravnog secreta `/api/cron` vraća 401.
 >   ciklusa ne trpe — njihov ritam drži `REMINDER_INTERVAL_MINUTES` (60), a
 >   ne cron: slot se šalje samo jednom, ma koliko puta cron kucnuo.
 >
->   Zato: ako cron kuca svake minute a zikr stiže svake minute, varijabla je
->   ostala na `1` od testiranja. To se sada **ne može desiti u produkciji**:
->   `intervalMinutes()` prihvata vrijednost ispod 60 samo uz
->   `REMINDER_TIME_TRAVEL=1`, koji stoji isključivo u `.env.local`.
+>   Zato: ako cron kuca svake minute a zikr stiže svake minute, varijabla
+>   stoji na `1`. To je **dozvoljeno i u produkciji** —
+>   `REMINDER_INTERVAL_MINUTES` vrijedi doslovno, jer ritam zikra bira
+>   korisnik. Ali se plati dvaput: cron mora kucati svake minute (inače je
+>   stvarni razmak razmak crona, ne varijable), a ~43.000 ciklusa mjesečno
+>   troši dobar dio besplatnih 500.000 Upstash komandi. Najava vakta se time
+>   ne mijenja: ona ide po `NAJAVA_MIN`, jedna po vaktu.
 
 ## 8. Kako generisati VAPID ključeve
 
@@ -1231,7 +1234,7 @@ podsjetnike.
 | `KV_REST_API_URL` | da | Upstash Redis REST URL |
 | `KV_REST_API_TOKEN` | da | Upstash Redis REST token |
 | `CRON_SECRET` | da | `openssl rand -hex 32`; bez njega cron vraća 401 |
-| `REMINDER_INTERVAL_MINUTES` | ne | **60** u produkciji, `1` za testiranje. Vrijednost **ispod 60 vrijedi samo uz `REMINDER_TIME_TRAVEL=1`** — zaboravljena `1` na Vercelu bi inače slala podsjetnik svake minute (vidi 5) |
+| `REMINDER_INTERVAL_MINUTES` | ne | Razmak između dva podsjetnika za zikr, u minutama. **60** je uobičajeno (jedan na sat); vrijedi doslovno i u produkciji, pa `1` stvarno znači svake minute — ali tek ako i cron kuca toliko često, i uz odgovarajuću potrošnju baze (vidi 7). Ne dira najavu vakta |
 | `REMINDER_START_TIME` | ne | samo za test: pomjera startTime svih zadataka |
 | `ZIKR_SPACE` | ne | ime zajedničkog prostora u bazi (default `zajedno`) |
 

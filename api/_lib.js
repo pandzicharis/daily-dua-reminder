@@ -487,32 +487,34 @@ async function removeSubscription(id) {
 }
 
 /* ------------------------------------------------------------------------
-   Razmak između dva podsjetnika istog zadatka.
+   Razmak između dva podsjetnika istog zadatka — SAMO za zikr.
 
-   Produkcija: 60 (jedan podsjetnik na sat).
-   Razvoj:     REMINDER_INTERVAL_MINUTES=1 pa se cijeli ciklus testira
-               za par minuta umjesto da se čeka sat.
+   Vrijednost iz `REMINDER_INTERVAL_MINUTES` vrijedi doslovno, i u produkciji:
+   60 znači jedan podsjetnik na sat, 1 znači jedan svake minute. Ranije je
+   ovdje stajala zaštita koja je u produkciji svaku vrijednost ispod sata
+   vraćala na 60, da zaboravljeni `=1` iz testiranja ne bi zvonio cijeli dan.
+   Zaštita je skinuta namjerno: ritam zikra bira korisnik, a varijabla je
+   jedino mjesto na kojem se to kaže — kad kaže minutu, mora biti minuta.
+
+   DVIJE STVARI KOJE OVO NE MIJENJA.
+
+   Vaktija ne ide ovuda. Njen razmak je `NAJAVA_MIN` (15 minuta prije vakta),
+   zapis joj je po vaktu i danu, i ne gleda ovu vrijednost — pa i kad zikr
+   ide svake minute, najava namaza ostaje jedna po vaktu.
+
+   Cron je gornja granica. Slot se otvara po ovoj vrijednosti, ali obavijest
+   izlazi tek kad ciklus prođe: uz `=1` a cron na 15 minuta, stiže jedna na
+   petnaest, ne petnaest odjednom. Za pravu minutu i cron mora kucati svake
+   minute — a to je ~43.000 ciklusa mjesečno, što se osjeti na besplatnom
+   Upstash limitu od 500.000 komandi (vidi 7. u README-ju).
+
+   Izvještaj `/api/cron` nosi `interval`, pa se stvarna vrijednost vidi bez
+   kopanja po varijablama okruženja.
    ------------------------------------------------------------------------ */
 function intervalMinutes() {
   const raw = parseInt(process.env.REMINDER_INTERVAL_MINUTES || "60", 10);
   if (!isFinite(raw) || raw < 1) { return 60; }
-  const trazeno = Math.min(raw, 1440);
-
-  /* Interval KRAĆI OD SATA je alat za testiranje i ne smije se zateći u
-     produkciji. Zna se desiti: `REMINDER_INTERVAL_MINUTES=1` ostane na
-     Vercelu poslije probe, cron kuca svake minute — i podsjetnik za zikr
-     stiže svake minute dok se dan ne završi.
-
-     Zato vrijedi samo tamo gdje vrijedi i putovanje kroz vrijeme
-     (REMINDER_TIME_TRAVEL=1, a to se stavlja isključivo u .env.local). U
-     produkciji ostaje satni ritam, ma šta u varijabli pisalo; koliko često
-     cron kuca na to ne utiče, jer se slot šalje samo jednom.
-
-     Izvještaj `/api/cron` nosi `interval`, pa se ovo vidi bez kopanja po
-     varijablama. */
-  if (trazeno < 60 && process.env.REMINDER_TIME_TRAVEL !== "1") { return 60; }
-
-  return trazeno;
+  return Math.min(raw, 1440);
 }
 
 /* Ako zadatak nema svoj endTime, poslije ovog vremena se šuti. */
