@@ -4,8 +4,9 @@
    NEMA STALNU IKONICU. Traka (`.pregled-banner`) se sama pojavi na glavnom
    ekranu, PRIJE #sectionsRoot (isti obrazac kao vaktija kartica), i to SAMO
    kad juče nije sve završeno — dnevni spisak (Kur'an, Zikr, Dove, Navečer,
-   Petak ako je juče bio petak) i noćni zikr zajedno. Kad je juče sve
-   urađeno, ničega nema: ni trake, ni dugmeta, ni ostatka.
+   Petak ako je juče bio petak). Noćni zikr (00:00–07:00) NE ulazi: vidi
+   `sekcijeZaPregled()`. Kad je juče sve urađeno, ničega nema: ni trake, ni
+   dugmeta, ni ostatka.
 
    PRAVE KVAČICE, NE SAMO ČITANJE. Klik na traku otvara stranu sa CIJELIM
    jučerašnjim spiskom — urađeno i neurađeno, jasno razdvojeno — i svaka
@@ -18,9 +19,9 @@
    uređaja, isto kao "danas" u script.js. Dalje unazad server odbija
    (`dateAllowed()`), pa ova strana namjerno ne nudi ni "prekjuče".
 
-   ODAKLE SADRŽAJ. `sectionsForDate(juce, prefs)` za dnevni dio (isti poziv
-   kao script.js, pa petak ulazi samo kad je juče stvarno bio petak) i
-   `nocniSections(prefs)` za noćni zikr — ista dva izvora kroz koje ide i
+   ODAKLE SADRŽAJ. Samo `sectionsForDate(juce, prefs)` — isti poziv kao u
+   script.js, pa petak ulazi samo kad je juče stvarno bio petak, a noćni zikr
+   ne ulazi nikad (ta funkcija ga već izbacuje). Isti izvor kroz koji ide i
    glavni ekran i postavke, pa ovaj fajl ne nabraja nijednu sekciju i nijednu
    dovu sam.
 
@@ -170,15 +171,25 @@
   }
 
   /* ------------------------------------------------------------------------
-     Sekcije za taj dan — dnevne + noćni zikr, isti izvori kao svugdje.
+     Sekcije za taj dan — SAMO dnevne.
+
+     Noćni zikr (`kind: "nocni"`) namjerno NE ulazi ovdje. Njegov prozor je
+     00:00–07:00 i on pripada noći koja tek dolazi, a ne danu koji je prošao:
+     "juče nije sve završeno" u 10:00 ne smije prozvati nešto što se i inače
+     radi usred noći. Isti razlog zbog kojeg ta sekcija nema podsjetnik, ne
+     ulazi u trake napretka ni u broj na ikonici (vidi `kind: "nocni"` u
+     data.js) — `sectionsForDate()` je već izbacuje, pa je dovoljno da je
+     ovdje ne dodajemo nazad.
+
+     Kvačice noćnog zikra se time ne gube: one i dalje idu u isti spisak
+     čekiranog i dijele se kroz uređaje, samo ih ovaj pregled ne broji i ne
+     crta.
      ------------------------------------------------------------------------ */
   function sekcijeZaPregled(date, p) {
-    var dnevne = (typeof sectionsForDate === "function") ? sectionsForDate(date, p) : [];
-    var nocne = (typeof nocniSections === "function") ? nocniSections(p) : [];
-    return dnevne.concat(nocne);
+    return (typeof sectionsForDate === "function") ? sectionsForDate(date, p) : [];
   }
 
-  /* Ukupno/urađeno za CIJEL dan (obje vrste sekcija), iz `items` mape —
+  /* Ukupno/urađeno za jučerašnji dnevni spisak, iz `items` mape —
      koristi ga i traka (odlučuje da li da se uopšte pojavi) i drawer
      (naslov iznad spiska). Kur'an ulazi kao jedna stavka, kao i na dnevnom
      spisku (`quranVisible()`/`state.quran` u script.js). */
